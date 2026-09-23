@@ -39,6 +39,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Distinct id so a debug/test build can be installed ALONGSIDE a release
+            // build (different signing keys otherwise force an uninstall). -> com.livewire.tv.debug
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
