@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base app theme. Compose drives the UI; this only needs to be a no-action-bar
+         Material theme with LiveWire's dark background so there is no white flash on launch. -->
+    <style name="Theme.LiveWire" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/lw_background</item>
+        <item name="android:statusBarColor">@color/lw_background</item>
+        <item name="android:navigationBarColor">@color/lw_background</item>
+    </style>
+</resources>

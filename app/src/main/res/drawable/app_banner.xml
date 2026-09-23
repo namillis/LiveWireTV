@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#0A0E0F"
+        android:pathData="M0,0 h320 v180 h-320 z" />
+    <!-- teal bolt -->
+    <path
+        android:fillColor="#00E0D1"
+        android:pathData="M150,50 L128,92 L144,92 L136,130 L172,80 L154,80 Z" />
+</vector>
