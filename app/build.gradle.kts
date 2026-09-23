@@ -25,7 +25,7 @@ android {
     // Release signing. Config is populated ONLY when the keystore env vars are present
     // (set by CI from encrypted secrets); otherwise release builds are left unsigned
     // so local/CI-without-secrets builds still succeed. No key material is ever hardcoded.
-    val ksPath = System.getenv("KEYSTORE_FILE")
+    val ksPath = System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
     val hasSigning = ksPath != null && file(ksPath).exists()
     signingConfigs {
         if (hasSigning) {
