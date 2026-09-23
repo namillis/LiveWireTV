@@ -15,9 +15,27 @@ android {
         applicationId = "com.livewire.tv"
         minSdk = 23          // Android 6 — covers virtually all Android TV / Fire TV in use
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        // Version is injected by CI from the git tag (-PversionName / -PversionCode);
+        // these defaults apply to local/dev builds.
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Release signing. Config is populated ONLY when the keystore env vars are present
+    // (set by CI from encrypted secrets); otherwise release builds are left unsigned
+    // so local/CI-without-secrets builds still succeed. No key material is ever hardcoded.
+    val ksPath = System.getenv("KEYSTORE_FILE")
+    val hasSigning = ksPath != null && file(ksPath).exists()
+    signingConfigs {
+        if (hasSigning) {
+            create("release") {
+                storeFile = file(ksPath!!)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -28,6 +46,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (hasSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
 
