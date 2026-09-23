@@ -1,5 +1,7 @@
 # LiveWire (native)
 
+[![CI](https://github.com/namillis/LiveWireTV/actions/workflows/ci.yml/badge.svg)](https://github.com/namillis/LiveWireTV/actions/workflows/ci.yml)
+
 Pure-client Android **TV**/mobile IPTV & media player. Native rewrite of the
 Flutter prototype — Kotlin + Jetpack Compose (Compose for TV) + Media3/ExoPlayer,
 no backend. See `docs/ADR-0001-native-kotlin-exoplayer.md` for why, and
