@@ -1,0 +1,30 @@
+# --- Gradle / Android build ---
+*.iml
+.gradle/
+/local.properties
+/.idea/
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# --- Secrets / signing (never commit) ---
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+google-services.json
+secrets.properties
+# API keys are supplied at build time, not committed.
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
