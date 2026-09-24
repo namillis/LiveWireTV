@@ -63,7 +63,9 @@ class SearchViewModel @Inject constructor(
                         startMs = now - TimeUnit.HOURS.toMillis(2),
                         endMs = now + TimeUnit.HOURS.toMillis(24),
                     )
-                    val guide = epg.fetch(configuredProvider, window)
+                    // Only programmes on channels the user can actually open are useful results.
+                    val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
+                    val guide = epg.fetch(configuredProvider, window, ids)
                     guide.channels.forEach { channel ->
                         programmes.addAll(guide.programmesFor(channel.id))
                     }

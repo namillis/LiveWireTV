@@ -23,8 +23,15 @@ class EpgRepository @Inject constructor(
     private val http: OkHttpClient,
     private val providers: ProviderRepository,
 ) {
-    /** Fetch and stream-parse the guide. Throws on network/parse failure or no guide. */
-    suspend fun fetch(cfg: ProviderConfig, window: EpgWindow? = null): EpgGuide {
+    /**
+     * Fetch and stream-parse the guide, keeping only [channelIds] when given.
+     * Throws on network/parse failure or when the provider has no guide.
+     */
+    suspend fun fetch(
+        cfg: ProviderConfig,
+        window: EpgWindow? = null,
+        channelIds: Set<String>? = null,
+    ): EpgGuide {
         val url = providers.guideUrl(cfg) ?: error("No guide configured for this provider")
         return withContext(Dispatchers.IO) {
             val request = Request.Builder().url(url).build()
@@ -33,7 +40,7 @@ class EpgRepository @Inject constructor(
                 val body = response.body ?: error("Empty EPG response")
                 decodedStream(body.byteStream(), response.header("Content-Encoding")).use { xml ->
                     InputStreamReader(xml, Charsets.UTF_8).use { reader ->
-                        XmltvParser.parse(reader, window)
+                        XmltvParser.parse(reader, window, channelIds)
                     }
                 }
             }

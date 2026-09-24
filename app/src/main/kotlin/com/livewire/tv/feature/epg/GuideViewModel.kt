@@ -74,7 +74,8 @@ class GuideViewModel @Inject constructor(
                 }
                 // A missing or broken guide should not hide the channel list (M3U
                 // playlists often ship without one); rows then show no programmes.
-                val guide = runCatching { epg.fetch(provider!!, window) }.getOrNull()
+                val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
+                val guide = runCatching { epg.fetch(provider!!, window, ids) }.getOrNull()
                 val rows = channels.map { channel ->
                     GuideRow(
                         channel = channel,
