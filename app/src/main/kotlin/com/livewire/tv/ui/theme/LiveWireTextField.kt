@@ -3,6 +3,13 @@ package com.livewire.tv.ui.theme
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.tv.material3.MaterialTheme
 
 /**
@@ -22,3 +29,21 @@ fun liveWireTextFieldColors(): TextFieldColors = TextFieldDefaults.colors(
     focusedIndicatorColor = MaterialTheme.colorScheme.primary,
     unfocusedIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant,
 )
+
+/**
+ * Moves focus out of a single-line text field on D-pad up/down. Text fields can keep
+ * those keys for cursor movement (especially from key sources other than a real
+ * D-pad), which would strand a remote user inside the field.
+ */
+fun Modifier.dpadVerticalExit(
+    up: FocusRequester? = null,
+    down: FocusRequester? = null,
+): Modifier = onPreviewKeyEvent { event ->
+    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+    val target = when (event.key) {
+        Key.DirectionUp -> up
+        Key.DirectionDown -> down
+        else -> null
+    } ?: return@onPreviewKeyEvent false
+    runCatching { target.requestFocus() }.isSuccess
+}
