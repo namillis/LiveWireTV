@@ -121,13 +121,20 @@ object M3uParser {
             url = url,
             tvgId = attrs["tvg-id"]?.trim()?.ifEmpty { null },
             logoUrl = attrs["tvg-logo"]?.trim()?.ifEmpty { null },
-            group = attrs["group-title"]?.trim()?.ifEmpty { null } ?: extGroup,
+            group = attrs["group-title"]?.primaryGroup() ?: extGroup?.primaryGroup(),
             headers = headers,
         )
     }
 
     private fun attributes(line: String): Map<String, String> =
         attribute.findAll(line).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+
+    /**
+     * Some playlists (iptv-org, for example) list several groups as `Animation;Kids`.
+     * A channel appears in one rail, so the first group wins.
+     */
+    private fun String.primaryGroup(): String? =
+        split(';').map { it.trim() }.firstOrNull { it.isNotEmpty() }
 
     /** The title follows the first comma that is outside a quoted attribute value. */
     private fun displayName(info: String): String {
