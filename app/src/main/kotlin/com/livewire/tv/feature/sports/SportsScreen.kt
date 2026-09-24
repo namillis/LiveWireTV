@@ -35,6 +35,7 @@ import androidx.tv.material3.Text
 import com.livewire.tv.feature.sports.data.ChannelMatch
 import com.livewire.tv.feature.sports.domain.GameState
 import com.livewire.tv.feature.sports.domain.SportsGame
+import com.livewire.tv.feature.providers.domain.PlaybackTarget
 
 /**
  * Sports scoreboard + game→channel picker. League chips over a scoreboard of game
@@ -44,7 +45,7 @@ import com.livewire.tv.feature.sports.domain.SportsGame
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SportsScreen(
-    onPlayChannel: (url: String, title: String) -> Unit,
+    onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
     viewModel: SportsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -93,7 +94,9 @@ fun SportsScreen(
                         matches = viewModel.channelsFor(game),
                         onPick = { m ->
                             pickerGame = null
-                            viewModel.streamUrl(m.channel)?.let { onPlayChannel(it, m.channel.name) }
+                            viewModel.playbackTarget(m.channel)?.let { target ->
+                                onPlayChannel(target, m.channel.name)
+                            }
                         },
                         onDismiss = { pickerGame = null },
                     )

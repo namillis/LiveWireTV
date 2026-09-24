@@ -27,6 +27,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.livewire.tv.feature.search.domain.SearchResult
 import com.livewire.tv.feature.search.domain.SearchResultKind
+import com.livewire.tv.feature.providers.domain.PlaybackTarget
 
 /**
  * Cross-source search over the loaded corpus (channels, EPG, sports). Results are
@@ -36,7 +37,7 @@ import com.livewire.tv.feature.search.domain.SearchResultKind
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SearchScreen(
-    onPlayChannel: (url: String, title: String) -> Unit,
+    onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
     onOpenGuide: () -> Unit,
     onOpenSports: () -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
@@ -65,7 +66,11 @@ fun SearchScreen(
                         ResultRow(r) {
                             when (r.kind) {
                                 SearchResultKind.CHANNEL ->
-                                    r.channel?.let { c -> viewModel.streamUrl(c)?.let { onPlayChannel(it, c.name) } }
+                                    r.channel?.let { channel ->
+                                        viewModel.playbackTarget(channel)?.let { target ->
+                                            onPlayChannel(target, channel.name)
+                                        }
+                                    }
                                 SearchResultKind.PROGRAMME -> onOpenGuide()
                                 SearchResultKind.GAME -> onOpenSports()
                             }

@@ -27,6 +27,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.ui.theme.liveWireTextFieldColors
 
 /** Manage IPTV providers: list, set-active (first = active), delete, add/edit. */
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -106,13 +107,25 @@ private fun ProviderForm(
 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
         val fm = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-        OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = fm)
-        OutlinedTextField(url, { url = it }, label = { Text("Server URL (http://host:port)") }, modifier = fm)
-        OutlinedTextField(user, { user = it }, label = { Text("Username") }, modifier = fm)
+        val colors = liveWireTextFieldColors()
+        OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, colors = colors, modifier = fm)
+        OutlinedTextField(url, { url = it }, label = { Text("Server URL (http://host:port)") }, singleLine = true, colors = colors, modifier = fm)
+        OutlinedTextField(user, { user = it }, label = { Text("Username") }, singleLine = true, colors = colors, modifier = fm)
         OutlinedTextField(
             pass, { pass = it }, label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(), modifier = fm,
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            colors = colors,
+            modifier = fm,
         )
+        if (url.trim().startsWith("http://", ignoreCase = true)) {
+            Text(
+                "This provider uses unencrypted HTTP. Use only a trusted network.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = fm,
+            )
+        }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         Row(modifier = Modifier.padding(top = 12.dp)) {
             Button(onClick = { onSubmit(name, url, user, pass) }, modifier = Modifier.padding(end = 8.dp)) {
