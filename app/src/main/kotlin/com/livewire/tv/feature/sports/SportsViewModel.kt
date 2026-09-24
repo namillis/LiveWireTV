@@ -3,7 +3,7 @@ package com.livewire.tv.feature.sports
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.providers.data.ProviderStorage
-import com.livewire.tv.feature.providers.data.XtreamClient
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
@@ -34,7 +34,7 @@ data class SportsUiState(
 class SportsViewModel @Inject constructor(
     private val repository: SportsRepository,
     private val storage: ProviderStorage,
-    private val client: XtreamClient,
+    private val client: ProviderRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SportsUiState())
