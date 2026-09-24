@@ -6,6 +6,7 @@ import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.io.PushbackReader
 import java.io.Reader
 import java.io.StringReader
 
@@ -16,17 +17,36 @@ import java.io.StringReader
  */
 object XmltvParser {
 
-    fun parse(xml: String, window: EpgWindow? = null): EpgGuide =
-        parse(StringReader(xml), window)
+    fun parse(xml: String, window: EpgWindow? = null, channelIds: Set<String>? = null): EpgGuide =
+        parse(StringReader(xml), window, channelIds)
 
-    fun parse(reader: Reader, window: EpgWindow? = null): EpgGuide {
+    /**
+     * [channelIds], when given, keeps only those channels and their programmes. Provider
+     * guides often cover thousands of channels a screen never shows, so filtering
+     * during the parse is what keeps a large guide within a low-RAM budget.
+     */
+    fun parse(reader: Reader, window: EpgWindow? = null, channelIds: Set<String>? = null): EpgGuide {
         val factory = XmlPullParserFactory.newInstance()
         val parser = factory.newPullParser()
-        parser.setInput(reader)
-        return parse(parser, window)
+        parser.setInput(skipByteOrderMark(reader))
+        return parse(parser, window, channelIds)
     }
 
-    private fun parse(parser: XmlPullParser, window: EpgWindow?): EpgGuide {
+    /**
+     * Many provider guides start with a UTF-8 byte-order mark. A Reader passes it
+     * through as U+FEFF, which the pull parser rejects before the XML declaration.
+     */
+    private fun skipByteOrderMark(reader: Reader): Reader {
+        val pushback = PushbackReader(reader, 1)
+        val first = pushback.read()
+        if (first != -1 && first != BYTE_ORDER_MARK) pushback.unread(first)
+        return pushback
+    }
+
+    private const val BYTE_ORDER_MARK = 0xFEFF
+
+    private fun parse(parser: XmlPullParser, window: EpgWindow?, channelIds: Set<String>?): EpgGuide {
+        fun wanted(id: String) = channelIds == null || id in channelIds
         val channels = mutableListOf<EpgChannel>()
         val programmes = mutableMapOf<String, MutableList<EpgProgramme>>()
 
@@ -75,7 +95,7 @@ object XmltvParser {
                 XmlPullParser.END_TAG -> when (parser.name) {
                     "channel" -> {
                         val id = chId
-                        if (!id.isNullOrEmpty()) {
+                        if (!id.isNullOrEmpty() && wanted(id)) {
                             channels.add(EpgChannel(id = id, displayName = chName ?: id, iconUrl = chIcon))
                         }
                         chId = null
@@ -84,7 +104,7 @@ object XmltvParser {
                         val channelId = pChannel
                         val start = pStart
                         val stop = pStop
-                        if (!channelId.isNullOrEmpty() && start != null && stop != null) {
+                        if (!channelId.isNullOrEmpty() && wanted(channelId) && start != null && stop != null) {
                             val programme = EpgProgramme(
                                 channelId = channelId,
                                 startMs = start,

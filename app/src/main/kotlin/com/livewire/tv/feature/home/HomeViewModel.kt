@@ -77,7 +77,8 @@ class HomeViewModel @Inject constructor(
                         startMs = now - TimeUnit.HOURS.toMillis(2),
                         endMs = now + TimeUnit.HOURS.toMillis(12),
                     )
-                    guide = runCatching { epg.fetch(provider!!, window) }.getOrNull()
+                    val ids = rails.flatMapTo(HashSet()) { rail -> rail.channels.mapNotNull { it.epgChannelId } }
+                    guide = runCatching { epg.fetch(provider!!, window, ids) }.getOrNull()
                     if (guide != null) _state.update { it.copy(guideLoaded = true) }
                 }
             } catch (_: Exception) {

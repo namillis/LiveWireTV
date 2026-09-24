@@ -76,6 +76,27 @@ class XmltvParserTest {
         assertTrue(g.programmesFor("espn.us").isEmpty())
     }
 
+    @Test fun `keeps only requested channel ids`() {
+        val guide = XmltvParser.parse(
+            "<tv><channel id=\"a\"><display-name>A</display-name></channel>" +
+                "<channel id=\"b\"><display-name>B</display-name></channel>" +
+                "<programme channel=\"a\" start=\"20260101000000 +0000\" stop=\"20260101010000 +0000\"><title>x</title></programme>" +
+                "<programme channel=\"b\" start=\"20260101000000 +0000\" stop=\"20260101010000 +0000\"><title>y</title></programme></tv>",
+            channelIds = setOf("b"),
+        )
+        assertEquals(listOf("b"), guide.channels.map { it.id })
+        assertTrue(guide.programmesFor("a").isEmpty())
+        assertEquals(listOf("y"), guide.programmesFor("b").map { it.title })
+    }
+
+    @Test fun `skips a leading UTF-8 byte-order mark`() {
+        val guide = XmltvParser.parse(
+            "\uFEFF<?xml version=\"1.0\" encoding=\"utf-8\" ?><tv>" +
+                "<channel id=\"a\"><display-name>A</display-name></channel></tv>",
+        )
+        assertEquals(listOf("a"), guide.channels.map { it.id })
+    }
+
     @Test fun `handles empty and malformed input`() {
         assertTrue(XmltvParser.parse("<tv></tv>").channels.isEmpty())
         assertEquals(0, XmltvParser.parse("<tv></tv>").programmeCount)
