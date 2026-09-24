@@ -59,4 +59,12 @@ class SearchIndexTest {
         val r = idx.search("sports")
         for (i in 1 until r.size) assertTrue(r[i - 1].score >= r[i].score)
     }
+
+    @Test fun `matches provider names that use punctuation separators`() {
+        val names = listOf("US - NBC HD \u25C9", "US|NBC CHICAGO", "UK: BBC ONE", "US - CNBC HD")
+        val index = SearchIndex(channels = names.mapIndexed { i, n -> LiveChannel(i.toString(), n, categoryId = "c") })
+        val hits = index.search("nbc").map { it.title }
+        assertEquals(listOf("US - NBC HD \u25C9", "US|NBC CHICAGO", "US - CNBC HD"), hits)
+        assertTrue(index.search("NBC HD").first().title.startsWith("US - NBC HD"))
+    }
 }
