@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -41,6 +43,7 @@ import androidx.tv.material3.Text
 import com.livewire.tv.feature.providers.domain.ProviderDraft
 import com.livewire.tv.feature.providers.domain.ProviderInputValidator
 import com.livewire.tv.feature.providers.domain.ProviderType
+import com.livewire.tv.ui.theme.dpadVerticalExit
 import com.livewire.tv.ui.theme.liveWireTextFieldColors
 
 /**
@@ -116,8 +119,9 @@ fun OnboardingScreen(
     }
 
     LaunchedEffect(Unit) {
-        // TV has no pointer: always land on a real control so D-pad input has a target.
-        runCatching { nameFocus.requestFocus() }
+        // Land on the provider-type switch: it is a real D-pad target, it does not pop the
+        // on-screen keyboard, and the user picks Xtream or M3U before typing anything.
+        runCatching { xtreamFocus.requestFocus() }
     }
     LaunchedEffect(state.success) {
         if (state.success) onConnected()
@@ -178,7 +182,8 @@ fun OnboardingScreen(
                 colors = colors,
                 modifier = fieldModifier
                     .focusRequester(nameFocus)
-                    .focusProperties { up = if (isM3u) m3uFocus else xtreamFocus; down = urlFocus },
+                    .focusProperties { up = if (isM3u) m3uFocus else xtreamFocus; down = urlFocus }
+                    .dpadVerticalExit(up = if (isM3u) m3uFocus else xtreamFocus, down = urlFocus),
             )
             OutlinedTextField(
                 value = url,
@@ -203,7 +208,8 @@ fun OnboardingScreen(
                 colors = colors,
                 modifier = fieldModifier
                     .focusRequester(urlFocus)
-                    .focusProperties { up = nameFocus; down = afterUrl },
+                    .focusProperties { up = nameFocus; down = afterUrl }
+                    .dpadVerticalExit(up = nameFocus, down = afterUrl),
             )
 
             if (isM3u) {
@@ -224,7 +230,8 @@ fun OnboardingScreen(
                     colors = colors,
                     modifier = fieldModifier
                         .focusRequester(epgFocus)
-                        .focusProperties { up = urlFocus; down = connectFocus },
+                        .focusProperties { up = urlFocus; down = connectFocus }
+                        .dpadVerticalExit(up = urlFocus, down = connectFocus),
                 )
             } else {
                 OutlinedTextField(
@@ -239,7 +246,8 @@ fun OnboardingScreen(
                     colors = colors,
                     modifier = fieldModifier
                         .focusRequester(userFocus)
-                        .focusProperties { up = urlFocus; down = passwordFocus },
+                        .focusProperties { up = urlFocus; down = passwordFocus }
+                        .dpadVerticalExit(up = urlFocus, down = passwordFocus),
                 )
                 OutlinedTextField(
                     value = password,
@@ -257,7 +265,8 @@ fun OnboardingScreen(
                     colors = colors,
                     modifier = fieldModifier
                         .focusRequester(passwordFocus)
-                        .focusProperties { up = userFocus; down = connectFocus },
+                        .focusProperties { up = userFocus; down = connectFocus }
+                        .dpadVerticalExit(up = userFocus, down = connectFocus),
                 )
             }
 
@@ -313,7 +322,13 @@ internal fun ProviderTypeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(onClick = onClick, modifier = modifier) {
+    // tv-material3 buttons react to D-pad clicks only; the tap detector makes the
+    // switch work on phones and touch TVs too. It runs after the button in the
+    // pointer pass, so a touch the button already consumed is not handled twice.
+    Button(
+        onClick = onClick,
+        modifier = modifier.pointerInput(onClick) { detectTapGestures { onClick() } },
+    ) {
         Text(if (selected) "✓ $label" else label)
     }
 }
