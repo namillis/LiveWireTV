@@ -86,6 +86,7 @@ fun PlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color.Black)
                 .focusRequester(focusRequester)
                 .focusable()
                 .onKeyEvent { event ->
@@ -112,12 +113,14 @@ fun PlayerScreen(
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { viewContext ->
-                    PlayerView(viewContext).apply {
-                        useController = false
-                        keepScreenOn = true
-                        player = engine.exoPlayer
-                    }
+                    (android.view.LayoutInflater.from(viewContext)
+                        .inflate(com.livewire.tv.R.layout.livewire_player_view, null) as PlayerView)
+                        .apply {
+                            keepScreenOn = true
+                            player = engine.exoPlayer
+                        }
                 },
+                onRelease = { it.player = null },
             )
 
             when {

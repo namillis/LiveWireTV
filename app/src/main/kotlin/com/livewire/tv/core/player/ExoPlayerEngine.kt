@@ -9,6 +9,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.common.C
+import androidx.media3.common.Tracks
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -32,6 +35,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     private val appContext: Context = context.applicationContext
     private var lastUrl: String? = null
     private var lastHeaders: Map<String, String> = emptyMap()
+    private var videoUnsupported = false
 
     private val _status = MutableStateFlow(PlaybackStatus())
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
@@ -52,6 +56,20 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             else if (player.playbackState == Player.STATE_READY) update(PlaybackState.PAUSED)
         }
 
+        override fun onTracksChanged(tracks: Tracks) {
+            // ExoPlayer silently drops a video track the device cannot decode and keeps
+            // playing the audio, which looks like a blank screen with sound. Surface it.
+            val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+            if (video.isNotEmpty() && video.none { it.isSupported }) {
+                videoUnsupported = true
+                player.pause()
+                _status.value = _status.value.copy(
+                    state = PlaybackState.ERROR,
+                    errorMessage = "This channel's video format isn't supported on this device.",
+                )
+            }
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             _status.value = _status.value.copy(
                 state = PlaybackState.ERROR,
@@ -60,7 +78,12 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         }
     }
 
-    private val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
+    private val player: ExoPlayer = ExoPlayer.Builder(
+        context,
+        // If the preferred hardware decoder fails to initialise, try the next one
+        // instead of dropping video.
+        DefaultRenderersFactory(context).setEnableDecoderFallback(true),
+    ).build().apply {
         addListener(listener)
         playWhenReady = true
     }
@@ -69,6 +92,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     val exoPlayer: ExoPlayer get() = player
 
     private fun update(state: PlaybackState) {
+        if (videoUnsupported) return
         // Live streams report an unset/dynamic duration; treat unknown as live.
         val live = player.duration == androidx.media3.common.C.TIME_UNSET || player.isCurrentMediaItemDynamic
         _status.value = _status.value.copy(state = state, isLive = live, errorMessage = null)
@@ -81,6 +105,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     override fun open(url: String, play: Boolean, headers: Map<String, String>) {
         lastUrl = url
         lastHeaders = headers
+        videoUnsupported = false
         _status.value = PlaybackStatus(state = PlaybackState.BUFFERING)
         player.setMediaSource(mediaSourceFor(url, headers))
         player.playWhenReady = play
