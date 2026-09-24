@@ -86,6 +86,18 @@ class M3uParserTest {
     }
 
     @Test
+    fun multiGroupValuesUseTheFirstGroup() {
+        val entry = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1 group-title="Animation;Kids",Cartoons
+            http://s/c.m3u8
+            """.trimIndent(),
+        ).entries.single()
+        assertEquals("Animation", entry.group)
+    }
+
+    @Test
     fun capsEntryCount() {
         val text = buildString {
             appendLine("#EXTM3U")
