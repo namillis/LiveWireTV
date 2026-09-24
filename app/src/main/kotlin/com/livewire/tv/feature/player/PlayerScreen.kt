@@ -72,7 +72,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(target) { viewModel.resolve(target) }
-    LaunchedEffect(source.streamUrl) { source.streamUrl?.let(engine::open) }
+    LaunchedEffect(source.source) { source.source?.let { engine.open(it.url, headers = it.headers) } }
     DisposableEffect(Unit) { onDispose { engine.release() } }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 

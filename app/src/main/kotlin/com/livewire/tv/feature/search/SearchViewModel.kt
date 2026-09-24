@@ -6,7 +6,7 @@ import com.livewire.tv.feature.epg.data.EpgRepository
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderStorage
-import com.livewire.tv.feature.providers.data.XtreamClient
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
@@ -32,7 +32,7 @@ data class SearchUiState(
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val storage: ProviderStorage,
-    private val client: XtreamClient,
+    private val client: ProviderRepository,
     private val epg: EpgRepository,
     private val sports: SportsRepository,
 ) : ViewModel() {

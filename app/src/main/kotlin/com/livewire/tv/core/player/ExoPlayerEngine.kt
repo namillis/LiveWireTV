@@ -2,10 +2,16 @@ package com.livewire.tv.core.player
 
 import android.content.Context
 import android.view.Surface
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,8 +22,16 @@ import kotlinx.coroutines.flow.asStateFlow
  * progressive/TS are handled via the bundled default + HLS source factories.
  *
  * Not injected as a singleton: one engine instance per player screen, released on exit.
+ *
+ * Opts in to Media3's `@UnstableApi` media-source classes: they are the only way to
+ * attach per-stream HTTP headers (M3U `#EXTVLCOPT`). Re-check on Media3 upgrades.
  */
+@OptIn(UnstableApi::class)
 class ExoPlayerEngine(context: Context) : PlaybackEngine {
+
+    private val appContext: Context = context.applicationContext
+    private var lastUrl: String? = null
+    private var lastHeaders: Map<String, String> = emptyMap()
 
     private val _status = MutableStateFlow(PlaybackStatus())
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
@@ -64,11 +78,24 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         player.setVideoSurface(surface)
     }
 
-    override fun open(url: String, play: Boolean) {
+    override fun open(url: String, play: Boolean, headers: Map<String, String>) {
+        lastUrl = url
+        lastHeaders = headers
         _status.value = PlaybackStatus(state = PlaybackState.BUFFERING)
-        player.setMediaItem(MediaItem.fromUri(url))
+        player.setMediaSource(mediaSourceFor(url, headers))
         player.playWhenReady = play
         player.prepare()
+    }
+
+    /** Builds a source whose every request (manifest, segments) carries [headers]. */
+    private fun mediaSourceFor(url: String, headers: Map<String, String>): MediaSource {
+        val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
+        headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
+            ?.let { http.setUserAgent(it.value) }
+        val others = headers.filterKeys { !it.equals("User-Agent", ignoreCase = true) }
+        if (others.isNotEmpty()) http.setDefaultRequestProperties(others)
+        return DefaultMediaSourceFactory(DefaultDataSource.Factory(appContext, http))
+            .createMediaSource(MediaItem.fromUri(url))
     }
 
     override fun play() { player.play() }
@@ -80,11 +107,8 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     }
 
     override fun retry() {
-        val current = player.currentMediaItem ?: return
-        _status.value = _status.value.copy(state = PlaybackState.BUFFERING, errorMessage = null)
-        player.setMediaItem(current)
-        player.prepare()
-        player.play()
+        val url = lastUrl ?: return
+        open(url, play = true, headers = lastHeaders)
     }
 
     override fun release() {

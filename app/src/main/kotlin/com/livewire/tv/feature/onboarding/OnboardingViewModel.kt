@@ -2,9 +2,9 @@ package com.livewire.tv.feature.onboarding
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.ProviderStorage
-import com.livewire.tv.feature.providers.data.XtreamClient
-import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.providers.domain.ProviderDraft
 import com.livewire.tv.feature.providers.domain.ProviderInputValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,30 +23,24 @@ data class OnboardingUiState(
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
-    private val client: XtreamClient,
+    private val providers: ProviderRepository,
     private val storage: ProviderStorage,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingUiState())
     val state: StateFlow<OnboardingUiState> = _state.asStateFlow()
 
-    /** Validate the entered provider against the panel; store + signal success if OK. */
-    fun connect(name: String, url: String, username: String, password: String) {
+    /** Validate locally, then against the provider; store + signal success if OK. */
+    fun connect(draft: ProviderDraft) {
         if (_state.value.busy) return
-        ProviderInputValidator.validate(url, username, password)?.let { problem ->
+        ProviderInputValidator.validate(draft)?.let { problem ->
             _state.update { it.copy(error = problem.message) }
             return
         }
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
-            val cfg = ProviderConfig(
-                id = UUID.randomUUID().toString(),
-                name = name.trim().ifEmpty { "My Provider" },
-                baseUrl = url.trim().trimEnd('/'),
-                username = username.trim(),
-                password = password,
-            )
-            val result = client.authenticate(cfg)
+            val cfg = draft.toConfig(UUID.randomUUID().toString())
+            val result = providers.validate(cfg)
             if (result.ok) {
                 storage.add(cfg)
                 _state.update { it.copy(busy = false, success = true) }
@@ -55,4 +49,6 @@ class OnboardingViewModel @Inject constructor(
             }
         }
     }
+
+    fun clearError() = _state.update { it.copy(error = null) }
 }

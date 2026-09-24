@@ -2,7 +2,9 @@ package com.livewire.tv.feature.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.ProviderStorage
+import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,14 +18,15 @@ import javax.inject.Inject
 
 data class PlayerSourceState(
     val loading: Boolean = true,
-    val streamUrl: String? = null,
+    val source: PlaybackSource? = null,
     val error: String? = null,
 )
 
-/** Resolves a player-only URL after navigation, keeping credentials out of route state. */
+/** Resolves a player-only source after navigation, keeping credentials out of route state. */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val providerStorage: ProviderStorage,
+    private val providers: ProviderRepository,
     private val settingsStore: SettingsStore,
 ) : ViewModel() {
 
@@ -41,10 +44,21 @@ class PlayerViewModel @Inject constructor(
                 return@launch
             }
             val streamFormat = settingsStore.settings.first().streamFormat
+            val resolved = runCatching {
+                providers.playbackSource(provider, target.streamId, streamFormat.ext)
+            }
             _source.update {
-                PlayerSourceState(
-                    loading = false,
-                    streamUrl = provider.liveStreamUrl(target.streamId, streamFormat.ext),
+                resolved.fold(
+                    onSuccess = { playable ->
+                        if (playable == null) {
+                            PlayerSourceState(loading = false, error = "This channel is no longer in the playlist.")
+                        } else {
+                            PlayerSourceState(loading = false, source = playable)
+                        }
+                    },
+                    onFailure = {
+                        PlayerSourceState(loading = false, error = "Could not load this channel. Check the provider and network.")
+                    },
                 )
             }
         }

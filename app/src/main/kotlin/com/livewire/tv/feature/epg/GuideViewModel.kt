@@ -6,7 +6,7 @@ import com.livewire.tv.feature.epg.data.EpgRepository
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderStorage
-import com.livewire.tv.feature.providers.data.XtreamClient
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
@@ -37,7 +37,7 @@ data class GuideUiState(
 
 @HiltViewModel
 class GuideViewModel @Inject constructor(
-    private val client: XtreamClient,
+    private val client: ProviderRepository,
     private val storage: ProviderStorage,
     private val epg: EpgRepository,
     private val settings: SettingsStore,
@@ -72,11 +72,15 @@ class GuideViewModel @Inject constructor(
                         addAll(client.liveChannels(provider!!, categoryId = category.id))
                     }
                 }
-                val guide = epg.fetch(provider!!, window)
+                // A missing or broken guide should not hide the channel list (M3U
+                // playlists often ship without one); rows then show no programmes.
+                val guide = runCatching { epg.fetch(provider!!, window) }.getOrNull()
                 val rows = channels.map { channel ->
                     GuideRow(
                         channel = channel,
-                        programmes = channel.epgChannelId?.let(guide::programmesFor) ?: emptyList(),
+                        programmes = guide?.let { g ->
+                            channel.epgChannelId?.let(g::programmesFor)
+                        } ?: emptyList(),
                     )
                 }
                 _state.update {

@@ -24,8 +24,11 @@ interface PlaybackEngine {
     /** Attach the render surface (from the Compose PlayerView / SurfaceView). */
     fun attach(surface: Surface)
 
-    /** Open and (optionally) start a stream. Safe to call again to switch channels. */
-    fun open(url: String, play: Boolean = true)
+    /**
+     * Open and (optionally) start a stream. Safe to call again to switch channels.
+     * [headers] are sent with every request for this stream (M3U `#EXTVLCOPT`).
+     */
+    fun open(url: String, play: Boolean = true, headers: Map<String, String> = emptyMap())
 
     fun play()
     fun pause()
