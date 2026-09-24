@@ -76,7 +76,13 @@ class SearchIndex(
             return 0.0
         }
 
+        /**
+         * Provider names use separators like "US - NBC HD ◉" or "US|NBC", so anything
+         * that is not a letter or digit counts as a word break.
+         */
         fun normalize(s: String): String =
-            s.lowercase().trim().replace(Regex("\\s+"), " ")
+            s.lowercase().replace(NON_WORD, " ").trim()
+
+        private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
     }
 }

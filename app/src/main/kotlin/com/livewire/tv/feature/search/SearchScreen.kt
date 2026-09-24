@@ -28,6 +28,13 @@ import androidx.tv.material3.Text
 import com.livewire.tv.feature.search.domain.SearchResult
 import com.livewire.tv.feature.search.domain.SearchResultKind
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
+import com.livewire.tv.ui.theme.liveWireTextFieldColors
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 
 /**
  * Cross-source search over the loaded corpus (channels, EPG, sports). Results are
@@ -44,6 +51,8 @@ fun SearchScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) { viewModel.init() }
 
@@ -53,6 +62,16 @@ fun SearchScreen(
                 value = query,
                 onValueChange = { query = it; viewModel.run(it) },
                 label = { Text("Search channels, guide, and sports") },
+                singleLine = true,
+                // Results update as you type; the Search key just closes the keyboard and
+                // moves focus down to the results.
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    viewModel.run(query)
+                    keyboard?.hide()
+                    focusManager.moveFocus(FocusDirection.Down)
+                }),
+                colors = liveWireTextFieldColors(),
                 modifier = Modifier.fillMaxWidth(),
             )
             if (state.loading) {

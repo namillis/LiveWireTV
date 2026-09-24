@@ -53,15 +53,16 @@ class SearchViewModel @Inject constructor(
             storage.load().firstOrNull()?.let { configuredProvider ->
                 provider = configuredProvider
                 runCatching {
-                    for (category in client.liveCategories(configuredProvider).take(8)) {
-                        channels.addAll(client.liveChannels(configuredProvider, categoryId = category.id))
-                    }
+                    // One unfiltered request returns every live channel (about 8.6k / 2.5 MB on
+                    // a large panel). Searching only a few categories silently misses most
+                    // channels.
+                    channels.addAll(client.liveChannels(configuredProvider))
                 }
                 runCatching {
                     val now = System.currentTimeMillis()
                     val window = EpgWindow(
                         startMs = now - TimeUnit.HOURS.toMillis(2),
-                        endMs = now + TimeUnit.HOURS.toMillis(24),
+                        endMs = now + TimeUnit.HOURS.toMillis(6),
                     )
                     // Only programmes on channels the user can actually open are useful results.
                     val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
@@ -78,7 +79,8 @@ class SearchViewModel @Inject constructor(
             }
 
             index = SearchIndex(channels = channels, programmes = programmes, games = games)
-            _state.update { it.copy(loading = false) }
+            // Re-run whatever was typed while the index was still loading.
+            _state.update { it.copy(loading = false, results = index.search(it.query)) }
         }
     }
 
