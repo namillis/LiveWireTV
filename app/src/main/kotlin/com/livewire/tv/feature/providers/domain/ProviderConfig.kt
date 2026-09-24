@@ -29,13 +29,29 @@ data class ProviderConfig(
         return "$baseUrl/player_api.php?$query"
     }
 
-    /** Playable stream URL for a live channel (TS by default). */
+    /**
+     * Playable stream URL for a live channel (TS by default).
+     *
+     * Xtream puts credentials in path segments, so encode each segment independently.
+     * The returned URL is security-sensitive and must stay out of navigation routes,
+     * logs, errors, and persisted UI state.
+     */
     fun liveStreamUrl(streamId: String, ext: String = "ts"): String =
-        "$baseUrl/live/$username/$password/$streamId.$ext"
+        "$baseUrl/live/${username.pathSegmentEncode()}/${password.pathSegmentEncode()}/${streamId.pathSegmentEncode()}.${ext.pathSegmentEncode()}"
+
+    fun usesCleartextTransport(): Boolean = baseUrl.startsWith("http://", ignoreCase = true)
 }
+
+/** A non-secret reference passed between screens to resolve playback on demand. */
+data class PlaybackTarget(
+    val providerId: String,
+    val streamId: String,
+)
 
 private fun String.urlEncode(): String =
     java.net.URLEncoder.encode(this, "UTF-8").replace("+", "%20")
+
+private fun String.pathSegmentEncode(): String = urlEncode()
 
 /** A live channel from the provider. */
 @Serializable

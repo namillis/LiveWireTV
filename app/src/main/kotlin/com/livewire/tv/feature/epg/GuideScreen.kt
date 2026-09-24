@@ -28,6 +28,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import java.util.concurrent.TimeUnit
 
 private const val PX_PER_MINUTE = 6      // 30 min = 180dp
@@ -42,7 +43,7 @@ private val CHANNEL_COL = 180.dp
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun GuideScreen(
-    onPlayChannel: (url: String, title: String) -> Unit,
+    onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
     viewModel: GuideViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -81,8 +82,8 @@ fun GuideScreen(
                                         title = "No information",
                                         widthDp = 180,
                                         onClick = {
-                                            viewModel.streamUrl(row.channel)?.let {
-                                                onPlayChannel(it, row.channel.name)
+                                            viewModel.playbackTarget(row.channel)?.let { target ->
+                                                onPlayChannel(target, row.channel.name)
                                             }
                                         },
                                     )
@@ -92,8 +93,8 @@ fun GuideScreen(
                                             title = p.title,
                                             widthDp = durationWidthDp(p),
                                             onClick = {
-                                                viewModel.streamUrl(row.channel)?.let {
-                                                    onPlayChannel(it, row.channel.name)
+                                                viewModel.playbackTarget(row.channel)?.let { target ->
+                                                    onPlayChannel(target, row.channel.name)
                                                 }
                                             },
                                         )

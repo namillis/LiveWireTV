@@ -47,8 +47,11 @@ class XtreamClient @Inject constructor(
                 maxConnections = info["max_connections"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
                 message = if (ok) null else "Authentication failed (check URL / credentials)",
             )
-        } catch (e: Exception) {
-            ProviderAuthResult(ok = false, message = "Connection error: ${e.message}")
+        } catch (_: Exception) {
+            ProviderAuthResult(
+                ok = false,
+                message = "Could not reach the provider. Check the URL, credentials, and network.",
+            )
         }
     }
 

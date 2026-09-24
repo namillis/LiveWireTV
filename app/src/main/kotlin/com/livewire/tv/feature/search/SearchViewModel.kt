@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.XtreamClient
 import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.search.domain.SearchIndex
 import com.livewire.tv.feature.search.domain.SearchResult
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 data class SearchUiState(
@@ -47,20 +50,29 @@ class SearchViewModel @Inject constructor(
             val programmes = mutableListOf<EpgProgramme>()
             val games = mutableListOf<SportsGame>()
 
-            storage.load().firstOrNull()?.let { prov ->
-                provider = prov
+            storage.load().firstOrNull()?.let { configuredProvider ->
+                provider = configuredProvider
                 runCatching {
-                    for (cat in client.liveCategories(prov).take(8)) {
-                        channels.addAll(client.liveChannels(prov, categoryId = cat.id))
+                    for (category in client.liveCategories(configuredProvider).take(8)) {
+                        channels.addAll(client.liveChannels(configuredProvider, categoryId = category.id))
                     }
                 }
                 runCatching {
-                    val guide = epg.fetch(prov)
-                    guide.channels.forEach { ch -> programmes.addAll(guide.programmesFor(ch.id)) }
+                    val now = System.currentTimeMillis()
+                    val window = EpgWindow(
+                        startMs = now - TimeUnit.HOURS.toMillis(2),
+                        endMs = now + TimeUnit.HOURS.toMillis(24),
+                    )
+                    val guide = epg.fetch(configuredProvider, window)
+                    guide.channels.forEach { channel ->
+                        programmes.addAll(guide.programmesFor(channel.id))
+                    }
                 }
             }
             runCatching {
-                for (l in sports.leagues().take(3)) games.addAll(sports.scoreboard(l.id).games)
+                for (league in sports.leagues().take(3)) {
+                    games.addAll(sports.scoreboard(league.id).games)
+                }
             }
 
             index = SearchIndex(channels = channels, programmes = programmes, games = games)
@@ -72,5 +84,6 @@ class SearchViewModel @Inject constructor(
         _state.update { it.copy(query = query, results = index.search(query)) }
     }
 
-    fun streamUrl(channel: LiveChannel): String? = provider?.liveStreamUrl(channel.streamId)
+    fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
+        provider?.let { PlaybackTarget(providerId = it.id, streamId = channel.streamId) }
 }

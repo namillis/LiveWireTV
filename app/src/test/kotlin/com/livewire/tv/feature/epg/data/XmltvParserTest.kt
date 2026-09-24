@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.epg.data
 
+import com.livewire.tv.feature.epg.domain.EpgWindow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -62,6 +63,17 @@ class XmltvParserTest {
         assertEquals("The Situation Room", g.nowPlaying("cnn.us", at)?.title)
         assertEquals(0.5f, g.nowPlaying("cnn.us", at)!!.progressAt(at), 0.01f)
         assertEquals("Anderson Cooper 360", g.upNext("cnn.us", at)?.title)
+    }
+
+    @Test fun `retains only programmes overlapping requested window`() {
+        val window = EpgWindow(
+            startMs = utcMillis(2024, 1, 15, 19, 15),
+            endMs = utcMillis(2024, 1, 15, 19, 45),
+        )
+        val g = XmltvParser.parse(sample, window)
+        assertEquals(listOf("Anderson Cooper 360"),
+            g.programmesFor("cnn.us").map { it.title })
+        assertTrue(g.programmesFor("espn.us").isEmpty())
     }
 
     @Test fun `handles empty and malformed input`() {

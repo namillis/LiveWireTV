@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.XtreamClient
 import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.providers.domain.ProviderInputValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +45,11 @@ class ProvidersViewModel @Inject constructor(
         password: String,
         onDone: () -> Unit,
     ) {
+        if (_state.value.validating) return
+        ProviderInputValidator.validate(url, username, password)?.let { problem ->
+            _state.update { it.copy(formError = problem.message) }
+            return
+        }
         _state.update { it.copy(validating = true, formError = null) }
         viewModelScope.launch {
             val cfg = ProviderConfig(

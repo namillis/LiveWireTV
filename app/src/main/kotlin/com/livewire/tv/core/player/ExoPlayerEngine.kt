@@ -41,7 +41,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         override fun onPlayerError(error: PlaybackException) {
             _status.value = _status.value.copy(
                 state = PlaybackState.ERROR,
-                errorMessage = error.errorCodeName + (error.message?.let { ": $it" } ?: ""),
+                errorMessage = "Playback failed. Check the stream format and try again.",
             )
         }
     }

@@ -1,6 +1,7 @@
 package com.livewire.tv.feature.providers.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,7 +16,7 @@ class ProviderConfigTest {
         val url = cfg.playerApiUrl()
         assertTrue(url.startsWith("http://host:8080/player_api.php?"))
         assertTrue(url.contains("username=user"))
-        assertTrue(url.contains("password=pa%20ss")) // space encoded
+        assertTrue(url.contains("password=pa%20ss"))
     }
 
     @Test
@@ -26,10 +27,25 @@ class ProviderConfigTest {
     }
 
     @Test
-    fun `live stream url format`() {
+    fun `live stream URL encodes sensitive path segments`() {
         assertEquals(
-            "http://host:8080/live/user/pa ss/42.ts",
+            "http://host:8080/live/user/pa%20ss/42.ts",
             cfg.liveStreamUrl("42"),
         )
+    }
+
+    @Test
+    fun `live stream URL encodes path delimiters`() {
+        val special = cfg.copy(username = "user/name", password = "pass/word")
+        assertEquals(
+            "http://host:8080/live/user%2Fname/pass%2Fword/42.ts",
+            special.liveStreamUrl("42"),
+        )
+    }
+
+    @Test
+    fun `detects cleartext provider transport`() {
+        assertTrue(cfg.usesCleartextTransport())
+        assertFalse(cfg.copy(baseUrl = "https://provider.example").usesCleartextTransport())
     }
 }

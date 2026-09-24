@@ -12,6 +12,7 @@
 *.aab
 *.ap_
 *.dex
+.kotlin
 
 # --- Secrets / signing (never commit) ---
 *.jks
@@ -28,3 +29,5 @@ Thumbs.db
 *.swp
 *~
 .vscode/
+.kiro/
+docs/

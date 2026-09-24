@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.XtreamClient
 import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.providers.domain.ProviderInputValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,11 @@ class OnboardingViewModel @Inject constructor(
 
     /** Validate the entered provider against the panel; store + signal success if OK. */
     fun connect(name: String, url: String, username: String, password: String) {
+        if (_state.value.busy) return
+        ProviderInputValidator.validate(url, username, password)?.let { problem ->
+            _state.update { it.copy(error = problem.message) }
+            return
+        }
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             val cfg = ProviderConfig(
