@@ -3,8 +3,9 @@ package com.livewire.tv.feature.sports
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.providers.data.ProviderStorage
-import com.livewire.tv.feature.providers.data.XtreamClient
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.sports.data.ChannelMatch
 import com.livewire.tv.feature.sports.data.SportsRepository
@@ -33,7 +34,7 @@ data class SportsUiState(
 class SportsViewModel @Inject constructor(
     private val repository: SportsRepository,
     private val storage: ProviderStorage,
-    private val client: XtreamClient,
+    private val client: ProviderRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SportsUiState())
@@ -65,7 +66,7 @@ class SportsViewModel @Inject constructor(
                 if (selected != null) loadLeague(selected)
                 else _state.update { it.copy(loading = false) }
             } catch (e: Exception) {
-                _state.update { it.copy(loading = false, error = "Failed to load sports: ${e.message}") }
+                _state.update { it.copy(loading = false, error = "Could not load sports. Check your network and try again.") }
             }
         }
     }
@@ -82,12 +83,13 @@ class SportsViewModel @Inject constructor(
             val st = runCatching { repository.standings(leagueId) }.getOrNull() // best-effort
             _state.update { it.copy(loading = false, scoreboard = sb, standings = st) }
         } catch (e: Exception) {
-            _state.update { it.copy(loading = false, error = "Failed to load $leagueId: ${e.message}") }
+            _state.update { it.copy(loading = false, error = "Could not load this league. Try again.") }
         }
     }
 
     fun channelsFor(game: SportsGame): List<ChannelMatch> =
         SportsRepository.matchChannels(game, channels)
 
-    fun streamUrl(channel: LiveChannel): String? = provider?.liveStreamUrl(channel.streamId)
+    fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
+        provider?.let { PlaybackTarget(providerId = it.id, streamId = channel.streamId) }
 }
