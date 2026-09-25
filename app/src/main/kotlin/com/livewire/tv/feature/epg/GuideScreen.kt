@@ -4,6 +4,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -51,7 +52,16 @@ fun GuideScreen(
 
     Surface(modifier = Modifier.fillMaxSize()) {
         when {
-            state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+            state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Text(
+                        "Loading the guide from your provider. Large guides can take a while.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                }
+            }
             state.error != null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text(state.error!!, modifier = Modifier.padding(24.dp))
             }
@@ -60,6 +70,7 @@ fun GuideScreen(
             }
             else -> {
                 val hScroll = rememberScrollState()
+                val spanMinutes = TimeUnit.MILLISECONDS.toMinutes(state.windowSpanMs).toInt()
                 LazyColumn {
                     items(state.rows) { row ->
                         Row(modifier = Modifier.height(ROW_HEIGHT)) {
@@ -75,28 +86,34 @@ fun GuideScreen(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            // Programme lane (shared horizontal scroll across rows).
-                            Row(modifier = Modifier.horizontalScroll(hScroll)) {
-                                if (row.programmes.isEmpty()) {
+                            // Programme lane on a fixed timeline from the window start, so
+                            // every row has the same width and the shared horizontal scroll
+                            // keeps them aligned (empty rows included).
+                            val onPlay = {
+                                viewModel.playbackTarget(row.channel)?.let { target ->
+                                    onPlayChannel(target, row.channel.name)
+                                }
+                                Unit
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .horizontalScroll(hScroll)
+                                    .width(minutesToDp(spanMinutes)),
+                            ) {
+                                val cells = laneCells(row.programmes, state.windowStartMs, state.windowSpanMs)
+                                if (cells.isEmpty()) {
                                     ProgrammeCell(
                                         title = "No information",
-                                        widthDp = 180,
-                                        onClick = {
-                                            viewModel.playbackTarget(row.channel)?.let { target ->
-                                                onPlayChannel(target, row.channel.name)
-                                            }
-                                        },
+                                        widthDp = spanMinutes * PX_PER_MINUTE,
+                                        onClick = onPlay,
                                     )
                                 } else {
-                                    row.programmes.forEach { p ->
+                                    cells.forEach { cell ->
+                                        if (cell.gapMinutes > 0) Spacer(Modifier.width(minutesToDp(cell.gapMinutes)))
                                         ProgrammeCell(
-                                            title = p.title,
-                                            widthDp = durationWidthDp(p),
-                                            onClick = {
-                                                viewModel.playbackTarget(row.channel)?.let { target ->
-                                                    onPlayChannel(target, row.channel.name)
-                                                }
-                                            },
+                                            title = cell.programme.title,
+                                            widthDp = cell.minutes * PX_PER_MINUTE,
+                                            onClick = onPlay,
                                         )
                                     }
                                 }
@@ -109,10 +126,7 @@ fun GuideScreen(
     }
 }
 
-private fun durationWidthDp(p: EpgProgramme): Int {
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(p.stopMs - p.startMs).toInt().coerceAtLeast(5)
-    return minutes * PX_PER_MINUTE
-}
+private fun minutesToDp(minutes: Int) = (minutes * PX_PER_MINUTE).dp
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable

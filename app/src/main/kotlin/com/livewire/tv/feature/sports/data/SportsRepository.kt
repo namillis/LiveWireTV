@@ -31,35 +31,86 @@ class SportsRepository @Inject constructor(
     companion object {
         /**
          * Fuse a game's broadcast networks against the user's live channels, best match
-         * first. Fuzzy on purpose: broadcast names rarely equal an IPTV channel name, so
-         * we normalize (lowercase, drop HD/4K tags + non-alphanumerics) and accept a
-         * containment match either direction. Deduped by channel. Unit-tested.
+         * first. IPTV names rarely equal a broadcast name ("US - FOX 5 NEW YORK HD"), so
+         * names are tokenized (country prefix, feed tags and quality tags dropped) and
+         * each candidate is scored:
+         *  - the exact network ("FOX HD" for FOX) ranks highest;
+         *  - a local affiliate ("FOX 5 New York") ranks next;
+         *  - a spin-off of the same brand ("FOX News", "FOX Weather", "FOX Sports 1")
+         *    still matches but sinks to the bottom, since it does not carry the game;
+         *  - a squashed-name containment ("ESPN2" vs "ESPN 2") is the last resort.
+         * Deduped by channel, keeping its best score. Ties keep provider order.
          */
         fun matchChannels(game: SportsGame, channels: List<LiveChannel>): List<ChannelMatch> {
-            val matches = mutableListOf<ChannelMatch>()
-            val seen = mutableSetOf<String>()
-            for (network in game.broadcastNetworks) {
-                val net = normalize(network)
-                if (net.isEmpty()) continue
-                for (ch in channels) {
-                    if (ch.streamId in seen) continue
-                    val name = normalize(ch.name)
-                    if (name.isEmpty()) continue
-                    if (name.contains(net) || net.contains(name)) {
-                        matches.add(ChannelMatch(ch, network))
-                        seen.add(ch.streamId)
+            data class Scored(val match: ChannelMatch, val score: Int, val order: Int)
+            val best = LinkedHashMap<String, Scored>()
+            channels.forEachIndexed { order, ch ->
+                val chTokens = tokenize(ch.name)
+                if (chTokens.isEmpty()) return@forEachIndexed
+                for (network in game.broadcastNetworks) {
+                    val netTokens = tokenize(network)
+                    if (netTokens.isEmpty()) continue
+                    val score = score(netTokens, chTokens) ?: continue
+                    val prev = best[ch.streamId]
+                    if (prev == null || score > prev.score) {
+                        best[ch.streamId] = Scored(ChannelMatch(ch, network), score, order)
                     }
                 }
             }
-            return matches
+            return best.values
+                .sortedWith(compareByDescending<Scored> { it.score }.thenBy { it.order })
+                .map { it.match }
         }
 
-        private val qualityTags = setOf("hd", "fhd", "uhd", "4k", "sd", "hevc", "h265")
+        /** Score of [chan] for network [net], or null if it does not match at all. */
+        private fun score(net: List<String>, chan: List<String>): Int? {
+            val at = indexOfSublist(chan, net)
+            if (at < 0) {
+                // Fallback: squashed containment either way ("espn2" vs ["espn","2"]).
+                val n = net.joinToString(""); val c = chan.joinToString("")
+                return if (c.contains(n) || n.contains(c)) 10 else null
+            }
+            val extra = chan.filterIndexed { i, _ -> i < at || i >= at + net.size }
+            if (extra.isEmpty()) return 100
+            var score = 60 - 3 * extra.size
+            if (at == 0) score += 5
+            // Spin-off brands: same name, different channel ("FOX News", "ESPN Deportes").
+            if (extra.any { it in spinOffWords && it !in net }) score -= 40
+            // Local affiliates carry a channel number ("FOX 5", "WNYW FOX 5").
+            else if (extra.any { it.all(Char::isDigit) }) score += 15
+            return score
+        }
 
-        private fun normalize(s: String): String {
+        private fun indexOfSublist(list: List<String>, sub: List<String>): Int {
+            if (sub.size > list.size) return -1
+            for (i in 0..list.size - sub.size) {
+                if (list.subList(i, i + sub.size) == sub) return i
+            }
+            return -1
+        }
+
+        private val qualityTags = setOf("hd", "fhd", "uhd", "4k", "sd", "hevc", "h265", "raw")
+
+        private val spinOffWords = setOf(
+            "news", "weather", "business", "deportes", "espanol", "kids", "life",
+            "movies", "classic", "comedy", "reality", "soul", "sports", "sport", "now",
+        )
+
+        /** Country codes providers prefix names with ("US - ", "UK| ", "CA:"). */
+        private val countryCodes = setOf(
+            "us", "usa", "uk", "ca", "au", "nz", "ie", "de", "fr", "es", "it", "nl", "pt",
+            "br", "mx", "ar", "in", "pk", "tr", "pl", "am", "latam",
+        )
+        private val leadingCode = Regex("^\\s*([a-z]{2,5})\\s*[-|:]\\s*")
+
+        internal fun tokenize(s: String): List<String> {
             var t = s.lowercase()
-            for (tag in qualityTags) t = t.replace(Regex("\\b$tag\\b"), "")
-            return t.replace(Regex("[^a-z0-9]"), "")
+            t = t.replace(Regex("\\[[^\\]]*]|\\([^)]*\\)"), " ") // feed tags: [BK], (East)
+            leadingCode.find(t)?.let { m ->
+                if (m.groupValues[1] in countryCodes) t = t.substring(m.range.last + 1)
+            }
+            return t.split(Regex("[^a-z0-9]+"))
+                .filter { it.isNotEmpty() && it !in qualityTags }
         }
     }
 }
