@@ -5,9 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
 import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderStorage
-import com.livewire.tv.feature.providers.data.XtreamClient
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /** One rail: a category name + its channels. */
@@ -35,7 +38,7 @@ data class HomeUiState(
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val client: XtreamClient,
+    private val client: ProviderRepository,
     private val storage: ProviderStorage,
     private val epg: EpgRepository,
     private val settings: SettingsStore,
@@ -46,15 +49,13 @@ class HomeViewModel @Inject constructor(
 
     private var provider: ProviderConfig? = null
     private var guide: EpgGuide? = null
-    private var streamExt: String = "ts"
     private var showNowPlaying: Boolean = true
 
     fun load() {
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, error = null, guideLoaded = false) }
         viewModelScope.launch {
-            val s = settings.settings.first()
-            streamExt = s.streamFormat.ext
-            showNowPlaying = s.showNowPlayingOnCards
+            val appSettings = settings.settings.first()
+            showNowPlaying = appSettings.showNowPlayingOnCards
 
             val providers = storage.load()
             if (providers.isEmpty()) {
@@ -63,31 +64,36 @@ class HomeViewModel @Inject constructor(
             }
             provider = providers.first()
             try {
-                val cats = client.liveCategories(provider!!)
-                val rails = cats.take(6).mapNotNull { cat ->
-                    val channels = client.liveChannels(provider!!, categoryId = cat.id)
-                    if (channels.isEmpty()) null
-                    else ChannelRail(categoryId = cat.id, title = cat.name, channels = channels)
+                val categories = client.liveCategories(provider!!)
+                val rails = categories.take(6).mapNotNull { category ->
+                    val channels = client.liveChannels(provider!!, categoryId = category.id)
+                    if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)
                 }
                 _state.update { it.copy(loading = false, rails = rails) }
-                // EPG only loaded when the now-playing setting is on (skips work + network when off).
+
                 if (showNowPlaying) {
-                    guide = runCatching { epg.fetch(provider!!) }.getOrNull()
+                    val now = System.currentTimeMillis()
+                    val window = EpgWindow(
+                        startMs = now - TimeUnit.HOURS.toMillis(2),
+                        endMs = now + TimeUnit.HOURS.toMillis(12),
+                    )
+                    val ids = rails.flatMapTo(HashSet()) { rail -> rail.channels.mapNotNull { it.epgChannelId } }
+                    guide = runCatching { epg.fetch(provider!!, window, ids) }.getOrNull()
                     if (guide != null) _state.update { it.copy(guideLoaded = true) }
                 }
-            } catch (e: Exception) {
-                _state.update { it.copy(loading = false, error = "Failed to load channels: ${e.message}") }
+            } catch (_: Exception) {
+                _state.update {
+                    it.copy(loading = false, error = "Could not load channels. Check the provider and network.")
+                }
             }
         }
     }
 
     fun nowPlaying(channel: LiveChannel): EpgProgramme? {
         if (!showNowPlaying) return null
-        val g = guide ?: return null
-        val id = channel.epgChannelId ?: return null
-        return g.nowPlaying(id)
+        return channel.epgChannelId?.let { guide?.nowPlaying(it) }
     }
 
-    fun streamUrl(channel: LiveChannel): String? =
-        provider?.liveStreamUrl(channel.streamId, ext = streamExt)
+    fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
+        provider?.let { PlaybackTarget(providerId = it.id, streamId = channel.streamId) }
 }

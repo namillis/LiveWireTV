@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.epg.data
 
+import com.livewire.tv.feature.epg.domain.EpgWindow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -62,6 +63,38 @@ class XmltvParserTest {
         assertEquals("The Situation Room", g.nowPlaying("cnn.us", at)?.title)
         assertEquals(0.5f, g.nowPlaying("cnn.us", at)!!.progressAt(at), 0.01f)
         assertEquals("Anderson Cooper 360", g.upNext("cnn.us", at)?.title)
+    }
+
+    @Test fun `retains only programmes overlapping requested window`() {
+        val window = EpgWindow(
+            startMs = utcMillis(2024, 1, 15, 19, 15),
+            endMs = utcMillis(2024, 1, 15, 19, 45),
+        )
+        val g = XmltvParser.parse(sample, window)
+        assertEquals(listOf("Anderson Cooper 360"),
+            g.programmesFor("cnn.us").map { it.title })
+        assertTrue(g.programmesFor("espn.us").isEmpty())
+    }
+
+    @Test fun `keeps only requested channel ids`() {
+        val guide = XmltvParser.parse(
+            "<tv><channel id=\"a\"><display-name>A</display-name></channel>" +
+                "<channel id=\"b\"><display-name>B</display-name></channel>" +
+                "<programme channel=\"a\" start=\"20260101000000 +0000\" stop=\"20260101010000 +0000\"><title>x</title></programme>" +
+                "<programme channel=\"b\" start=\"20260101000000 +0000\" stop=\"20260101010000 +0000\"><title>y</title></programme></tv>",
+            channelIds = setOf("b"),
+        )
+        assertEquals(listOf("b"), guide.channels.map { it.id })
+        assertTrue(guide.programmesFor("a").isEmpty())
+        assertEquals(listOf("y"), guide.programmesFor("b").map { it.title })
+    }
+
+    @Test fun `skips a leading UTF-8 byte-order mark`() {
+        val guide = XmltvParser.parse(
+            "\uFEFF<?xml version=\"1.0\" encoding=\"utf-8\" ?><tv>" +
+                "<channel id=\"a\"><display-name>A</display-name></channel></tv>",
+        )
+        assertEquals(listOf("a"), guide.channels.map { it.id })
     }
 
     @Test fun `handles empty and malformed input`() {

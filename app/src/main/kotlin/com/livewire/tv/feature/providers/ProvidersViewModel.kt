@@ -2,9 +2,11 @@ package com.livewire.tv.feature.providers
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.ProviderStorage
-import com.livewire.tv.feature.providers.data.XtreamClient
 import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.providers.domain.ProviderDraft
+import com.livewire.tv.feature.providers.domain.ProviderInputValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +26,7 @@ data class ProvidersUiState(
 @HiltViewModel
 class ProvidersViewModel @Inject constructor(
     private val storage: ProviderStorage,
-    private val client: XtreamClient,
+    private val repository: ProviderRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProvidersUiState())
@@ -35,25 +37,17 @@ class ProvidersViewModel @Inject constructor(
         _state.update { it.copy(providers = all, activeId = all.firstOrNull()?.id) }
     }
 
-    /** Validate against the panel, then upsert. Calls [onDone] on success. */
-    fun addOrUpdate(
-        existingId: String?,
-        name: String,
-        url: String,
-        username: String,
-        password: String,
-        onDone: () -> Unit,
-    ) {
+    /** Validate locally and against the provider, then upsert. Calls [onDone] on success. */
+    fun addOrUpdate(existingId: String?, draft: ProviderDraft, onDone: () -> Unit) {
+        if (_state.value.validating) return
+        ProviderInputValidator.validate(draft)?.let { problem ->
+            _state.update { it.copy(formError = problem.message) }
+            return
+        }
         _state.update { it.copy(validating = true, formError = null) }
         viewModelScope.launch {
-            val cfg = ProviderConfig(
-                id = existingId ?: UUID.randomUUID().toString(),
-                name = name.trim().ifEmpty { "My Provider" },
-                baseUrl = url.trim().trimEnd('/'),
-                username = username.trim(),
-                password = password,
-            )
-            val result = client.authenticate(cfg)
+            val cfg = draft.toConfig(existingId ?: UUID.randomUUID().toString())
+            val result = repository.validate(cfg)
             if (result.ok) {
                 storage.add(cfg)
                 load()
@@ -65,6 +59,13 @@ class ProvidersViewModel @Inject constructor(
         }
     }
 
-    fun remove(id: String) { storage.remove(id); load() }
+    fun clearFormError() = _state.update { it.copy(formError = null) }
+
+    fun remove(id: String) {
+        storage.remove(id)
+        viewModelScope.launch { repository.forget() }
+        load()
+    }
+
     fun setActive(id: String) { storage.setActive(id); load() }
 }

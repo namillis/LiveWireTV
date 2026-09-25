@@ -23,6 +23,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 
+import com.livewire.tv.feature.providers.domain.PlaybackTarget
+
 /**
  * Home — the user's live channels as focusable D-pad rails (Phase 3). Categories become
  * rows (TvLazyRow of ChannelCards); selecting a channel opens the player.
@@ -30,7 +32,7 @@ import androidx.tv.material3.Text
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onPlayChannel: (url: String, title: String) -> Unit,
+    onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
     onOpenGuide: () -> Unit = {},
     onOpenSports: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
@@ -81,8 +83,9 @@ fun HomeScreen(
                                 channel = channel,
                                 nowPlaying = viewModel.nowPlaying(channel),
                                 onClick = {
-                                    val url = viewModel.streamUrl(channel)
-                                    if (url != null) onPlayChannel(url, channel.name)
+                                    viewModel.playbackTarget(channel)?.let { target ->
+                                        onPlayChannel(target, channel.name)
+                                    }
                                 },
                                 modifier = Modifier.padding(end = 12.dp),
                             )

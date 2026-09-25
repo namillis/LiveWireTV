@@ -28,6 +28,19 @@ data class EpgProgramme(
     }
 }
 
+/** Inclusive/exclusive time window used to retain only guide data needed by a screen. */
+data class EpgWindow(
+    val startMs: Long,
+    val endMs: Long,
+) {
+    init {
+        require(endMs > startMs) { "EPG window must have a positive duration" }
+    }
+
+    fun overlaps(programme: EpgProgramme): Boolean =
+        programme.stopMs > startMs && programme.startMs < endMs
+}
+
 /** Parsed guide: channels + programmes indexed by channel id for O(1) lookup. */
 class EpgGuide(
     val channels: List<EpgChannel>,
