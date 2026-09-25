@@ -14,7 +14,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
@@ -43,6 +50,24 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { viewModel.load() }
 
+    // On a TV nothing is focused until something asks for it, so the first D-pad press
+    // would be spent just landing on the screen. Focus the first channel once; the flag
+    // is saved with this back-stack entry, so returning from the player keeps whatever
+    // card the user was on instead of jumping back to the start.
+    val firstChannelFocus = remember { FocusRequester() }
+    var initialFocusDone by rememberSaveable { mutableStateOf(false) }
+    val hasChannels = state.rails.any { it.channels.isNotEmpty() }
+    LaunchedEffect(hasChannels) {
+        if (hasChannels && !initialFocusDone) {
+            // The rail is composed in this frame; retry once after layout if needed.
+            if (!runCatching { firstChannelFocus.requestFocus() }.isSuccess) {
+                withFrameNanos { }
+                runCatching { firstChannelFocus.requestFocus() }
+            }
+            initialFocusDone = true
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize()) {
         when {
             state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
@@ -69,7 +94,8 @@ fun HomeScreen(
                         Button(onClick = onOpenSettings) { Text("Settings") }
                     }
                 }
-                items(state.rails) { rail ->
+                val firstRailIndex = state.rails.indexOfFirst { it.channels.isNotEmpty() }
+                itemsIndexed(state.rails) { railIndex, rail ->
                     Text(
                         rail.title,
                         style = MaterialTheme.typography.titleMedium,
@@ -78,7 +104,7 @@ fun HomeScreen(
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 32.dp),
                     ) {
-                        items(rail.channels) { channel ->
+                        itemsIndexed(rail.channels) { index, channel ->
                             ChannelCard(
                                 channel = channel,
                                 nowPlaying = viewModel.nowPlaying(channel),
@@ -87,7 +113,15 @@ fun HomeScreen(
                                         onPlayChannel(target, channel.name)
                                     }
                                 },
-                                modifier = Modifier.padding(end = 12.dp),
+                                modifier = Modifier
+                                    .padding(end = 12.dp)
+                                    .then(
+                                        if (railIndex == firstRailIndex && index == 0) {
+                                            Modifier.focusRequester(firstChannelFocus)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
                             )
                         }
                     }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,9 +21,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
@@ -203,42 +208,62 @@ private fun ChannelPicker(
     onPick: (ChannelMatch) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = Color(0xE6000000)),
+    // A Dialog gets its own window: Back dismisses only the picker (not the whole
+    // Sports screen) and D-pad focus cannot escape to the scoreboard behind it.
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(48.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        val initialFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { initialFocus.requestFocus() }
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = Color(0xE6000000)),
         ) {
-            Text(
-                "${game.away.abbreviation} @ ${game.home.abbreviation}",
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                if (game.broadcastNetworks.isEmpty()) "No broadcast network listed."
-                else "On: ${game.broadcastNetworks.joinToString(", ")}",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-            if (matches.isEmpty()) {
-                Text("No matching channel in your provider. Open the guide to find it manually.")
-            } else {
-                LazyColumn {
-                    items(matches) { m ->
-                        Card(
-                            onClick = { onPick(m) },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(m.channel.name, style = MaterialTheme.typography.bodyLarge)
-                                Text("matched ${m.matchedNetwork}", style = MaterialTheme.typography.labelSmall)
+            Column(
+                modifier = Modifier.fillMaxSize().padding(48.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "${game.away.abbreviation} @ ${game.home.abbreviation}",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    if (game.broadcastNetworks.isEmpty()) "No broadcast network listed."
+                    else "On: ${game.broadcastNetworks.joinToString(", ")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                if (matches.isEmpty()) {
+                    Text("No matching channel in your provider. Open the guide to find it manually.")
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                        itemsIndexed(matches) { index, m ->
+                            Card(
+                                onClick = { onPick(m) },
+                                // Full-width rows: the default 1.1x focus scale spills off-screen.
+                                scale = CardDefaults.scale(focusedScale = 1.02f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .then(if (index == 0) Modifier.focusRequester(initialFocus) else Modifier),
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Text(m.channel.name, style = MaterialTheme.typography.bodyLarge)
+                                    Text("matched ${m.matchedNetwork}", style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
                     }
                 }
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .then(if (matches.isEmpty()) Modifier.focusRequester(initialFocus) else Modifier),
+                ) { Text("Close") }
             }
-            Button(onClick = onDismiss, modifier = Modifier.padding(top = 12.dp)) { Text("Close") }
         }
     }
 }
