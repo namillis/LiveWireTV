@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.onboarding
 
+import com.livewire.tv.ui.touchClickable
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,8 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -297,7 +297,8 @@ fun OnboardingScreen(
                 modifier = Modifier
                     .padding(top = 20.dp, bottom = 64.dp)
                     .focusRequester(connectFocus)
-                    .focusProperties { up = beforeConnect },
+                    .focusProperties { up = beforeConnect }
+                    .touchClickable { if (!state.busy) connect() },
             ) {
                 if (state.busy) {
                     CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
@@ -322,12 +323,9 @@ internal fun ProviderTypeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // tv-material3 buttons react to D-pad clicks only; the tap detector makes the
-    // switch work on phones and touch TVs too. It runs after the button in the
-    // pointer pass, so a touch the button already consumed is not handled twice.
     Button(
         onClick = onClick,
-        modifier = modifier.pointerInput(onClick) { detectTapGestures { onClick() } },
+        modifier = modifier.touchClickable(onClick),
     ) {
         Text(if (selected) "✓ $label" else label)
     }

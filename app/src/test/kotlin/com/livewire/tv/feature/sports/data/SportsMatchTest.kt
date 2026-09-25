@@ -49,4 +49,39 @@ class SportsMatchTest {
     @Test fun `empty networks yields no matches`() {
         assertTrue(SportsRepository.matchChannels(game(emptyList()), listOf(ch("1", "ESPN"))).isEmpty())
     }
+
+    @Test fun `exact network and affiliates rank above same-brand spin-offs`() {
+        // Real channel names seen from an Xtream provider, in provider order.
+        val channels = listOf(
+            ch("w", "US - FOX WEATHER HD"),
+            ch("n", "US - FOX NEWS LIVE NOW HD"),
+            ch("nc", "US - FOX NEWS CHANNEL HD ◉ "),
+            ch("bk", "US - FOX NEWS CHANNEL [BK] HD"),
+            ch("a5", "US - FOX 5 NEW YORK HD"),
+            ch("fx", "US - FOX HD"),
+        )
+        val ids = SportsRepository.matchChannels(game(listOf("FOX")), channels).map { it.channel.streamId }
+        assertEquals("fx", ids[0])
+        assertEquals("a5", ids[1])
+        assertEquals(setOf("w", "n", "nc", "bk"), ids.drop(2).toSet())
+    }
+
+    @Test fun `country prefix does not block an exact match`() {
+        val m = SportsRepository.matchChannels(
+            game(listOf("CBS")),
+            listOf(ch("1", "US - CBS SPORTS NETWORK"), ch("2", "UK| CBS")),
+        )
+        assertEquals("2", m[0].channel.streamId)
+    }
+
+    @Test fun `squashed network names still match as a last resort`() {
+        val m = SportsRepository.matchChannels(game(listOf("ESPN2")), listOf(ch("1", "US - ESPN 2 HD")))
+        assertEquals(1, m.size)
+    }
+
+    @Test fun `tokenize strips country prefix, feed tags and quality tags`() {
+        assertEquals(listOf("fox", "news", "channel"), SportsRepository.tokenize("US - FOX NEWS CHANNEL [BK] HD"))
+        // A leading word that is not a country code is kept.
+        assertEquals(listOf("nbc", "sports", "boston"), SportsRepository.tokenize("NBC - Sports Boston"))
+    }
 }
