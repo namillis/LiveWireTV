@@ -1,11 +1,15 @@
 package com.livewire.tv.navigation
 
 import android.net.Uri
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.livewire.tv.feature.epg.GuideScreen
@@ -39,9 +43,39 @@ fun LiveWireNavHost(
     startAtHome: Boolean,
     navController: NavHostController = rememberNavController(),
 ) {
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    LiveWireNavShell(
+        currentRoute = backStackEntry?.destination?.route,
+        onSelect = { section -> navController.navigateToSection(section) },
+    ) {
+        LiveWireRoutes(startAtHome, navController)
+    }
+}
+
+/**
+ * Switch top-level section. Sections share one back stack rooted at Home, and each
+ * keeps its state (scroll position, focus) when you leave and come back.
+ */
+private fun NavHostController.navigateToSection(section: TopLevel) {
+    navigate(section.route) {
+        popUpTo(Routes.HOME) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+@Composable
+private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostController) {
     NavHost(
         navController = navController,
         startDestination = if (startAtHome) Routes.HOME else Routes.ONBOARDING,
+        // No crossfade: during one, the outgoing screen is still focusable, so focus handed
+        // over from the drawer lands on it and is lost when it leaves. Instant switches are
+        // also cheaper on low-end sticks (design system section 10).
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None },
     ) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
@@ -55,17 +89,13 @@ fun LiveWireNavHost(
         composable(Routes.HOME) {
             HomeScreen(
                 onPlayChannel = { target, title -> navController.navigate(Routes.player(target, title)) },
-                onOpenGuide = { navController.navigate(Routes.GUIDE) },
-                onOpenSports = { navController.navigate(Routes.SPORTS) },
-                onOpenSearch = { navController.navigate(Routes.SEARCH) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(Routes.SEARCH) {
             SearchScreen(
                 onPlayChannel = { target, title -> navController.navigate(Routes.player(target, title)) },
-                onOpenGuide = { navController.navigate(Routes.GUIDE) },
-                onOpenSports = { navController.navigate(Routes.SPORTS) },
+                onOpenGuide = { navController.navigateToSection(TopLevel.GUIDE) },
+                onOpenSports = { navController.navigateToSection(TopLevel.SPORTS) },
             )
         }
         composable(Routes.PROVIDERS) { ProvidersScreen() }
