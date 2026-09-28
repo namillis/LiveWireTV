@@ -65,10 +65,34 @@ class SearchIndex(
         }
 
         results.sortByDescending { it.score }
-        return if (results.size > limit) results.subList(0, limit) else results
+        // Cap each kind separately: a broad query like "fox" matches dozens of channels,
+        // and one shared cap would let them crowd the guide and sports sections out.
+        // Providers also list the same channel name twice; keep the higher-ranked copy.
+        val seenChannelNames = HashSet<String>()
+        val perKind = HashMap<SearchResultKind, Int>()
+        val capped = results.filter { r ->
+            if (r.kind == SearchResultKind.CHANNEL && !seenChannelNames.add(normalize(r.title))) {
+                return@filter false
+            }
+            val n = perKind.getOrDefault(r.kind, 0)
+            if (n >= perKindLimit(r.kind, limit)) return@filter false
+            perKind[r.kind] = n + 1
+            true
+        }
+        return capped
+    }
+
+    private fun perKindLimit(kind: SearchResultKind, total: Int): Int = when (kind) {
+        SearchResultKind.CHANNEL -> minOf(total, CHANNEL_LIMIT)
+        SearchResultKind.PROGRAMME -> minOf(total, PROGRAMME_LIMIT)
+        SearchResultKind.GAME -> minOf(total, GAME_LIMIT)
     }
 
     companion object {
+        const val CHANNEL_LIMIT = 20
+        const val PROGRAMME_LIMIT = 20
+        const val GAME_LIMIT = 10
+
         /** exact > prefix > word-boundary > substring; 0 = no match. */
         fun score(candidate: String, normalizedQuery: String): Double {
             val c = normalize(candidate)

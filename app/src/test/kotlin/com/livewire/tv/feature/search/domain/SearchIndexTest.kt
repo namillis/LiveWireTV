@@ -116,4 +116,23 @@ class SearchIndexTest {
         assertTrue(order.indexOf("aff") < order.indexOf("news"))
         assertTrue(order.indexOf("aff") < order.indexOf("fs1"))
     }
+
+    @Test fun `many channel matches do not crowd out programmes and games`() {
+        val channels = (0 until 80).map { ch("$it", "US - FOX $it") }
+        val results = SearchIndex(
+            channels = channels,
+            programmes = listOf(prog("The Masked Singer on FOX")),
+            games = listOf(game("FOX", "GB", "nfl")),
+        ).search("fox")
+        assertEquals(SearchIndex.CHANNEL_LIMIT, results.count { it.kind == SearchResultKind.CHANNEL })
+        assertEquals(1, results.count { it.kind == SearchResultKind.PROGRAMME })
+        assertEquals(1, results.count { it.kind == SearchResultKind.GAME })
+    }
+
+    @Test fun `duplicate channel names appear once`() {
+        val results = SearchIndex(
+            channels = listOf(ch("1", "US - FOX HD"), ch("2", "US - FOX HD"), ch("3", "FOX 26 Houston")),
+        ).search("fox")
+        assertEquals(1, results.count { it.title == "US - FOX HD" })
+    }
 }

@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -289,41 +289,46 @@ private fun Results(
 
         // ON TV — full-width guide programme rows, packed tight.
         if (grouped.programmes.isNotEmpty()) {
-            item(key = "ontv-h") { SectionHeader("On TV", "· GUIDE") }
-            itemsIndexed(
-                grouped.programmes,
-                key = { _, r -> "p:${r.programme?.channelId}:${r.programme?.startMs}:${r.title}" },
-            ) { index, r ->
-                val programme = r.programme ?: return@itemsIndexed
-                ProgrammeRow(
-                    result = r,
-                    now = now,
-                    channelName = viewModel.channelNameForProgramme(programme),
-                    focusRequester = firstResultFocus.takeIf {
-                        index == 0 && firstSection == SearchSection.ON_TV
-                    },
-                    onClick = { viewModel.channelForProgramme(programme)?.let(onPlayChannel) },
-                )
-                if (index < grouped.programmes.lastIndex) Spacer(Modifier.height(LiveWireDimens.SpaceS))
+            // One item per section, so rows pack at SpaceS instead of the section gap.
+            // A section holds at most SearchIndex.PROGRAMME_LIMIT rows, so this stays cheap.
+            item(key = "ontv") {
+                Column(verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
+                    SectionHeader("On TV", "· GUIDE")
+                    grouped.programmes.forEachIndexed { index, r ->
+                        val programme = r.programme ?: return@forEachIndexed
+                        ProgrammeRow(
+                            result = r,
+                            now = now,
+                            channelName = viewModel.channelNameForProgramme(programme),
+                            focusRequester = firstResultFocus.takeIf {
+                                index == 0 && firstSection == SearchSection.ON_TV
+                            },
+                            onClick = { viewModel.channelForProgramme(programme)?.let(onPlayChannel) },
+                        )
+                    }
+                }
             }
         }
 
         // SPORTS — full-width game rows, packed tight.
         if (grouped.games.isNotEmpty()) {
-            item(key = "sports-h") { SectionHeader("Sports", "· ${grouped.games.size} games") }
-            itemsIndexed(grouped.games, key = { _, r -> "g:${r.game?.id}" }) { index, r ->
-                val game = r.game ?: return@itemsIndexed
-                GameRow(
-                    result = r,
-                    focusRequester = firstResultFocus.takeIf {
-                        index == 0 && firstSection == SearchSection.SPORTS
-                    },
-                    onClick = {
-                        val channel = viewModel.topChannelForGame(game)
-                        if (channel != null) onPlayChannel(channel) else onOpenSports()
-                    },
-                )
-                if (index < grouped.games.lastIndex) Spacer(Modifier.height(LiveWireDimens.SpaceS))
+            item(key = "sports") {
+                Column(verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
+                    SectionHeader("Sports", "· ${grouped.games.size} games")
+                    grouped.games.forEachIndexed { index, r ->
+                        val game = r.game ?: return@forEachIndexed
+                        GameRow(
+                            result = r,
+                            focusRequester = firstResultFocus.takeIf {
+                                index == 0 && firstSection == SearchSection.SPORTS
+                            },
+                            onClick = {
+                                val channel = viewModel.topChannelForGame(game)
+                                if (channel != null) onPlayChannel(channel) else onOpenSports()
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -522,7 +527,7 @@ private fun GameRow(
                 StatusPill(SportsFormat.statusLine(game))
             } else {
                 Text(
-                    SportsFormat.statusLine(game),
+                    SearchGrouping.gameStatus(game, System.currentTimeMillis()),
                     style = MaterialTheme.typography.labelMedium,
                     color = LiveWireColors.OnSurfaceMuted,
                     maxLines = 1,
