@@ -94,6 +94,12 @@ class HomeViewModel @Inject constructor(
         return channel.epgChannelId?.let { guide?.nowPlaying(it) }
     }
 
+    /** The programme after the one on now, for the hero band's "UP NEXT" line. */
+    fun upNext(channel: LiveChannel): EpgProgramme? {
+        if (!showNowPlaying) return null
+        return channel.epgChannelId?.let { guide?.upNext(it) }
+    }
+
     fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
         provider?.let { PlaybackTarget(providerId = it.id, streamId = channel.streamId) }
 }
