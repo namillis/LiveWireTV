@@ -146,9 +146,7 @@ class EspnSportsProvider @Inject constructor(
         return JsonArray(out)
     }
 
-    private fun parseIso(s: String?): Long =
-        s?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
-            ?: System.currentTimeMillis()
+    private fun parseIso(s: String?): Long = parseEspnDate(s) ?: System.currentTimeMillis()
 
     private fun get(url: String): String? {
         val req = Request.Builder().url(url).build()
@@ -161,3 +159,19 @@ class EspnSportsProvider @Inject constructor(
 
 private fun kotlinx.serialization.json.JsonElement?.str(): String? =
     (this as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+
+/**
+ * ESPN's scoreboard dates omit seconds ("2026-09-29T00:15Z"), which `Instant.parse`
+ * rejects on Android's runtime, so every game fell back to "now" as its start time.
+ * This accepts the value with or without seconds, and with `Z` or a numeric offset.
+ */
+internal fun parseEspnDate(s: String?): Long? {
+    if (s.isNullOrBlank()) return null
+    val formatter = java.time.format.DateTimeFormatterBuilder()
+        .appendPattern("yyyy-MM-dd'T'HH:mm")
+        .optionalStart().appendPattern(":ss").optionalEnd()
+        .optionalStart().appendFraction(java.time.temporal.ChronoField.NANO_OF_SECOND, 0, 9, true).optionalEnd()
+        .appendOffset("+HH:MM", "Z")
+        .toFormatter(java.util.Locale.US)
+    return runCatching { java.time.OffsetDateTime.parse(s.trim(), formatter).toInstant().toEpochMilli() }.getOrNull()
+}
