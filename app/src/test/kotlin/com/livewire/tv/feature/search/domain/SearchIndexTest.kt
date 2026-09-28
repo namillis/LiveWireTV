@@ -7,6 +7,7 @@ import com.livewire.tv.feature.sports.domain.GameStatus
 import com.livewire.tv.feature.sports.domain.SportsGame
 import com.livewire.tv.feature.sports.domain.TeamSide
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -66,5 +67,72 @@ class SearchIndexTest {
         val hits = index.search("nbc").map { it.title }
         assertEquals(listOf("US - NBC HD \u25C9", "US|NBC CHICAGO", "US - CNBC HD"), hits)
         assertTrue(index.search("NBC HD").first().title.startsWith("US - NBC HD"))
+    }
+
+    // ── Separator / placeholder channels (provider category dividers) ──
+
+    @Test fun `excludes separator marker channels`() {
+        assertTrue(SearchIndex.isSeparatorName("##### FOX #####"))
+        assertTrue(SearchIndex.isSeparatorName("===== SPORTS ====="))
+        assertTrue(SearchIndex.isSeparatorName("#####"))
+        assertTrue(SearchIndex.isSeparatorName("____"))
+        assertTrue(SearchIndex.isSeparatorName("*** ***"))
+        assertTrue(SearchIndex.isSeparatorName("   "))
+        // Real channels — including hyphenated provider names — are NOT separators.
+        assertFalse(SearchIndex.isSeparatorName("US - FOX HD"))
+        assertFalse(SearchIndex.isSeparatorName("FOX 26 Houston"))
+        assertFalse(SearchIndex.isSeparatorName("US|NBC CHICAGO"))
+    }
+
+    @Test fun `separator channels never appear in results`() {
+        val idx = SearchIndex(
+            channels = listOf(
+                ch("sep1", "##### FOX ALABAMA #####"),
+                ch("sep2", "##### FOX ARIZONA #####"),
+                ch("real", "US - FOX HD"),
+            ),
+        )
+        val r = idx.search("fox")
+        assertEquals(listOf("real"), r.map { it.channel!!.streamId })
+    }
+
+    @Test fun `ranks the exact network first then affiliate then spin-off`() {
+        // Real provider names seen for a 'fox' search on a large US panel.
+        val idx = SearchIndex(
+            channels = listOf(
+                ch("sepA", "##### FOX ALABAMA #####"),
+                ch("news", "US - FOX NEWS CHANNEL HD"),
+                ch("fs1", "US - FOX SPORTS 1 HD"),
+                ch("aff", "FOX 26 Houston"),
+                ch("fox", "US - FOX HD"),
+            ),
+        )
+        val order = idx.search("fox").map { it.channel!!.streamId }
+        // Separator excluded entirely.
+        assertFalse(order.contains("sepA"))
+        // Exact network first.
+        assertEquals("fox", order.first())
+        // Affiliate (with a channel number) outranks the same-brand spin-offs.
+        assertTrue(order.indexOf("aff") < order.indexOf("news"))
+        assertTrue(order.indexOf("aff") < order.indexOf("fs1"))
+    }
+
+    @Test fun `many channel matches do not crowd out programmes and games`() {
+        val channels = (0 until 80).map { ch("$it", "US - FOX $it") }
+        val results = SearchIndex(
+            channels = channels,
+            programmes = listOf(prog("The Masked Singer on FOX")),
+            games = listOf(game("FOX", "GB", "nfl")),
+        ).search("fox")
+        assertEquals(SearchIndex.CHANNEL_LIMIT, results.count { it.kind == SearchResultKind.CHANNEL })
+        assertEquals(1, results.count { it.kind == SearchResultKind.PROGRAMME })
+        assertEquals(1, results.count { it.kind == SearchResultKind.GAME })
+    }
+
+    @Test fun `duplicate channel names appear once`() {
+        val results = SearchIndex(
+            channels = listOf(ch("1", "US - FOX HD"), ch("2", "US - FOX HD"), ch("3", "FOX 26 Houston")),
+        ).search("fox")
+        assertEquals(1, results.count { it.title == "US - FOX HD" })
     }
 }
