@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -70,7 +72,7 @@ enum class TopLevel(val route: String, val label: String, @DrawableRes val icon:
  * - Elsewhere (onboarding, player, providers) the drawer has no items and takes no space,
  *   so the NavHost stays in the same composition slot and keeps its state.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun LiveWireNavShell(
     currentRoute: String?,
@@ -112,7 +114,12 @@ fun LiveWireNavShell(
                         if (!f.hasFocus) focusedItem = null
                         drawerState.setValue(if (f.hasFocus) DrawerValue.Open else DrawerValue.Closed)
                     }
-                    .selectableGroup(),
+                    .selectableGroup()
+                    // Entering the drawer by D-pad lands on the CURRENT section, not on whichever
+                    // item is geometrically level with the focused card (Left from Home's rail
+                    // otherwise lands on Search, and OK then switches section by surprise).
+                    .focusProperties { enter = { requesters.getValue(current ?: TopLevel.HOME) } }
+                    .focusGroup(),
                 horizontalAlignment = Alignment.Start,
             ) {
                 BrandMark(expanded = value == DrawerValue.Open)
