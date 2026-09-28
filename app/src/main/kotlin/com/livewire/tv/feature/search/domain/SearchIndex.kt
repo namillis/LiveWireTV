@@ -1,6 +1,7 @@
 package com.livewire.tv.feature.search.domain
 
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.providers.domain.ChannelNames
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.sports.data.SportsRepository
 import com.livewire.tv.feature.sports.domain.SportsGame
@@ -140,19 +141,12 @@ class SearchIndex(
 
         /**
          * True when [name] is a separator/header row rather than a playable channel.
-         * Providers pad their lists with dividers like "##### FOX #####",
-         * "===== SPORTS =====", "#####" or "____". Two signals catch these without
-         * touching real names ("US - FOX HD", "FOX 26 Houston", "US|NBC CHICAGO"):
-         *  - the name starts or ends with a run of 2+ marker chars ('#', '=', '*', '_'),
-         *    which frames a divider even when it wraps a label; or
-         *  - the name has no letter or digit at all.
+         * Kept as the search module's entry point but delegates to the shared
+         * [ChannelNames.isPlaceholder] so every screen agrees on what a placeholder is.
+         * Live channels are already filtered upstream in [ProviderRepository]; this
+         * guards the pure-ranking path and any caller passing unfiltered names.
          */
-        fun isSeparatorName(name: String): Boolean {
-            val trimmed = name.trim()
-            if (trimmed.isEmpty()) return true
-            if (trimmed.none { it.isLetterOrDigit() }) return true
-            return EDGE_MARKER_RUN.containsMatchIn(trimmed)
-        }
+        fun isSeparatorName(name: String): Boolean = ChannelNames.isPlaceholder(name)
 
         private fun indexOfSublist(list: List<String>, sub: List<String>): Int {
             if (sub.isEmpty() || sub.size > list.size) return -1
@@ -167,9 +161,6 @@ class SearchIndex(
             "news", "weather", "business", "deportes", "espanol", "kids", "life",
             "movies", "classic", "comedy", "reality", "soul", "sports", "sport", "now",
         )
-
-        /** A run of 2+ divider chars at the start or end of a name marks a separator row. */
-        private val EDGE_MARKER_RUN = Regex("^[#=*_]{2,}|[#=*_]{2,}$")
 
         /**
          * Provider names use separators like "US - NBC HD ◉" or "US|NBC", so anything
