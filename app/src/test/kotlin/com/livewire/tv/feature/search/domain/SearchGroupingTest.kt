@@ -38,6 +38,8 @@ class SearchGroupingTest {
     private val eightPm = 1_767_315_600_000L
     private val ninePm = 1_767_319_200_000L
     private val tenPm = 1_767_322_800_000L
+    // A reference "now" just before 8pm so the eightPm–ninePm programme counts as upcoming.
+    private val beforeEight = eightPm - 60_000L
 
     @Test fun `group splits by kind preserving order`() {
         val results = listOf(
@@ -46,7 +48,7 @@ class SearchGroupingTest {
             channelResult("2", "FOX NEWS", 0.8),
             programmeResult("Masked Singer", eightPm, ninePm, 0.7),
         )
-        val g = SearchGrouping.group(results)
+        val g = SearchGrouping.group(results, beforeEight)
         assertEquals(listOf("FOX", "FOX NEWS"), g.channels.map { it.title })
         assertEquals(listOf("Masked Singer"), g.programmes.map { it.title })
         assertEquals(listOf("DAL @ NYG"), g.games.map { it.title })
@@ -54,7 +56,7 @@ class SearchGroupingTest {
     }
 
     @Test fun `empty group reports empty and blank count line`() {
-        val g = SearchGrouping.group(emptyList())
+        val g = SearchGrouping.group(emptyList(), beforeEight)
         assertTrue(g.isEmpty())
         assertEquals("", SearchGrouping.countLine(g))
         assertTrue(g.nonEmptySections().isEmpty())
@@ -68,17 +70,18 @@ class SearchGroupingTest {
                 programmeResult("Show", eightPm, ninePm, 0.5),
                 gameResult("DAL", "NYG", 0.4),
             ),
+            beforeEight,
         )
         assertEquals("4 results · 2 channels · 1 on TV · 1 games", SearchGrouping.countLine(g))
     }
 
     @Test fun `count line omits sections with no results`() {
-        val g = SearchGrouping.group(listOf(channelResult("1", "FOX", 1.0)))
+        val g = SearchGrouping.group(listOf(channelResult("1", "FOX", 1.0)), beforeEight)
         assertEquals("1 result · 1 channels", SearchGrouping.countLine(g))
     }
 
     @Test fun `total is singular result but section counts are literal`() {
-        val g = SearchGrouping.group(listOf(gameResult("DAL", "NYG", 1.0)))
+        val g = SearchGrouping.group(listOf(gameResult("DAL", "NYG", 1.0)), beforeEight)
         assertEquals("1 result · 1 games", SearchGrouping.countLine(g))
     }
 
@@ -89,11 +92,39 @@ class SearchGroupingTest {
                 programmeResult("Show", eightPm, ninePm, 0.5),
                 channelResult("1", "FOX", 1.0),
             ),
+            beforeEight,
         )
         assertEquals(
             listOf(SearchSection.CHANNELS, SearchSection.ON_TV, SearchSection.SPORTS),
             g.nonEmptySections(),
         )
+    }
+
+    @Test fun `drops programmes that have already ended`() {
+        val g = SearchGrouping.group(
+            listOf(
+                programmeResult("Ended", eightPm, ninePm, 0.9),   // stops at 9pm
+                programmeResult("Upcoming", ninePm, tenPm, 0.5),  // starts at 9pm
+            ),
+            now = ninePm + 60_000L, // just after 9pm
+        )
+        assertEquals(listOf("Upcoming"), g.programmes.map { it.title })
+    }
+
+    @Test fun `orders programmes now-first then by start time`() {
+        val g = SearchGrouping.group(
+            listOf(
+                // ranked highest but starts latest and is not airing yet
+                programmeResult("Later", tenPm, tenPm + 3_600_000L, 0.9),
+                // airing right now (8–9pm), lower rank
+                programmeResult("Airing", eightPm, ninePm, 0.4),
+                // upcoming at 9pm, mid rank
+                programmeResult("Soon", ninePm, tenPm, 0.6),
+            ),
+            now = eightPm + 60_000L, // 8:01pm
+        )
+        // Airing-now first, then earliest upcoming start.
+        assertEquals(listOf("Airing", "Soon", "Later"), g.programmes.map { it.title })
     }
 
     @Test fun `airing programme pill is NOW`() {
