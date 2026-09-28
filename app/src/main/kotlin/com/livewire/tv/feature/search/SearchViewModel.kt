@@ -12,6 +12,7 @@ import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.search.domain.SearchIndex
 import com.livewire.tv.feature.search.domain.SearchResult
+import com.livewire.tv.feature.sports.data.ChannelMatch
 import com.livewire.tv.feature.sports.data.SportsRepository
 import com.livewire.tv.feature.sports.domain.SportsGame
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -122,10 +123,11 @@ class SearchViewModel @Inject constructor(
         channelForProgramme(programme)?.name ?: programme.channelId
 
     /**
-     * The single channel to play when a game row is selected: the best-ranked of the
-     * user's own live channels that appear to carry the game (same fusion the Sports
-     * picker uses), or null when none match. The screen falls back to opening Sports.
+     * The user's own live channels that appear to carry [game], best-ranked first (same
+     * fusion the Sports picker uses). Exposes the FULL ranked list — not just the top —
+     * so Search can open the shared channel picker with every candidate. Empty when none
+     * match, which the picker renders as its no-channel empty state.
      */
-    fun topChannelForGame(game: SportsGame): LiveChannel? =
-        SportsRepository.matchChannels(game, channels).firstOrNull()?.channel
+    fun channelsForGame(game: SportsGame): List<ChannelMatch> =
+        SportsRepository.matchChannels(game, channels)
 }
