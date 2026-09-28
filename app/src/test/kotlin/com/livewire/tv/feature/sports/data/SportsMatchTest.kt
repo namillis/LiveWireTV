@@ -93,4 +93,19 @@ class SportsMatchTest {
         // A leading word that is not a country code is kept.
         assertEquals(listOf("nbc", "sports", "boston"), SportsRepository.tokenize("NBC - Sports Boston"))
     }
+
+    @Test fun `returns the full ranked list, best-first (Search picker relies on all matches)`() {
+        // Search's SearchViewModel.channelsForGame exposes this whole list to the shared
+        // channel picker — not just the top one — so a game with several carrying channels
+        // must yield every match, best-ranked first.
+        val channels = listOf(
+            ch("a5", "US - FOX 5 NEW YORK HD"), // affiliate
+            ch("fx", "US - FOX HD"),            // exact — should rank first
+            ch("cnn", "US - CNN HD"),           // unrelated — excluded
+        )
+        val matches = SportsRepository.matchChannels(game(listOf("FOX")), channels)
+        assertEquals(2, matches.size)
+        assertEquals("fx", matches[0].channel.streamId) // exact network ranks above the affiliate
+        assertEquals("a5", matches[1].channel.streamId)
+    }
 }

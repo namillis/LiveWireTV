@@ -95,7 +95,6 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
             SearchScreen(
                 onPlayChannel = { target, title -> navController.navigate(Routes.player(target, title)) },
                 onOpenGuide = { navController.navigateToSection(TopLevel.GUIDE) },
-                onOpenSports = { navController.navigateToSection(TopLevel.SPORTS) },
             )
         }
         composable(Routes.PROVIDERS) { ProvidersScreen() }
