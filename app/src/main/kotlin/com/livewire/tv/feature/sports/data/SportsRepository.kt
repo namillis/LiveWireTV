@@ -71,7 +71,10 @@ class SportsRepository @Inject constructor(
             val at = indexOfSublist(chan, net)
             if (at < 0) {
                 // Fallback: squashed containment either way ("espn2" vs ["espn","2"]).
+                // Both sides need 3+ characters: a one-letter name like "E!" would
+                // otherwise match any network containing that letter ("Prime Video").
                 val n = net.joinToString(""); val c = chan.joinToString("")
+                if (n.length < MIN_SQUASHED || c.length < MIN_SQUASHED) return null
                 return if (c.contains(n) || n.contains(c)) 10 else null
             }
             val extra = chan.filterIndexed { i, _ -> i < at || i >= at + net.size }
@@ -92,6 +95,8 @@ class SportsRepository @Inject constructor(
             }
             return -1
         }
+
+        private const val MIN_SQUASHED = 3
 
         private val qualityTags = setOf("hd", "fhd", "uhd", "4k", "sd", "hevc", "h265", "raw")
 

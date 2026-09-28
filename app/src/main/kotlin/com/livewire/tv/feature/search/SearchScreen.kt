@@ -59,7 +59,9 @@ import com.livewire.tv.feature.search.domain.GroupedSearch
 import com.livewire.tv.feature.search.domain.SearchGrouping
 import com.livewire.tv.feature.search.domain.SearchResult
 import com.livewire.tv.feature.search.domain.SearchSection
+import com.livewire.tv.feature.sports.ChannelPicker
 import com.livewire.tv.feature.sports.SportsFormat
+import com.livewire.tv.feature.sports.domain.SportsGame
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
@@ -73,10 +75,10 @@ import com.livewire.tv.ui.theme.dpadVerticalExit
  * when non-empty: CHANNELS as a horizontal [ChannelCard] rail, ON TV as full-width guide
  * programme rows (now or later only, now-first), and SPORTS as full-width game rows.
  *
- * Playback (§ seed): a channel or programme plays its channel; a game plays the best-ranked
- * of the user's channels that carry it (same fusion the Sports picker uses), falling back to
- * opening Sports when none match — the Sports picker dialog is not reused here (it is private
- * to SportsScreen), so the top-match shortcut is used instead.
+ * Playback (§ seed): a channel or programme plays its channel; selecting a game opens the
+ * shared [ChannelPicker] (the same dialog the Sports screen uses) over the full ranked list of
+ * the user's channels that carry it — OK in the picker plays, Back closes only the picker and
+ * returns focus to the game row. The picker's own empty state covers the no-match case.
  *
  * Colour discipline (§3.3): amber only on the focused element (via [LiveWireSurface]) and the
  * focused query field's ring; red only on a NOW programme pill and a live game's status. Rails
@@ -87,7 +89,6 @@ import com.livewire.tv.ui.theme.dpadVerticalExit
 fun SearchScreen(
     onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
     onOpenGuide: () -> Unit,
-    onOpenSports: () -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -100,11 +101,23 @@ fun SearchScreen(
     val resultsFocus = remember { FocusRequester() }
     var hasResultsFocusable by remember { mutableStateOf(false) }
 
+    // Channel picker (shared with Sports): opening a game shows it; Back closes only the
+    // picker and returns focus to the SAME game row that opened it (not the field or top).
+    var pickerGame by remember { mutableStateOf<SportsGame?>(null) }
+    var pickerReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
+
     LaunchedEffect(Unit) { viewModel.init() }
     LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
     fun playChannel(channel: LiveChannel) {
         viewModel.playbackTarget(channel)?.let { onPlayChannel(it, channel.name) }
+    }
+
+    fun dismissPicker() {
+        val returnTo = pickerReturnFocus
+        pickerGame = null
+        pickerReturnFocus = null
+        returnTo?.let { runCatching { it.requestFocus() } }
     }
 
     Surface(
@@ -169,9 +182,27 @@ fun SearchScreen(
                     viewModel = viewModel,
                     firstResultFocus = resultsFocus,
                     onPlayChannel = ::playChannel,
-                    onOpenSports = onOpenSports,
+                    onOpenPicker = { game, rowFocus ->
+                        pickerReturnFocus = rowFocus
+                        pickerGame = game
+                    },
                 )
             }
+        }
+
+        // The shared channel picker (same dialog as Sports). OK plays the chosen channel;
+        // Back closes only the picker and returns focus to the game row that opened it.
+        pickerGame?.let { game ->
+            ChannelPicker(
+                game = game,
+                matches = viewModel.channelsForGame(game),
+                onPick = { m ->
+                    pickerGame = null
+                    pickerReturnFocus = null
+                    playChannel(m.channel)
+                },
+                onDismiss = ::dismissPicker,
+            )
         }
     }
 }
@@ -253,10 +284,13 @@ private fun Results(
     viewModel: SearchViewModel,
     firstResultFocus: FocusRequester,
     onPlayChannel: (LiveChannel) -> Unit,
-    onOpenSports: () -> Unit,
+    onOpenPicker: (game: SportsGame, rowFocus: FocusRequester) -> Unit,
 ) {
     val now = System.currentTimeMillis()
     val firstSection = grouped.nonEmptySections().firstOrNull()
+    // One FocusRequester per game row, so closing the picker (Back) can return focus to the
+    // exact row that opened it. Rebuilt only when the games list changes.
+    val gameRowFocus = remember(grouped.games) { grouped.games.map { FocusRequester() } }
 
     LazyColumn(
         // Section-to-section spacing (§ railSpacing). Rows inside a section pack tighter (§5).
@@ -317,15 +351,16 @@ private fun Results(
                     SectionHeader("Sports", "· ${grouped.games.size} games")
                     grouped.games.forEachIndexed { index, r ->
                         val game = r.game ?: return@forEachIndexed
+                        val rowFocus = gameRowFocus[index]
                         GameRow(
                             result = r,
-                            focusRequester = firstResultFocus.takeIf {
+                            rowFocus = rowFocus,
+                            initialFocus = firstResultFocus.takeIf {
                                 index == 0 && firstSection == SearchSection.SPORTS
                             },
-                            onClick = {
-                                val channel = viewModel.topChannelForGame(game)
-                                if (channel != null) onPlayChannel(channel) else onOpenSports()
-                            },
+                            // OK opens the shared channel picker with the full ranked list;
+                            // the picker's OK plays and its empty state covers no-match.
+                            onClick = { onOpenPicker(game, rowFocus) },
                         )
                     }
                 }
@@ -456,13 +491,17 @@ private fun ProgrammeRow(
 /**
  * A full-width game row (SPORTS): league code, the "Away @ Home on NETWORK" match, the
  * score (or an em dash) and the live status (red while in progress) or start time. Selecting
- * it plays the best-matched channel (else opens Sports). Wide focus scale; tight padding (§5).
+ * it opens the shared channel picker for the game. Wide focus scale; tight padding (§5).
+ *
+ * [rowFocus] is this row's own requester, so closing the picker returns focus here; when this
+ * is the first result on screen it ALSO carries [initialFocus] for the field→results hop.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun GameRow(
     result: SearchResult,
-    focusRequester: FocusRequester?,
+    rowFocus: FocusRequester,
+    initialFocus: FocusRequester?,
     onClick: () -> Unit,
 ) {
     val game = result.game ?: return
@@ -474,7 +513,8 @@ private fun GameRow(
         shape = RoundedCornerShape(LiveWireDimens.RadiusCard),
         focusedScale = LiveWireDimens.FocusScaleWide,
         modifier = Modifier.fillMaxWidth()
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+            .focusRequester(rowFocus)
+            .then(if (initialFocus != null) Modifier.focusRequester(initialFocus) else Modifier),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),

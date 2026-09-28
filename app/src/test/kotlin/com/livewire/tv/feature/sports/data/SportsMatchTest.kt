@@ -21,6 +21,16 @@ class SportsMatchTest {
 
     private fun ch(id: String, name: String) = LiveChannel(streamId = id, name = name, categoryId = "c1")
 
+    @Test fun `a one-letter channel name does not match a longer network`() {
+        // Real provider data: "MX - E! FHD" tokenizes to ["e"], which the squashed
+        // fallback used to find inside "primevideo".
+        val m = SportsRepository.matchChannels(
+            game(listOf("Prime Video")),
+            listOf(ch("1", "MX - E! FHD"), ch("2", "US - PRIME VIDEO HD")),
+        )
+        assertEquals(listOf("2"), m.map { it.channel.streamId })
+    }
+
     @Test fun `matches a network to a channel with HD suffix`() {
         val m = SportsRepository.matchChannels(game(listOf("ESPN")), listOf(ch("1", "ESPN HD"), ch("2", "CNN")))
         assertEquals(1, m.size)
@@ -92,5 +102,20 @@ class SportsMatchTest {
         assertEquals(listOf("fox", "news", "channel"), SportsRepository.tokenize("US - FOX NEWS CHANNEL [BK] HD"))
         // A leading word that is not a country code is kept.
         assertEquals(listOf("nbc", "sports", "boston"), SportsRepository.tokenize("NBC - Sports Boston"))
+    }
+
+    @Test fun `returns the full ranked list, best-first (Search picker relies on all matches)`() {
+        // Search's SearchViewModel.channelsForGame exposes this whole list to the shared
+        // channel picker — not just the top one — so a game with several carrying channels
+        // must yield every match, best-ranked first.
+        val channels = listOf(
+            ch("a5", "US - FOX 5 NEW YORK HD"), // affiliate
+            ch("fx", "US - FOX HD"),            // exact — should rank first
+            ch("cnn", "US - CNN HD"),           // unrelated — excluded
+        )
+        val matches = SportsRepository.matchChannels(game(listOf("FOX")), channels)
+        assertEquals(2, matches.size)
+        assertEquals("fx", matches[0].channel.streamId) // exact network ranks above the affiliate
+        assertEquals("a5", matches[1].channel.streamId)
     }
 }
