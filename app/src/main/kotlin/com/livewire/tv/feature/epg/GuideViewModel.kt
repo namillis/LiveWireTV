@@ -54,8 +54,8 @@ class GuideViewModel @Inject constructor(
             val appSettings = settings.settings.first()
             val spanMs = TimeUnit.HOURS.toMillis(appSettings.guideWindowHours.toLong())
             val now = System.currentTimeMillis()
-            val halfHour = TimeUnit.MINUTES.toMillis(30)
-            val windowStart = (now / halfHour) * halfHour - halfHour
+            // Rows start near now (a 30-min lead-in), not an hour before (design system §9.4).
+            val windowStart = guideWindowStart(now)
             val window = EpgWindow(windowStart, windowStart + spanMs)
             _state.update { it.copy(windowSpanMs = spanMs) }
 
