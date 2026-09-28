@@ -21,6 +21,16 @@ class SportsMatchTest {
 
     private fun ch(id: String, name: String) = LiveChannel(streamId = id, name = name, categoryId = "c1")
 
+    @Test fun `a one-letter channel name does not match a longer network`() {
+        // Real provider data: "MX - E! FHD" tokenizes to ["e"], which the squashed
+        // fallback used to find inside "primevideo".
+        val m = SportsRepository.matchChannels(
+            game(listOf("Prime Video")),
+            listOf(ch("1", "MX - E! FHD"), ch("2", "US - PRIME VIDEO HD")),
+        )
+        assertEquals(listOf("2"), m.map { it.channel.streamId })
+    }
+
     @Test fun `matches a network to a channel with HD suffix`() {
         val m = SportsRepository.matchChannels(game(listOf("ESPN")), listOf(ch("1", "ESPN HD"), ch("2", "CNN")))
         assertEquals(1, m.size)
