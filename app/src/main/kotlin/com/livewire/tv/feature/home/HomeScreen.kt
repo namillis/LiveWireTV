@@ -2,6 +2,7 @@ package com.livewire.tv.feature.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,15 +20,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.delay
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
@@ -38,12 +40,15 @@ import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireTheme
 
 /** Left inset for rails. The collapsed drawer rail already sits to the left of this. */
-private val RailInset = 24.dp
+private val RailInset = LiveWireDimens.SafeHorizontal
+
+/** The focus settle delay before the hero band recomposes, so fast D-pad scrolling stays smooth (section 9.1). */
+private const val HERO_SETTLE_MS = 150L
 
 /**
- * Home — the user's live channels as focusable D-pad rails (Phase 3). Categories become
- * rows (TvLazyRow of ChannelCards); selecting a channel opens the player. Section
- * navigation lives in the left drawer (LiveWireNavShell), not on this screen.
+ * Home — a hero band driven by the focused channel, with the user's live channels as
+ * focusable D-pad rails below it (design system sections 4, 9.1, 9.3). Selecting a channel
+ * opens the player. Section navigation lives in the left drawer (LiveWireNavShell).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -69,6 +74,28 @@ fun HomeScreen(
     val hasChannels = state.rails.any { it.channels.isNotEmpty() }
     val firstRailIndexForFocus = state.rails.indexOfFirst { it.channels.isNotEmpty() }
     val targetKey = lastFocusedKey ?: "$firstRailIndexForFocus:0"
+
+    // The hero band follows focus, but only after a 150ms settle so holding a D-pad
+    // direction doesn't recompose the band on every step (section 9.1). We track the
+    // raw focused key immediately and debounce it into the value the band renders.
+    var focusedKey by remember { mutableStateOf<String?>(null) }
+    var heroKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { focusedKey }
+            .distinctUntilChanged()
+            .debounce(HERO_SETTLE_MS)
+            .collect { heroKey = it }
+    }
+    // guideLoaded flips once the EPG arrives; recompute the hero content when it does.
+    val heroContent = remember(heroKey, state.rails, state.guideLoaded) {
+        heroKey?.let { key ->
+            val (r, c) = key.split(":").let { it[0].toInt() to it[1].toInt() }
+            state.rails.getOrNull(r)?.channels?.getOrNull(c)?.let { channel ->
+                HeroContent(channel, viewModel.nowPlaying(channel), viewModel.upNext(channel))
+            }
+        }
+    }
+
     LaunchedEffect(hasChannels) {
         if (hasChannels) {
             // Coming back from the player, the player's focused node is removed in the same
@@ -99,41 +126,62 @@ fun HomeScreen(
             state.rails.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text("No channels found for this provider.")
             }
-            else -> LazyColumn(
-                modifier = Modifier.onFocusChanged { cardHasFocus = it.hasFocus },
-                contentPadding = PaddingValues(vertical = LiveWireDimens.SafeVertical),
-            ) {
-                itemsIndexed(state.rails) { railIndex, rail ->
-                    Text(
-                        rail.title.uppercase(),
-                        style = LiveWireTheme.tokens.overline,
-                        color = LiveWireColors.OnSurfaceMuted,
-                        modifier = Modifier.padding(start = RailInset, top = LiveWireDimens.RailSpacing, bottom = 2.dp),
+            else -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = RailInset,
+                        end = LiveWireDimens.SafeHorizontal,
+                        top = LiveWireDimens.SafeVertical,
+                        bottom = LiveWireDimens.SafeVertical,
                     )
-                    // Vertical padding leaves room for the focused card's scale and ring (section 9.3).
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = RailInset, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.RailGap),
-                    ) {
-                        itemsIndexed(rail.channels) { index, channel ->
-                            ChannelCard(
-                                channel = channel,
-                                nowPlaying = viewModel.nowPlaying(channel),
-                                onClick = {
-                                    viewModel.playbackTarget(channel)?.let { target ->
-                                        onPlayChannel(target, channel.name)
-                                    }
-                                },
-                                modifier = Modifier
-                                    .onFocusChanged { if (it.isFocused) lastFocusedKey = "$railIndex:$index" }
-                                    .then(
-                                        if ("$railIndex:$index" == targetKey) {
-                                            Modifier.focusRequester(cardFocus)
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
-                            )
+                    .onFocusChanged { cardHasFocus = it.hasFocus },
+            ) {
+                // The hero band leads the screen and does not scroll away with the rails.
+                HeroBand(content = heroContent, now = System.currentTimeMillis())
+
+                LazyColumn(contentPadding = PaddingValues(top = LiveWireDimens.RailSpacing)) {
+                    itemsIndexed(state.rails) { railIndex, rail ->
+                        Text(
+                            rail.title.uppercase(),
+                            style = LiveWireTheme.tokens.overline,
+                            color = LiveWireColors.OnSurfaceMuted,
+                            modifier = Modifier.padding(top = LiveWireDimens.RailSpacing, bottom = 2.dp),
+                        )
+                        // Vertical padding leaves room for the focused card's scale and ring (section 9.3).
+                        // A small horizontal contentPadding keeps the first/last card off the hard
+                        // column edge so focus scale+ring aren't clipped and the rail scrolls softly
+                        // (base 9f20eca had this inset on the row; my earlier rewrite dropped it).
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = LiveWireDimens.SpaceS, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.RailGap),
+                        ) {
+                            itemsIndexed(rail.channels) { index, channel ->
+                                val key = "$railIndex:$index"
+                                ChannelCard(
+                                    channel = channel,
+                                    nowPlaying = viewModel.nowPlaying(channel),
+                                    onClick = {
+                                        viewModel.playbackTarget(channel)?.let { target ->
+                                            onPlayChannel(target, channel.name)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .onFocusChanged {
+                                            if (it.isFocused) {
+                                                lastFocusedKey = key
+                                                focusedKey = key
+                                            }
+                                        }
+                                        .then(
+                                            if (key == targetKey) {
+                                                Modifier.focusRequester(cardFocus)
+                                            } else {
+                                                Modifier
+                                            },
+                                        ),
+                                )
+                            }
                         }
                     }
                 }

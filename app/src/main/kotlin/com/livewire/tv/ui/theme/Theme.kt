@@ -43,6 +43,32 @@ object LiveWireColors {
     val Scrim = Color.Black.copy(alpha = 0.55f)
 }
 
+/**
+ * Static channel-brand tint colours (section 3.2). Used only as the hero-band / player
+ * backdrop wash — never as focus (amber) or live (red). The name-matching logic that picks
+ * one of these lives in feature/home/HeroModels.kt; the colour VALUES live here so no hex
+ * sits outside this file. [Neutral] is the fallback for channels not in the map.
+ */
+object LiveWireBrandColors {
+    val Neutral = Color(0xFF2A2F3A)
+    val Cnn = Color(0xFFE01A1A)
+    val FoxNews = Color(0xFF0A3D91)
+    val Fox = Color(0xFF0A3D91)
+    val Espn = Color(0xFFD50A0A)
+    val Bbc = Color(0xFFB4000A)
+    val Nbc = Color(0xFF6C5CE7)
+    val Cbs = Color(0xFF0A84D1)
+    val Abc = Color(0xFF111111)
+    val Sky = Color(0xFF0072C9)
+    val Hbo = Color(0xFF3A1A6B)
+    val Tnt = Color(0xFFE0102A)
+    val Discovery = Color(0xFF0A6CC9)
+    val NatGeo = Color(0xFFF5C518)
+    val Amc = Color(0xFFD30000)
+    val Usa = Color(0xFF0A4DA1)
+    val Weather = Color(0xFF0A84D1)
+}
+
 /** Spacing and shape tokens (section 5). */
 object LiveWireDimens {
     val SpaceXs = 4.dp
