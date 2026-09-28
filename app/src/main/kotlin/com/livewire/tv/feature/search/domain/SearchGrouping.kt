@@ -13,8 +13,9 @@ import java.util.TimeZone
  *
  * A flat, already-ranked [SearchResult] list from [SearchIndex] is split into the three
  * fixed sections the mockup shows, in order: CHANNELS (a card rail), ON TV (guide
- * programme rows) and SPORTS (game rows). Within each section the [SearchIndex] ranking
- * order is preserved. Empty sections are dropped by the caller via [isEmpty].
+ * programme rows) and SPORTS (game rows). Within CHANNELS and SPORTS the [SearchIndex]
+ * ranking order is preserved; ON TV drops programmes that have already ended and is
+ * ordered now-first, then by start time.
  */
 
 /** The three result sections, in the order the mockup lays them out. */
@@ -44,10 +45,22 @@ data class GroupedSearch(
 
 object SearchGrouping {
 
-    /** Split a ranked result list into the three fixed sections, preserving order within each. */
-    fun group(results: List<SearchResult>): GroupedSearch = GroupedSearch(
+    /**
+     * Split a ranked result list into the three fixed sections. Channels and games keep
+     * their ranked order; ON TV programmes are filtered to those airing now or starting
+     * later (a programme that already ended is dropped) and ordered now-first, then by
+     * start time. [now] is epoch millis so the filter/sort are deterministic in tests.
+     */
+    fun group(results: List<SearchResult>, now: Long = System.currentTimeMillis()): GroupedSearch = GroupedSearch(
         channels = results.filter { it.kind == SearchResultKind.CHANNEL },
-        programmes = results.filter { it.kind == SearchResultKind.PROGRAMME },
+        programmes = results
+            .filter { it.kind == SearchResultKind.PROGRAMME && it.programme != null && it.programme.stopMs > now }
+            .sortedWith(
+                // Airing-now first, then earliest upcoming start; a ranked stable sort keeps
+                // relevance order within a tie.
+                compareByDescending<SearchResult> { it.programme!!.airsAt(now) }
+                    .thenBy { it.programme!!.startMs },
+            ),
         games = results.filter { it.kind == SearchResultKind.GAME },
     )
 
