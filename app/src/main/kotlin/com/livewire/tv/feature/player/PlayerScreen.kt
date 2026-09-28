@@ -4,6 +4,7 @@ import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -82,6 +83,8 @@ fun PlayerScreen(
         controlsVisible = false
     }
 
+    BackHandler { onExit() }
+
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -100,11 +103,8 @@ fun PlayerScreen(
                             engine.togglePlayPause()
                             true
                         }
-                        KeyEvent.KEYCODE_BACK,
-                        KeyEvent.KEYCODE_ESCAPE -> {
-                            onExit()
-                            true
-                        }
+                        // Back is handled by the BackHandler above, not here: exiting on
+                        // key-down let the matching key-up reach the next screen's Back handler.
                         else -> false
                     }
                 },
