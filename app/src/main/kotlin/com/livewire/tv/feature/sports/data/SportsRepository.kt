@@ -40,6 +40,9 @@ class SportsRepository @Inject constructor(
          *    still matches but sinks to the bottom, since it does not carry the game;
          *  - a squashed-name containment ("ESPN2" vs "ESPN 2") is the last resort.
          * Deduped by channel, keeping its best score. Ties keep provider order.
+         * Channels with the same name (providers often list a backup stream under an
+         * identical name) appear once, as the best-ranked of them, since the picker
+         * would otherwise show two rows the user cannot tell apart.
          */
         fun matchChannels(game: SportsGame, channels: List<LiveChannel>): List<ChannelMatch> {
             data class Scored(val match: ChannelMatch, val score: Int, val order: Int)
@@ -60,6 +63,7 @@ class SportsRepository @Inject constructor(
             return best.values
                 .sortedWith(compareByDescending<Scored> { it.score }.thenBy { it.order })
                 .map { it.match }
+                .distinctBy { it.channel.name.trim().lowercase() }
         }
 
         /** Score of [chan] for network [net], or null if it does not match at all. */

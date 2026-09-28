@@ -50,6 +50,15 @@ class SportsMatchTest {
         assertTrue(SportsRepository.matchChannels(game(emptyList()), listOf(ch("1", "ESPN"))).isEmpty())
     }
 
+    @Test fun `channels listed twice under the same name appear once, keeping the first`() {
+        // This provider lists "US - FOX HD" twice (a backup stream under the same name).
+        val m = SportsRepository.matchChannels(
+            game(listOf("FOX")),
+            listOf(ch("1", "US - FOX HD"), ch("2", "US - FOX HD "), ch("3", "US - FOX 26 HOUSTON HD")),
+        )
+        assertEquals(listOf("1", "3"), m.map { it.channel.streamId })
+    }
+
     @Test fun `exact network and affiliates rank above same-brand spin-offs`() {
         // Real channel names seen from an Xtream provider, in provider order.
         val channels = listOf(
