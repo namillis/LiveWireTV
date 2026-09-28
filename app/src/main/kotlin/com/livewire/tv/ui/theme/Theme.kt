@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -18,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Typography
 import androidx.tv.material3.darkColorScheme
+import com.livewire.tv.R
 
 /**
  * Colour tokens from the LiveWire design system (design/LIVEWIRE_DESIGN_SYSTEM.md, section 3; kept outside the repo).
@@ -148,24 +150,40 @@ private val scheme = darkColorScheme(
     onError = LiveWireColors.Canvas,
 )
 
-// Section 4. Bundled Inter / Space Grotesk / JetBrains Mono land in a follow-up;
-// until then the system sans and monospace families stand in at the same sizes.
-private val Display = FontFamily.SansSerif
-private val Text = FontFamily.SansSerif
-private val Mono = FontFamily.Monospace
+// Section 4. Bundled families, subset to Latin in res/font/ (no downloadable fonts:
+// AOSP TV images have no Play Services). Display = Space Grotesk (hero titles, big
+// numbers), Text = Inter (everything else), Mono = JetBrains Mono (times, channel
+// numbers, "N min left", section labels, tags — always tabular figures).
+private val Display = FontFamily(
+    Font(R.font.space_grotesk_semibold, FontWeight.SemiBold),
+    Font(R.font.space_grotesk_bold, FontWeight.Bold),
+)
+private val Text = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_bold, FontWeight.Bold),
+)
+private val Mono = FontFamily(
+    Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
+    Font(R.font.jetbrains_mono_semibold, FontWeight.SemiBold),
+    // tag (labelSmall) asks for weight 700; JetBrains Mono ships 500/600, so the
+    // heaviest bundled weight (600) stands in for Bold.
+    Font(R.font.jetbrains_mono_semibold, FontWeight.Bold),
+)
 
 private val typography = Typography(
     displaySmall = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 33.sp),
     headlineSmall = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 26.sp),
     titleMedium = TextStyle(fontFamily = Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp),
     bodyMedium = TextStyle(fontFamily = Text, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 17.sp),
-    labelMedium = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 13.sp),
-    labelSmall = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 9.sp, lineHeight = 9.sp, letterSpacing = 0.12.em),
+    labelMedium = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 13.sp, fontFeatureSettings = "tnum"),
+    labelSmall = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 9.sp, lineHeight = 9.sp, letterSpacing = 0.12.em, fontFeatureSettings = "tnum"),
 )
 
 private val overline = TextStyle(
     fontFamily = Mono, fontWeight = FontWeight.SemiBold, fontSize = 10.sp,
-    lineHeight = 12.sp, letterSpacing = 0.12.em,
+    lineHeight = 12.sp, letterSpacing = 0.12.em, fontFeatureSettings = "tnum",
 )
 
 private fun detectTier(context: Context): PerformanceTier {

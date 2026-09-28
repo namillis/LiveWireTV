@@ -82,3 +82,16 @@ Compose + `androidx.tv` · Media3/ExoPlayer (+HLS) · Hilt · Room · DataStore 
 EncryptedSharedPreferences · Coil · Retrofit + kotlinx-serialization + OkHttp ·
 Navigation-Compose · Coroutines. Versions are centralized in
 `gradle/libs.versions.toml`.
+
+## Fonts
+
+The UI bundles three [SIL Open Font License](https://scripts.sil.org/OFL)
+families, subset to Latin and shipped in `app/src/main/res/font/` (no
+downloadable fonts — AOSP TV images have no Play Services):
+
+- **Inter** v4.1 (text) — [rsms/inter](https://github.com/rsms/inter)
+- **Space Grotesk** (display) — [floriankarsten/space-grotesk](https://github.com/floriankarsten/space-grotesk) via [google/fonts](https://github.com/google/fonts/tree/main/ofl/spacegrotesk)
+- **JetBrains Mono** v2.304 (mono, tabular figures) — [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono)
+
+License texts, exact source URLs/versions, and the subsetting recipe are in
+[`third_party/fonts/`](third_party/fonts/).
