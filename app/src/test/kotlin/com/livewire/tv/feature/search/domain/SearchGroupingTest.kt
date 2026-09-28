@@ -100,6 +100,18 @@ class SearchGroupingTest {
         )
     }
 
+    @Test fun `the same airing listed twice shows once`() {
+        val g = SearchGrouping.group(
+            listOf(
+                programmeResult("NFL Football", eightPm, ninePm, 0.9),
+                programmeResult("NFL Football", eightPm, ninePm, 0.9),
+                programmeResult("NFL Football", ninePm, tenPm, 0.9),
+            ),
+            now = eightPm,
+        )
+        assertEquals(2, g.programmes.size)
+    }
+
     @Test fun `drops programmes that have already ended`() {
         val g = SearchGrouping.group(
             listOf(
@@ -148,5 +160,25 @@ class SearchGroupingTest {
         // 11:30 AM EST = 1767285000000, 12:30 PM = 1767288600000
         val p = EpgProgramme(channelId = "x", startMs = 1_767_285_000_000L, stopMs = 1_767_288_600_000L, title = "T")
         assertEquals("11:30 AM – 12:30 PM", SearchGrouping.programmeTimeRange(p, ny))
+    }
+
+    private fun scheduled(startMs: Long, detail: String? = null) = SportsGame(
+        id = "g", leagueId = "nfl", startTimeMs = startMs, status = GameStatus(GameState.PRE, detail = detail),
+        home = TeamSide("1", "Chicago Bears", "CHI", isHome = true), away = TeamSide("2", "Philadelphia Eagles", "PHI"),
+    )
+
+    @Test fun `scheduled game today reads Starts and the time`() {
+        val g = scheduled(eightPm, detail = "Thu, January 1st at 8:00 PM EST")
+        assertEquals("Starts 8:00 PM", SearchGrouping.gameStatus(g, now = beforeEight, zone = ny))
+    }
+
+    @Test fun `scheduled game on another day adds the weekday`() {
+        val g = scheduled(eightPm + 24 * 3_600_000L)
+        assertEquals("Starts Fri 8:00 PM", SearchGrouping.gameStatus(g, now = beforeEight, zone = ny))
+    }
+
+    @Test fun `final game keeps the scoreboard status`() {
+        val g = scheduled(eightPm).copy(status = GameStatus(GameState.FINAL))
+        assertEquals("Final", SearchGrouping.gameStatus(g, now = tenPm, zone = ny))
     }
 }

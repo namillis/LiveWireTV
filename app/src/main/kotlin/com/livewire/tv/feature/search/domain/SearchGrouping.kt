@@ -1,6 +1,9 @@
 package com.livewire.tv.feature.search.domain
 
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.sports.SportsFormat
+import com.livewire.tv.feature.sports.domain.GameState
+import com.livewire.tv.feature.sports.domain.SportsGame
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,6 +58,9 @@ object SearchGrouping {
         channels = results.filter { it.kind == SearchResultKind.CHANNEL },
         programmes = results
             .filter { it.kind == SearchResultKind.PROGRAMME && it.programme != null && it.programme.stopMs > now }
+            // Providers list some channels several times with the same guide data, which
+            // would show the same airing as identical rows. Keep the first (best-ranked).
+            .distinctBy { Triple(it.programme!!.channelId, it.programme.startMs, it.programme.title) }
             .sortedWith(
                 // Airing-now first, then earliest upcoming start; a ranked stable sort keeps
                 // relevance order within a tie.
@@ -104,6 +110,20 @@ object SearchGrouping {
         else formatTime(programme.startMs, zone)
         val end = formatTime(programme.stopMs, zone)
         return "$start – $end"
+    }
+
+    /**
+     * The right-hand status on a game row. A scheduled game reads "Starts 8:15 PM" (or
+     * "Starts Tue 8:15 PM" on another day) instead of the provider's long date sentence;
+     * live and final games keep the scoreboard's own status text.
+     */
+    fun gameStatus(game: SportsGame, now: Long, zone: TimeZone = TimeZone.getDefault()): String {
+        if (game.status.state != GameState.PRE || game.startTimeMs <= 0L) return SportsFormat.statusLine(game)
+        val day = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = zone }
+        val sameDay = day.format(Date(game.startTimeMs)) == day.format(Date(now))
+        val time = formatTime(game.startTimeMs, zone)
+        return if (sameDay) "Starts $time"
+        else "Starts " + SimpleDateFormat("EEE", Locale.US).apply { timeZone = zone }.format(Date(game.startTimeMs)) + " $time"
     }
 
     private fun formatTime(ms: Long, zone: TimeZone): String =
