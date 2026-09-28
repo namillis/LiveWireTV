@@ -43,10 +43,17 @@ class SearchViewModel @Inject constructor(
     private var provider: ProviderConfig? = null
     private var index = SearchIndex()
 
+    // Kept for result → playback / label resolution the screen asks for after ranking.
+    private var channels: List<LiveChannel> = emptyList()
+    // A channel's EPG id → its programmes, so "what's on now" is an O(1) lookup per card/row.
+    private var programmesByEpgId: Map<String, List<EpgProgramme>> = emptyMap()
+    // A programme's channelId → the live channel that carries it, for programme playback.
+    private var channelByEpgId: Map<String, LiveChannel> = emptyMap()
+
     fun init() {
         _state.update { it.copy(loading = true) }
         viewModelScope.launch {
-            val channels = mutableListOf<LiveChannel>()
+            val loadedChannels = mutableListOf<LiveChannel>()
             val programmes = mutableListOf<EpgProgramme>()
             val games = mutableListOf<SportsGame>()
 
@@ -56,7 +63,7 @@ class SearchViewModel @Inject constructor(
                     // One unfiltered request returns every live channel (about 8.6k / 2.5 MB on
                     // a large panel). Searching only a few categories silently misses most
                     // channels.
-                    channels.addAll(client.liveChannels(configuredProvider))
+                    loadedChannels.addAll(client.liveChannels(configuredProvider))
                 }
                 runCatching {
                     val now = System.currentTimeMillis()
@@ -65,7 +72,7 @@ class SearchViewModel @Inject constructor(
                         endMs = now + TimeUnit.HOURS.toMillis(6),
                     )
                     // Only programmes on channels the user can actually open are useful results.
-                    val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
+                    val ids = loadedChannels.mapNotNullTo(HashSet()) { it.epgChannelId }
                     val guide = epg.fetch(configuredProvider, window, ids)
                     guide.channels.forEach { channel ->
                         programmes.addAll(guide.programmesFor(channel.id))
@@ -78,7 +85,14 @@ class SearchViewModel @Inject constructor(
                 }
             }
 
-            index = SearchIndex(channels = channels, programmes = programmes, games = games)
+            channels = loadedChannels
+            // First channel wins a duplicate EPG id, matching the ranked order the index uses.
+            channelByEpgId = loadedChannels
+                .filter { !it.epgChannelId.isNullOrBlank() }
+                .associateByTo(HashMap()) { it.epgChannelId!! }
+            programmesByEpgId = programmes.groupBy { it.channelId }
+
+            index = SearchIndex(channels = loadedChannels, programmes = programmes, games = games)
             // Re-run whatever was typed while the index was still loading.
             _state.update { it.copy(loading = false, results = index.search(it.query)) }
         }
@@ -90,4 +104,28 @@ class SearchViewModel @Inject constructor(
 
     fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
         provider?.let { PlaybackTarget(providerId = it.id, streamId = channel.streamId) }
+
+    /** What's on now on [channel] (for the CHANNELS rail card's "N min left"), or null. */
+    fun nowPlaying(channel: LiveChannel, now: Long = System.currentTimeMillis()): EpgProgramme? {
+        val id = channel.epgChannelId ?: return null
+        return programmesByEpgId[id]?.firstOrNull { it.airsAt(now) }
+    }
+
+    /** The live channel a guide programme airs on, resolved by EPG id, or null. */
+    fun channelForProgramme(programme: EpgProgramme): LiveChannel? = channelByEpgId[programme.channelId]
+
+    /**
+     * The channel name to show at the right of a programme row. Falls back to the EPG
+     * channel id when the programme's channel is not in the current channel list.
+     */
+    fun channelNameForProgramme(programme: EpgProgramme): String =
+        channelForProgramme(programme)?.name ?: programme.channelId
+
+    /**
+     * The single channel to play when a game row is selected: the best-ranked of the
+     * user's own live channels that appear to carry the game (same fusion the Sports
+     * picker uses), or null when none match. The screen falls back to opening Sports.
+     */
+    fun topChannelForGame(game: SportsGame): LiveChannel? =
+        SportsRepository.matchChannels(game, channels).firstOrNull()?.channel
 }
