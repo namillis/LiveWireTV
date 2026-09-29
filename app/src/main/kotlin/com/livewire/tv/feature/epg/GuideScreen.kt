@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +29,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -124,6 +126,28 @@ private fun GuideContent(
         mutableStateOf(GuideFocus(firstRow.channel, onNow(firstRow.programmes, now)))
     }
 
+    // On open, land the amber ring on the programme airing NOW, not the first (often already
+    // ended) cell. We request focus on the first row's on-now cell once its programmes have
+    // loaded (PR #13 shows rows with empty programmes first, then fills them). We must NOT
+    // yank focus if the user has already moved it, so we guard on both a "placed" flag and a
+    // "user moved first" flag, and only auto-place while focus is still where the framework
+    // put it by default.
+    val initialFocusRequester = remember { FocusRequester() }
+    var initialFocusPlaced by remember { mutableStateOf(false) }
+    var userMovedFocus by remember { mutableStateOf(false) }
+
+    val firstRowCells = laneCells(firstRow.programmes, state.windowStartMs, state.windowSpanMs)
+    val firstRowFocusIndex = initialFocusCellIndex(firstRowCells, now)
+
+    // Fires when the first row's cells first appear (programmes arrived) — or immediately on a
+    // warm open where they are already present. Skips if the user has already moved focus.
+    LaunchedEffect(firstRowCells.isNotEmpty(), userMovedFocus) {
+        if (firstRowCells.isNotEmpty() && !initialFocusPlaced && !userMovedFocus) {
+            runCatching { initialFocusRequester.requestFocus() }
+            initialFocusPlaced = true
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -150,7 +174,7 @@ private fun GuideContent(
                 NowLane(nowMin, hScroll.value, now)
                 AxisRow(state.windowStartMs, spanMinutes, hScroll.value)
                 LazyColumn(Modifier.fillMaxSize()) {
-                    items(state.rows) { row ->
+                    itemsIndexed(state.rows) { index, row ->
                         GuideRowView(
                             row = row,
                             windowStartMs = state.windowStartMs,
@@ -159,7 +183,16 @@ private fun GuideContent(
                             hScroll = hScroll,
                             laneWidth = laneWidth,
                             spanMinutes = spanMinutes,
-                            onFocus = { prog -> focus = GuideFocus(row.channel, prog) },
+                            // Only the first row carries the initial-focus requester, on its
+                            // on-now cell; -1 disables it for every other row.
+                            initialFocusRequester = if (index == 0) initialFocusRequester else null,
+                            initialFocusCellIndex = if (index == 0) firstRowFocusIndex else -1,
+                            onFocus = { prog ->
+                                focus = GuideFocus(row.channel, prog)
+                                // If the user drives focus before we've auto-placed it, do not
+                                // steal it back once programmes arrive.
+                                if (!initialFocusPlaced) userMovedFocus = true
+                            },
                             onClick = { targetFor(row.channel)?.let { onPlayChannel(it, row.channel.name) } },
                         )
                     }
@@ -337,6 +370,8 @@ private fun GuideRowView(
     hScroll: androidx.compose.foundation.ScrollState,
     laneWidth: Dp,
     spanMinutes: Int,
+    initialFocusRequester: FocusRequester?,
+    initialFocusCellIndex: Int,
     onFocus: (EpgProgramme?) -> Unit,
     onClick: () -> Unit,
 ) {
@@ -358,14 +393,25 @@ private fun GuideRowView(
         Row(Modifier.horizontalScroll(hScroll).width(laneWidth)) {
             val cells = laneCells(row.programmes, windowStartMs, windowSpanMs)
             if (cells.isEmpty()) {
-                EmptyCell(widthDp = minutesToDp(spanMinutes), onFocus = { onFocus(null) }, onClick = onClick)
+                // A row with no programmes: it exposes a single empty cell. It only carries the
+                // initial-focus requester when this row is the target and the on-now index fell
+                // back to 0 (nothing is airing), so an all-empty first row still gets the ring.
+                EmptyCell(
+                    widthDp = minutesToDp(spanMinutes),
+                    focusRequester = initialFocusRequester?.takeIf { initialFocusCellIndex == 0 },
+                    onFocus = { onFocus(null) },
+                    onClick = onClick,
+                )
             } else {
-                cells.forEach { cell ->
+                cells.forEachIndexed { cellIndex, cell ->
                     if (cell.gapMinutes > 0) Spacer(Modifier.width(minutesToDp(cell.gapMinutes)))
                     ProgrammeCell(
                         programme = cell.programme,
                         widthDp = minutesToDp(cell.minutes),
                         now = now,
+                        // Attach the requester to the on-now cell (or the fallback index) so the
+                        // ring lands there on open; null everywhere else.
+                        focusRequester = initialFocusRequester?.takeIf { cellIndex == initialFocusCellIndex },
                         onFocus = { onFocus(cell.programme) },
                         onClick = onClick,
                     )
@@ -380,6 +426,7 @@ private fun ProgrammeCell(
     programme: EpgProgramme,
     widthDp: Dp,
     now: Long,
+    focusRequester: FocusRequester?,
     onFocus: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -393,6 +440,7 @@ private fun ProgrammeCell(
             .width(widthDp)
             .height(ROW_HEIGHT)
             .padding(2.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .androidx_onFocus(onFocus),
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceM, vertical = 6.dp)) {
@@ -426,13 +474,15 @@ private fun ProgrammeCell(
 
 /** Full-width no-programme-information cell for a channel with no guide data (§9.4). Focusable. */
 @Composable
-private fun EmptyCell(widthDp: Dp, onFocus: () -> Unit, onClick: () -> Unit) {
+private fun EmptyCell(widthDp: Dp, focusRequester: FocusRequester?, onFocus: () -> Unit, onClick: () -> Unit) {
     LiveWireSurface(
         onClick = onClick,
         restingColor = LiveWireColors.SurfaceRaised,
         shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
         focusedScale = LiveWireDimens.FocusScaleWide,
-        modifier = Modifier.width(widthDp).height(ROW_HEIGHT).padding(2.dp).androidx_onFocus(onFocus),
+        modifier = Modifier.width(widthDp).height(ROW_HEIGHT).padding(2.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .androidx_onFocus(onFocus),
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceM), contentAlignment = Alignment.CenterStart) {
             Text(
