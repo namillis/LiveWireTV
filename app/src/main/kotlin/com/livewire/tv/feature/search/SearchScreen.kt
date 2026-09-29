@@ -96,7 +96,11 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var query by remember { mutableStateOf("") }
+    // Seed from the ViewModel: the nav graph keeps Search's ViewModel (and its query and
+    // results) alive when you switch sections, but plain remember{} state is rebuilt empty
+    // on return. Starting blank left the field empty over the old query's results, and the
+    // empty state (recent searches) never showed.
+    var query by remember { mutableStateOf(viewModel.state.value.query) }
 
     // The field takes initial focus (mockup empty state), and D-pad Down/Up hops between
     // the field and the first result. Left from the first column falls through to the nav
