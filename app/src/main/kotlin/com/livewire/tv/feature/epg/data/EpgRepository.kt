@@ -30,9 +30,13 @@ class EpgRepository @Inject constructor(
     private val cache: EpgCache,
 ) {
     /**
-     * Fetch and stream-parse the guide, keeping only [channelIds] when given. Returns a
-     * cached guide when one is fresh; otherwise downloads, parses, and caches. Throws on
+     * Fetch the guide and return it filtered to [channelIds] (all channels when null) and to
+     * [window]. Returns a cached guide when one is fresh; otherwise downloads and parses the
+     * provider's full guide once, caches it per provider, and filters the result. Throws on
      * network/parse failure or when the provider has no guide (and nothing is cached).
+     *
+     * The cache holds ONE superset entry per provider (all channels, a widened window), so
+     * every screen shares it: Guide and Search no longer download the guide once each.
      *
      * @param forceRefresh bypasses the cache and re-downloads (used by an explicit refresh).
      */
@@ -43,13 +47,25 @@ class EpgRepository @Inject constructor(
         forceRefresh: Boolean = false,
     ): EpgGuide {
         val url = providers.guideUrl(cfg) ?: error("No guide configured for this provider")
-        val key = EpgCachePolicy.keyFor(cfg, url, channelIds)
+        val key = EpgCachePolicy.keyFor(cfg, url)
         val ttl = if (forceRefresh) 0L else EpgCachePolicy.DEFAULT_TTL_MS
-        // Parse a window stretched by the TTL, so reopening the screen later (its window has
-        // slid forward with the clock) is still a cache hit.
+        // Parse a superset window (widened by the TTL and by the lead/trail that spans both the
+        // Guide's and Search's windows), so a differently-windowed sibling screen — and the same
+        // screen reopened later — is served from this one entry instead of re-downloading.
         val parsedWindow = EpgCachePolicy.downloadWindow(window)
-        return cache.getOrLoad(key, providerId = cfg.id, window = window, parsedWindow = parsedWindow, ttlMs = ttl) {
-            download(url, parsedWindow, channelIds)
+        // Parse ALL channels (no filter), so the single per-provider entry is a superset every
+        // caller can be served from; each caller's [channelIds] filter is applied on read. This
+        // is why opening Search after the Guide (or vice versa) reuses the cached ~64 MB guide.
+        return cache.getOrLoad(
+            key = key,
+            providerId = cfg.id,
+            window = window,
+            parsedWindow = parsedWindow,
+            requestedChannelIds = channelIds,
+            parsedChannelIds = null,
+            ttlMs = ttl,
+        ) {
+            download(url, parsedWindow, channelIds = null)
         }
     }
 
