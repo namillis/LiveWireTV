@@ -18,16 +18,20 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,14 +96,30 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var query by remember { mutableStateOf("") }
+    // Seed from the ViewModel: the nav graph keeps Search's ViewModel (and its query and
+    // results) alive when you switch sections, but plain remember{} state is rebuilt empty
+    // on return. Starting blank left the field empty over the old query's results, and the
+    // empty state (recent searches) never showed.
+    var query by remember { mutableStateOf(viewModel.state.value.query) }
 
     // The field takes initial focus (mockup empty state), and D-pad Down/Up hops between
     // the field and the first result. Left from the first column falls through to the nav
     // drawer (LiveWireNavShell); we add no Left handling so that behaviour is unchanged.
     val fieldFocus = remember { FocusRequester() }
     val resultsFocus = remember { FocusRequester() }
+    val emptyStateFocus = remember { FocusRequester() }
     var hasResultsFocusable by remember { mutableStateOf(false) }
+
+    // Record a search when the user leaves Search with a committed query (2+ chars). Kept in
+    // rememberUpdatedState so the onDispose below reads the query as it was at teardown, not
+    // the value captured when the effect was first set up.
+    val latestQuery = rememberUpdatedState(query)
+    DisposableEffect(Unit) {
+        onDispose { viewModel.recordSearchIfEligible(latestQuery.value) }
+    }
+
+    // Whether the empty state (nothing typed) has anything focusable to receive Down.
+    val emptyHasHistory = state.recentSearches.isNotEmpty() || state.recentChannels.isNotEmpty()
 
     // Channel picker (shared with Sports): opening a game shows it; Back closes only the
     // picker and returns focus to the SAME game row that opened it (not the field or top).
@@ -110,6 +130,8 @@ fun SearchScreen(
     LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
     fun playChannel(channel: LiveChannel) {
+        // Opening a result also commits the current query as a recent search.
+        viewModel.recordSearchIfEligible(query)
         viewModel.playbackTarget(channel)?.let { onPlayChannel(it, channel.name) }
     }
 
@@ -141,7 +163,11 @@ fun SearchScreen(
                     onValueChange = { query = it; viewModel.run(it) },
                     onSearch = { runCatching { resultsFocus.requestFocus() } },
                     focusRequester = fieldFocus,
-                    downTarget = if (hasResultsFocusable) resultsFocus else null,
+                    downTarget = when {
+                        state.query.isBlank() && emptyHasHistory -> emptyStateFocus
+                        hasResultsFocusable -> resultsFocus
+                        else -> null
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(LiveWireDimens.SpaceL))
@@ -175,7 +201,18 @@ fun SearchScreen(
             LaunchedEffect(grouped) { hasResultsFocusable = !grouped.isEmpty() }
 
             when {
-                state.query.isBlank() -> EmptyHint()
+                state.query.isBlank() -> EmptyState(
+                    recentSearches = state.recentSearches,
+                    recentChannels = state.recentChannels,
+                    viewModel = viewModel,
+                    firstFocus = emptyStateFocus,
+                    onSelectSearch = { picked ->
+                        query = picked
+                        viewModel.run(picked)
+                        runCatching { fieldFocus.requestFocus() }
+                    },
+                    onPlayChannel = ::playChannel,
+                )
                 grouped.isEmpty() && !state.loading -> NoResults(state.query)
                 else -> Results(
                     grouped = grouped,
@@ -384,13 +421,15 @@ private fun SectionHeader(header: String, suffix: String) {
             color = LiveWireColors.OnSurfaceMuted,
             maxLines = 1,
         )
-        Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-        Text(
-            suffix.uppercase(),
-            style = LiveWireTheme.tokens.overline,
-            color = LiveWireColors.OnSurfaceMuted,
-            maxLines = 1,
-        )
+        if (suffix.isNotBlank()) {
+            Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+            Text(
+                suffix.uppercase(),
+                style = LiveWireTheme.tokens.overline,
+                color = LiveWireColors.OnSurfaceMuted,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -610,20 +649,218 @@ private fun StatusPill(text: String) {
 }
 
 /**
- * The empty state (nothing typed). The mockup's "Recent searches" / "Jump back in" need a
- * persisted history the app does not record today, so per the seed those are left out (and
- * reported as a follow-up); the focused query field plus this one-line hint stand in.
+ * The empty state (nothing typed), per the approved mockup (option1-empty): the focused query
+ * field (owned by the caller) sits above; here we show, in order and each only when non-empty,
+ * RECENT SEARCHES as a row of clock pill chips (most recent first, capped in the store), then
+ * JUMP BACK IN as a rail of recently watched channels reusing Home's [ChannelCard] (now-playing
+ * + progress + "N min left"), then the existing one-line hint. With no history at all only the
+ * hint shows — matching today's behaviour aside from the always-present hint.
+ *
+ * D-pad: the caller routes Down-from-field to [firstFocus] (the first chip, or the first card
+ * when there are no chips). Selecting a chip fills the field and runs its search; selecting a
+ * card plays that channel. Amber appears only on the focused element (via [LiveWireSurface]).
  */
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun EmptyHint() {
-    Column(Modifier.fillMaxWidth().padding(top = LiveWireDimens.SpaceL)) {
-        Text(
-            "Search finds live channels, what's on now and later in the guide, and today's games — " +
-                "all at once. Start typing a channel name like FOX, a show, or a team.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
-            modifier = Modifier.widthIn(max = 560.dp),
+private fun EmptyState(
+    recentSearches: List<String>,
+    recentChannels: List<RecentChannel>,
+    viewModel: SearchViewModel,
+    firstFocus: FocusRequester,
+    onSelectSearch: (String) -> Unit,
+    onPlayChannel: (LiveChannel) -> Unit,
+) {
+    val now = System.currentTimeMillis()
+    val hasChips = recentSearches.isNotEmpty()
+    val hasCards = recentChannels.isNotEmpty()
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXl),
+        contentPadding = PaddingValues(top = LiveWireDimens.SpaceL, bottom = LiveWireDimens.SpaceS),
+    ) {
+        // ── RECENT SEARCHES ── a wrap of clock pill chips, most recent first.
+        if (hasChips) {
+            item(key = "recent-searches") {
+                Column {
+                    SectionHeader("Recent searches", "")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
+                        verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
+                        modifier = Modifier.padding(LiveWireDimens.SpaceXs),
+                    ) {
+                        recentSearches.forEachIndexed { index, term ->
+                            RecentSearchChip(
+                                term = term,
+                                onClick = { onSelectSearch(term) },
+                                focusRequester = firstFocus.takeIf { index == 0 },
+                            )
+                        }
+                        // A trailing "Clear" chip removes all history (searches + channels).
+                        ClearChip(onClick = { viewModel.clearHistory() })
+                    }
+                }
+            }
+        }
+
+        // ── JUMP BACK IN ── a rail of recently watched channels (Home ChannelCard).
+        if (hasCards) {
+            item(key = "jump-back-in") {
+                Column {
+                    SectionHeader("Jump back in", "")
+                    LazyRow(
+                        contentPadding = PaddingValues(
+                            horizontal = LiveWireDimens.SpaceXs,
+                            vertical = LiveWireDimens.SpaceXs,
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.RailGap),
+                    ) {
+                        itemsIndexed(
+                            recentChannels,
+                            key = { _, r -> "w:${r.watched.providerId}:${r.watched.streamId}" },
+                        ) { index, recent ->
+                            RecentChannelCard(
+                                recent = recent,
+                                nowPlaying = viewModel.nowPlayingFor(recent, now),
+                                onClick = {
+                                    recent.channel?.let(onPlayChannel)
+                                },
+                                // First card takes Down-from-field only when there are no chips.
+                                focusRequester = firstFocus.takeIf { index == 0 && !hasChips },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── The one-line hint (always shown, as today). ──
+        item(key = "hint") {
+            Text(
+                "Search finds live channels, what's on now and later in the guide, and today's games — " +
+                    "all at once. Start typing a channel name like FOX, a show, or a team.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LiveWireColors.OnSurfaceMuted,
+                modifier = Modifier.widthIn(max = 560.dp),
+            )
+        }
+    }
+}
+
+/**
+ * A resting recent-search pill (mockup .chip): a clock icon + the query, in a rounded
+ * [LiveWireColors.SurfaceRaised] capsule. Focus (amber ring/scale) comes from [LiveWireSurface];
+ * selecting it fills the field and runs the search.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun RecentSearchChip(
+    term: String,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester?,
+) {
+    LiveWireSurface(
+        onClick = onClick,
+        restingColor = LiveWireColors.SurfaceRaised,
+        shape = RoundedCornerShape(50),
+        modifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
+    ) {
+        Row(
+            Modifier.padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_clock),
+                contentDescription = null,
+                tint = LiveWireColors.OnSurfaceMuted,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(LiveWireDimens.SpaceS))
+            Text(
+                term,
+                style = MaterialTheme.typography.titleMedium,
+                color = LiveWireColors.OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** A trailing "Clear" pill at the end of the chips row; clears all remembered history. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ClearChip(onClick: () -> Unit) {
+    LiveWireSurface(
+        onClick = onClick,
+        restingColor = LiveWireColors.SurfaceRaised,
+        shape = RoundedCornerShape(50),
+    ) {
+        Row(
+            Modifier.padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Clear",
+                // Same text style as the search chips so the row lines up; muted colour marks
+                // it as secondary.
+                style = MaterialTheme.typography.titleMedium,
+                color = LiveWireColors.OnSurfaceMuted,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * A "Jump back in" card. When the watched channel is still in the playlist it renders the exact
+ * Home [ChannelCard] (logo, name, now-playing, progress, "N min left") and plays on select. When
+ * the stream has dropped out of the playlist we still show its stored name in a matching-width
+ * card, but it is not focusable/clickable (nothing to play).
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun RecentChannelCard(
+    recent: RecentChannel,
+    nowPlaying: com.livewire.tv.feature.epg.domain.EpgProgramme?,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester?,
+) {
+    val channel = recent.channel
+    if (channel != null) {
+        ChannelCard(
+            channel = channel,
+            nowPlaying = nowPlaying,
+            onClick = onClick,
+            modifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
         )
+    } else {
+        // Unavailable: a non-focusable placeholder that keeps the rail's rhythm.
+        Column(
+            Modifier
+                .width(148.dp)
+                .clip(RoundedCornerShape(LiveWireDimens.RadiusCard))
+                .background(LiveWireColors.Surface)
+                .padding(9.dp),
+        ) {
+            Box(
+                Modifier.fillMaxWidth().height(56.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Unavailable",
+                    style = LiveWireTheme.tokens.overline,
+                    color = LiveWireColors.OnSurfaceMuted,
+                )
+            }
+            Text(
+                recent.watched.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = LiveWireColors.OnSurfaceMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = LiveWireDimens.SpaceS),
+            )
+        }
     }
 }
 

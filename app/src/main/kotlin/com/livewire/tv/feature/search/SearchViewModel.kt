@@ -12,6 +12,9 @@ import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.search.domain.SearchIndex
 import com.livewire.tv.feature.search.domain.SearchResult
+import com.livewire.tv.feature.search.data.RecentHistoryLogic
+import com.livewire.tv.feature.search.data.RecentHistoryStore
+import com.livewire.tv.feature.search.data.WatchedChannel
 import com.livewire.tv.feature.sports.data.ChannelMatch
 import com.livewire.tv.feature.sports.data.SportsRepository
 import com.livewire.tv.feature.sports.domain.SportsGame
@@ -19,15 +22,27 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
+/** A recently watched channel, resolved for the "Jump back in" rail: the stored reference
+ *  paired with the live channel (when still in the playlist) so the card can show logo,
+ *  name, and now-playing. [channel] is null when the stream is no longer available. */
+data class RecentChannel(
+    val watched: WatchedChannel,
+    val channel: LiveChannel?,
+)
+
 data class SearchUiState(
     val loading: Boolean = true,
     val query: String = "",
     val results: List<SearchResult> = emptyList(),
+    val recentSearches: List<String> = emptyList(),
+    val recentChannels: List<RecentChannel> = emptyList(),
 )
 
 @HiltViewModel
@@ -36,6 +51,7 @@ class SearchViewModel @Inject constructor(
     private val client: ProviderRepository,
     private val epg: EpgRepository,
     private val sports: SportsRepository,
+    private val historyStore: RecentHistoryStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -50,6 +66,26 @@ class SearchViewModel @Inject constructor(
     private var programmesByEpgId: Map<String, List<EpgProgramme>> = emptyMap()
     // A programme's channelId → the live channel that carries it, for programme playback.
     private var channelByEpgId: Map<String, LiveChannel> = emptyMap()
+    // streamId → live channel, so a stored watched entry re-binds to its playlist channel.
+    private var channelByStreamId: Map<String, LiveChannel> = emptyMap()
+
+    // The persisted empty-state history. Collected once; the watched list is re-joined
+    // against the channel list whenever either changes so cards get logo + now-playing.
+    private var rawWatched: List<WatchedChannel> = emptyList()
+
+    init {
+        historyStore.history
+            .onEach { history ->
+                rawWatched = history.watched
+                _state.update {
+                    it.copy(
+                        recentSearches = history.searches,
+                        recentChannels = resolveRecentChannels(history.watched),
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+    }
 
     fun init() {
         _state.update { it.copy(loading = true) }
@@ -92,10 +128,19 @@ class SearchViewModel @Inject constructor(
                 .filter { !it.epgChannelId.isNullOrBlank() }
                 .associateByTo(HashMap()) { it.epgChannelId!! }
             programmesByEpgId = programmes.groupBy { it.channelId }
+            // First channel wins a duplicate stream id (they should be unique per provider).
+            channelByStreamId = loadedChannels.associateBy { it.streamId }
 
             index = SearchIndex(channels = loadedChannels, programmes = programmes, games = games)
-            // Re-run whatever was typed while the index was still loading.
-            _state.update { it.copy(loading = false, results = index.search(it.query)) }
+            // Re-run whatever was typed while the index was still loading, and re-bind the
+            // watched history now that the channel list (logos, EPG ids) is available.
+            _state.update {
+                it.copy(
+                    loading = false,
+                    results = index.search(it.query),
+                    recentChannels = resolveRecentChannels(rawWatched),
+                )
+            }
         }
     }
 
@@ -130,4 +175,37 @@ class SearchViewModel @Inject constructor(
      */
     fun channelsForGame(game: SportsGame): List<ChannelMatch> =
         SportsRepository.matchChannels(game, channels)
+
+    /**
+     * Record [query] as a recent search when it clears the minimum length (2+ chars). Called
+     * when the user commits a search — leaving Search or opening a result — not per keystroke,
+     * so a half-typed query is never stored. The store applies dedupe/cap; the flow updates
+     * [state] on write.
+     */
+    fun recordSearchIfEligible(query: String) {
+        if (query.trim().length < RecentHistoryLogic.MIN_QUERY_LENGTH) return
+        viewModelScope.launch { historyStore.recordSearch(query) }
+    }
+
+    /** Clear all remembered searches and watched channels (empty-state "Clear"). */
+    fun clearHistory() {
+        viewModelScope.launch { historyStore.clear() }
+    }
+
+    /** Now-playing programme for a [RecentChannel]'s card, or null when unknown. */
+    fun nowPlayingFor(recent: RecentChannel, now: Long = System.currentTimeMillis()): EpgProgramme? =
+        recent.channel?.let { nowPlaying(it, now) }
+
+    /** Playback target for a recently watched channel that is still in the playlist, or null. */
+    fun playbackTargetFor(recent: RecentChannel): PlaybackTarget? =
+        recent.channel?.let { playbackTarget(it) }
+
+    /**
+     * Pair each stored [WatchedChannel] with its live channel (by stream id) when the stream
+     * is still in the playlist, so the "Jump back in" card can show logo + now-playing. Order
+     * (most recent first) is preserved; entries whose stream has vanished keep a null channel
+     * and render from the stored name alone.
+     */
+    private fun resolveRecentChannels(watched: List<WatchedChannel>): List<RecentChannel> =
+        watched.map { RecentChannel(watched = it, channel = channelByStreamId[it.streamId]) }
 }
