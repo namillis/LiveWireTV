@@ -4,6 +4,7 @@ import android.content.Context
 import com.livewire.tv.feature.epg.domain.EpgChannel
 import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EpgWindow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -33,6 +34,9 @@ private data class CachedGuide(
     val cachedAtMs: Long,
     val channels: List<CachedChannel>,
     val programmes: List<CachedProgramme>,
+    // Window the guide was parsed with; programmes outside it are not in the entry.
+    val windowStartMs: Long? = null,
+    val windowEndMs: Long? = null,
 )
 
 /**
@@ -63,37 +67,43 @@ class EpgCache @Inject constructor(
 
     /**
      * Runs [load] under this provider's single-flight lock. If a fresh cached guide exists
-     * (memory first, then disk) it is returned without calling [load] at all. Otherwise
-     * [load] downloads+parses the guide, and the result is stored in both layers.
+     * (memory first, then disk) whose parsed window covers [window], it is returned without
+     * calling [load] at all. Otherwise [load] downloads+parses the guide for [parsedWindow],
+     * and the result is stored in both layers together with that window.
      *
      * @param ttlMs freshness window; a non-positive value disables the cache (always loads).
      * @param nowMs injectable clock for tests.
      */
     suspend fun getOrLoad(
         key: String,
+        window: EpgWindow?,
+        parsedWindow: EpgWindow?,
         ttlMs: Long = EpgCachePolicy.DEFAULT_TTL_MS,
         nowMs: Long = System.currentTimeMillis(),
         load: suspend () -> EpgGuide,
     ): EpgGuide = lockFor(key).withLock {
-        read(key, nowMs, ttlMs)?.let { return@withLock it }
+        read(key, window, nowMs, ttlMs)?.let { return@withLock it }
         val guide = load()
-        write(key, guide, nowMs)
+        write(key, guide, parsedWindow, nowMs)
         guide
     }
 
-    /** Fresh cached guide for [key], or null when absent or stale. */
-    private suspend fun read(key: String, nowMs: Long, ttlMs: Long): EpgGuide? {
-        memory[key]?.let { if (EpgCachePolicy.isFresh(it.cachedAtMs, nowMs, ttlMs)) return it.toGuide() }
+    /** Fresh cached guide for [key] that covers [window], or null when absent, stale or too narrow. */
+    private suspend fun read(key: String, window: EpgWindow?, nowMs: Long, ttlMs: Long): EpgGuide? {
+        fun usable(c: CachedGuide) =
+            EpgCachePolicy.isFresh(c.cachedAtMs, nowMs, ttlMs) &&
+                EpgCachePolicy.covers(c.windowStartMs, c.windowEndMs, window)
+        memory[key]?.let { if (usable(it)) return it.toGuide() }
         val onDisk = withContext(Dispatchers.IO) {
             runCatching { json.decodeFromString<CachedGuide>(fileFor(key).readText()) }.getOrNull()
         } ?: return null
-        if (!EpgCachePolicy.isFresh(onDisk.cachedAtMs, nowMs, ttlMs)) return null
+        if (!usable(onDisk)) return null
         memory[key] = onDisk
         return onDisk.toGuide()
     }
 
-    private suspend fun write(key: String, guide: EpgGuide, nowMs: Long) {
-        val cached = guide.toCached(nowMs)
+    private suspend fun write(key: String, guide: EpgGuide, parsedWindow: EpgWindow?, nowMs: Long) {
+        val cached = guide.toCached(nowMs, parsedWindow)
         memory[key] = cached
         withContext(Dispatchers.IO) {
             runCatching {
@@ -122,10 +132,14 @@ class EpgCache @Inject constructor(
         )
     }
 
-    private fun EpgGuide.toCached(nowMs: Long): CachedGuide = CachedGuide(
+    private fun EpgGuide.toCached(nowMs: Long, parsedWindow: EpgWindow?): CachedGuide = CachedGuide(
         cachedAtMs = nowMs,
-        channels = channels.map { CachedChannel(id = it.id, n = it.displayName, i = it.iconUrl) },
-        programmes = channels.flatMap { ch ->
+        windowStartMs = parsedWindow?.startMs,
+        windowEndMs = parsedWindow?.endMs,
+        channels = channels.distinctBy { it.id }.map { CachedChannel(id = it.id, n = it.displayName, i = it.iconUrl) },
+        // Providers list some channel ids more than once; write each channel's programmes
+        // once, or a reloaded guide shows every programme twice (overlapping cells).
+        programmes = channels.distinctBy { it.id }.flatMap { ch ->
             programmesFor(ch.id).map { CachedProgramme(c = it.channelId, s = it.startMs, e = it.stopMs, t = it.title, d = it.description, g = it.category) }
         },
     )

@@ -43,10 +43,13 @@ class EpgRepository @Inject constructor(
         forceRefresh: Boolean = false,
     ): EpgGuide {
         val url = providers.guideUrl(cfg) ?: error("No guide configured for this provider")
-        val key = EpgCachePolicy.keyFor(cfg, url)
+        val key = EpgCachePolicy.keyFor(cfg, url, channelIds)
         val ttl = if (forceRefresh) 0L else EpgCachePolicy.DEFAULT_TTL_MS
-        return cache.getOrLoad(key, ttlMs = ttl) {
-            download(url, window, channelIds)
+        // Parse a window stretched by the TTL, so reopening the screen later (its window has
+        // slid forward with the clock) is still a cache hit.
+        val parsedWindow = EpgCachePolicy.downloadWindow(window)
+        return cache.getOrLoad(key, window = window, parsedWindow = parsedWindow, ttlMs = ttl) {
+            download(url, parsedWindow, channelIds)
         }
     }
 
