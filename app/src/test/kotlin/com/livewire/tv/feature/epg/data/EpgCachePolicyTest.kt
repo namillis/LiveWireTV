@@ -65,12 +65,24 @@ class EpgCachePolicyTest {
         assertFalse("key must not leak the url", key.contains("hunter2"))
     }
 
-    @Test fun `different channel sets get different keys, in any order the same`() {
+    @Test fun `the cache key is per provider and url, not per channel set`() {
         val c = cfg("abc", "http://host")
         val url = "http://host/xmltv"
-        assertNotEquals(EpgCachePolicy.keyFor(c, url, setOf("a")), EpgCachePolicy.keyFor(c, url, setOf("a", "b")))
-        assertNotEquals(EpgCachePolicy.keyFor(c, url, null), EpgCachePolicy.keyFor(c, url, setOf("a")))
-        assertEquals(EpgCachePolicy.keyFor(c, url, setOf("b", "a")), EpgCachePolicy.keyFor(c, url, linkedSetOf("a", "b")))
+        // One provider has one guide; every screen shares the entry regardless of its channels.
+        assertEquals(EpgCachePolicy.keyFor(c, url), EpgCachePolicy.keyFor(c, url))
+    }
+
+    @Test fun `an all-channels entry covers any request, including all-channels`() {
+        assertTrue(EpgCachePolicy.coversChannels(cachedIds = null, requested = setOf("a", "b")))
+        assertTrue(EpgCachePolicy.coversChannels(cachedIds = null, requested = null))
+    }
+
+    @Test fun `a filtered entry covers a subset but not a superset or an all-channels request`() {
+        val cached = setOf("a", "b", "c")
+        assertTrue(EpgCachePolicy.coversChannels(cached, setOf("a", "b")))
+        assertTrue(EpgCachePolicy.coversChannels(cached, cached))
+        assertFalse(EpgCachePolicy.coversChannels(cached, setOf("a", "d")))  // d not present
+        assertFalse(EpgCachePolicy.coversChannels(cached, null))             // caller wants all
     }
 
     private val hour = TimeUnit.HOURS.toMillis(1)
@@ -94,14 +106,18 @@ class EpgCachePolicyTest {
         assertFalse(EpgCachePolicy.covers(base, base + hour, null))
     }
 
-    @Test fun `the download window extends the end by the TTL so a later reopen still hits`() {
+    @Test fun `the download window is a superset - lead back, trail plus TTL forward - so a sibling screen and later reopen still hit`() {
         val requested = EpgWindow(base, base + 4 * hour)
         val parsed = EpgCachePolicy.downloadWindow(requested, ttl)!!
-        assertEquals(base, parsed.startMs)
-        assertEquals(base + 7 * hour, parsed.endMs)
+        assertEquals(base - EpgCachePolicy.SUPERSET_LEAD_MS, parsed.startMs)
+        assertEquals(base + 4 * hour + EpgCachePolicy.SUPERSET_TRAIL_MS + ttl, parsed.endMs)
         // Same screen reopened just before the TTL expires: window slid forward ~3h.
         val later = EpgWindow(base + ttl - 1, base + ttl - 1 + 4 * hour)
         assertTrue(EpgCachePolicy.covers(parsed.startMs, parsed.endMs, later))
+        // A Guide parse (now-0.5h .. now+4h) covers a Search request (now-2h .. now+6h).
+        val guideParsed = EpgCachePolicy.downloadWindow(EpgWindow(base - hour / 2, base + 4 * hour), ttl)!!
+        val searchWants = EpgWindow(base - 2 * hour, base + 6 * hour)
+        assertTrue(EpgCachePolicy.covers(guideParsed.startMs, guideParsed.endMs, searchWants))
     }
 
     @Test fun `the provider hash is stable, short hex and never the raw id`() {
