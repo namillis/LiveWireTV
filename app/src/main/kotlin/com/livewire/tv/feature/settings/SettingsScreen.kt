@@ -89,6 +89,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val s by viewModel.settings.collectAsStateWithLifecycle()
+    val providerSummary by viewModel.providerSummary.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.refreshProviderSummary() }
 
     // Focus the first row (Stream format) when Settings opens, so the PLAYBACK header is visible
     // and the first D-pad press acts on a setting instead of falling into the nav drawer — the
@@ -121,10 +123,11 @@ fun SettingsScreen(
                     bottom = LiveWireDimens.SafeVertical,
                 ),
         ) {
-            TopLine(providerSummary = "Home IPTV · Xtream")
+            TopLine(providerSummary = providerSummary)
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
             SettingsList(
                 s = s,
+                providerSummary = providerSummary,
                 viewModel = viewModel,
                 onOpenProviders = onOpenProviders,
                 firstRowFocus = firstRowFocus,
@@ -176,6 +179,7 @@ private fun rememberClockLabel(): String = remember {
 @Composable
 private fun SettingsList(
     s: AppSettings,
+    providerSummary: String,
     viewModel: SettingsViewModel,
     onOpenProviders: () -> Unit,
     firstRowFocus: FocusRequester,
@@ -221,7 +225,14 @@ private fun SettingsList(
         }
         item("providers") {
             SettingsGroup("Providers") {
-                ProvidersRow(summary = "Home IPTV · Xtream — add, edit, or switch", onOpen = onOpenProviders)
+                ProvidersRow(
+                    summary = when (providerSummary) {
+                        "" -> "Add, edit, or switch"
+                        SettingsFormat.NO_PROVIDER -> "Add a provider"
+                        else -> "$providerSummary — add, edit, or switch"
+                    },
+                    onOpen = onOpenProviders,
+                )
             }
         }
         item("about") {
