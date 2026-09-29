@@ -2,6 +2,7 @@ package com.livewire.tv.feature.providers
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.livewire.tv.feature.epg.data.EpgCache
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.domain.ProviderConfig
@@ -27,6 +28,7 @@ data class ProvidersUiState(
 class ProvidersViewModel @Inject constructor(
     private val storage: ProviderStorage,
     private val repository: ProviderRepository,
+    private val epgCache: EpgCache,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProvidersUiState())
@@ -50,6 +52,10 @@ class ProvidersViewModel @Inject constructor(
             val result = repository.validate(cfg)
             if (result.ok) {
                 storage.add(cfg)
+                // Editing a provider can change its credentials or endpoint, which makes its
+                // cached guide unreachable (the guide URL is part of the cache key). Drop that
+                // provider's entries so a stale guide is never served after an edit.
+                if (existingId != null) epgCache.clearProvider(existingId)
                 load()
                 _state.update { it.copy(validating = false) }
                 onDone()
@@ -63,7 +69,11 @@ class ProvidersViewModel @Inject constructor(
 
     fun remove(id: String) {
         storage.remove(id)
-        viewModelScope.launch { repository.forget() }
+        viewModelScope.launch {
+            repository.forget()
+            // Delete only this provider's cached guide (memory + disk); other providers keep theirs.
+            epgCache.clearProvider(id)
+        }
         load()
     }
 
