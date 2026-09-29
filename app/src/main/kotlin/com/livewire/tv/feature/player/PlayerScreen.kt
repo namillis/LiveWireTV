@@ -72,7 +72,7 @@ fun PlayerScreen(
         revealTick++
     }
 
-    LaunchedEffect(target) { viewModel.resolve(target) }
+    LaunchedEffect(target) { viewModel.resolve(target, title) }
     LaunchedEffect(source.source) { source.source?.let { engine.open(it.url, headers = it.headers) } }
     DisposableEffect(Unit) { onDispose { engine.release() } }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -125,7 +125,7 @@ fun PlayerScreen(
 
             when {
                 source.loading -> CircularProgressIndicator()
-                source.error != null -> SafeErrorOverlay(source.error!!, onRetry = { viewModel.resolve(target) })
+                source.error != null -> SafeErrorOverlay(source.error!!, onRetry = { viewModel.resolve(target, title) })
                 status.state == PlaybackState.BUFFERING -> CircularProgressIndicator()
                 status.state == PlaybackState.ERROR -> SafeErrorOverlay(
                     message = status.errorMessage ?: "Playback failed. Try again.",

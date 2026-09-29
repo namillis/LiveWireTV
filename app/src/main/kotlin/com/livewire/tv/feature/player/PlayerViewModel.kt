@@ -6,6 +6,8 @@ import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
+import com.livewire.tv.feature.search.data.RecentHistoryStore
+import com.livewire.tv.feature.search.data.WatchedChannel
 import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,12 +30,13 @@ class PlayerViewModel @Inject constructor(
     private val providerStorage: ProviderStorage,
     private val providers: ProviderRepository,
     private val settingsStore: SettingsStore,
+    private val history: RecentHistoryStore,
 ) : ViewModel() {
 
     private val _source = MutableStateFlow(PlayerSourceState())
     val source: StateFlow<PlayerSourceState> = _source.asStateFlow()
 
-    fun resolve(target: PlaybackTarget) {
+    fun resolve(target: PlaybackTarget, title: String = "") {
         _source.update { PlayerSourceState(loading = true) }
         viewModelScope.launch {
             val provider = providerStorage.load().firstOrNull { it.id == target.providerId }
@@ -59,6 +62,19 @@ class PlayerViewModel @Inject constructor(
                     onFailure = {
                         PlayerSourceState(loading = false, error = "Could not load this channel. Check the provider and network.")
                     },
+                )
+            }
+            // Playback started (source resolved): remember this channel for Search's "Jump
+            // back in". Recorded by stream id; the logo/now-playing are re-resolved there
+            // against the live channel list, so only the reference + a display name is stored.
+            if (resolved.getOrNull() != null) {
+                history.recordWatched(
+                    WatchedChannel(
+                        providerId = target.providerId,
+                        streamId = target.streamId,
+                        name = title,
+                        ts = System.currentTimeMillis(),
+                    ),
                 )
             }
         }
