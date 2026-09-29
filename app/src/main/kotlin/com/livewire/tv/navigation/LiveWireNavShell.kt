@@ -59,6 +59,17 @@ enum class TopLevel(val route: String, val label: String, @DrawableRes val icon:
 
     companion object {
         fun of(route: String?): TopLevel? = entries.firstOrNull { it.route == route }
+
+        /**
+         * The section whose rail icon lights up for [route]. Top-level routes map to
+         * themselves; sub-screens reached from a section (Providers, opened from Settings)
+         * borrow that section so the rail shows and the parent stays highlighted, even
+         * though they are not drawer-selectable destinations.
+         */
+        fun railSectionOf(route: String?): TopLevel? = of(route) ?: when (route) {
+            Routes.PROVIDERS -> SETTINGS
+            else -> null
+        }
     }
 }
 
@@ -79,7 +90,11 @@ fun LiveWireNavShell(
     onSelect: (TopLevel) -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val current = TopLevel.of(currentRoute)
+    val current = TopLevel.railSectionOf(currentRoute)
+    // A true drawer section (Home/Guide/…): its content's Back opens the drawer. A
+    // sub-screen like Providers borrows the rail section for display but is NOT a section,
+    // so its Back must fall through to the NavHost (pop back to Settings), not open the drawer.
+    val isTopLevelSection = TopLevel.of(currentRoute) != null
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val requesters = remember { TopLevel.entries.associateWith { FocusRequester() } }
     val focusManager = LocalFocusManager.current
@@ -129,7 +144,10 @@ fun LiveWireNavShell(
                     NavigationDrawerItem(
                         selected = selected,
                         onClick = {
-                            if (!selected) onSelect(item)
+                            // Navigate when picking a different section, OR when this section is
+                            // only highlighted because we are on one of its sub-screens (e.g.
+                            // Providers highlights Settings): choosing it should return there.
+                            if (!selected || !isTopLevelSection) onSelect(item)
                             handoff?.cancel()
                             handoff = scope.launch {
                                 // Wait for the new section to replace the old one; handing focus
@@ -174,8 +192,10 @@ fun LiveWireNavShell(
 
             // Registered AFTER content so they take priority over the NavHost's own Back
             // handling (the most recently composed enabled callback wins).
-            // Back from content → into the drawer on the current section.
-            BackHandler(enabled = current != null && !open) {
+            // Back from a section's content → into the drawer on that section. A sub-screen
+            // (Providers) is not a section: its Back is left to the NavHost, which pops back
+            // to Settings — the mockup's "Back Settings" hint.
+            BackHandler(enabled = isTopLevelSection && current != null && !open) {
                 runCatching { requesters.getValue(current!!).requestFocus() }
             }
             // Back from the open drawer → Home, where Home focuses its last card. On Home this
