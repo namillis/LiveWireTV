@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.providers.data
 
+import com.livewire.tv.feature.providers.domain.ChannelNames
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.ProviderAuthResult
@@ -47,6 +48,10 @@ class ProviderRepository @Inject constructor(
     }
 
     suspend fun liveChannels(cfg: ProviderConfig, categoryId: String? = null): List<LiveChannel> =
+        // Providers pad their live lists with category-separator rows
+        // ("##### US - NEWS #####", "===== SPORTS ====="). Drop them at this one
+        // choke point so no screen (Home rails/hero, Guide, Sports picker, Search)
+        // ever sees a placeholder as a channel.
         when (cfg.type) {
             ProviderType.XTREAM -> xtream.liveChannels(cfg, categoryId)
             ProviderType.M3U -> m3u.load(cfg).entriesById
@@ -60,7 +65,7 @@ class ProviderRepository @Inject constructor(
                         categoryId = entry.groupName(),
                     )
                 }
-        }
+        }.filterNot { ChannelNames.isPlaceholder(it.name) }
 
     /** Resolves the playable source. Returns null when the channel no longer exists. */
     suspend fun playbackSource(cfg: ProviderConfig, streamId: String, xtreamExt: String): PlaybackSource? =

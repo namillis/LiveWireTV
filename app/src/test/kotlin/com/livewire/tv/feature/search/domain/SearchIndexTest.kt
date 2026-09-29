@@ -70,19 +70,9 @@ class SearchIndexTest {
     }
 
     // ── Separator / placeholder channels (provider category dividers) ──
-
-    @Test fun `excludes separator marker channels`() {
-        assertTrue(SearchIndex.isSeparatorName("##### FOX #####"))
-        assertTrue(SearchIndex.isSeparatorName("===== SPORTS ====="))
-        assertTrue(SearchIndex.isSeparatorName("#####"))
-        assertTrue(SearchIndex.isSeparatorName("____"))
-        assertTrue(SearchIndex.isSeparatorName("*** ***"))
-        assertTrue(SearchIndex.isSeparatorName("   "))
-        // Real channels — including hyphenated provider names — are NOT separators.
-        assertFalse(SearchIndex.isSeparatorName("US - FOX HD"))
-        assertFalse(SearchIndex.isSeparatorName("FOX 26 Houston"))
-        assertFalse(SearchIndex.isSeparatorName("US|NBC CHICAGO"))
-    }
+    // Pure name-detection lives in ChannelNamesTest now that isSeparatorName delegates
+    // to the shared ChannelNames.isPlaceholder. These keep SearchIndex's own behavior
+    // (separators never surface, ranking) covered.
 
     @Test fun `separator channels never appear in results`() {
         val idx = SearchIndex(
