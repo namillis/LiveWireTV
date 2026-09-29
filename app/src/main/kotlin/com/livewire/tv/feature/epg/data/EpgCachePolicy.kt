@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.epg.data
 
+import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -23,11 +24,36 @@ object EpgCachePolicy {
      * never the URL itself. Keying on the guide URL as well as the id means changing a
      * provider's credentials or endpoint invalidates its cache.
      */
-    fun keyFor(cfg: ProviderConfig, guideUrl: String?): String {
-        val material = "${cfg.id}|${guideUrl.orEmpty()}"
+    fun keyFor(cfg: ProviderConfig, guideUrl: String?, channelIds: Set<String>? = null): String {
+        // The cached guide is filtered to [channelIds] while parsing, so callers asking for
+        // different channel sets (Home/Guide use a few categories, Search uses every channel)
+        // must not share an entry: one would silently get the other's programmes only.
+        val ids = channelIds?.sorted()?.joinToString(",") ?: "*"
+        val material = "${cfg.id}|${guideUrl.orEmpty()}|$ids"
         val digest = MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
         return digest.take(16).joinToString("") { "%02x".format(it) }
     }
+
+    /**
+     * True when a guide cached for the window [cachedStartMs]..[cachedEndMs] holds every
+     * programme a caller asking for [requested] needs. Programmes outside the cached window
+     * were dropped during parsing, so a narrower cached window is a miss, never a hit.
+     * Null bounds mean the cached guide was parsed without a window (everything kept).
+     */
+    fun covers(cachedStartMs: Long?, cachedEndMs: Long?, requested: EpgWindow?): Boolean {
+        if (cachedStartMs == null || cachedEndMs == null) return cachedStartMs == null && cachedEndMs == null
+        if (requested == null) return false
+        return cachedStartMs <= requested.startMs && cachedEndMs >= requested.endMs
+    }
+
+    /**
+     * Window to parse when downloading for [requested]. The end is pushed out by [ttlMs] so
+     * the same screen reopened later within the TTL (its window slides forward with the
+     * clock) is still covered and does not re-download. The start needs no widening: later
+     * requests of the same shape start later.
+     */
+    fun downloadWindow(requested: EpgWindow?, ttlMs: Long = DEFAULT_TTL_MS): EpgWindow? =
+        requested?.let { EpgWindow(it.startMs, it.endMs + ttlMs.coerceAtLeast(0L)) }
 
     /**
      * True when an entry stored at [cachedAtMs] is still fresh at [nowMs] for the given [ttlMs].
