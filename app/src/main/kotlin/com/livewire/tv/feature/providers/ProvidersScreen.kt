@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,7 +62,6 @@ import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
 import com.livewire.tv.ui.theme.dpadVerticalExit
-import com.livewire.tv.ui.theme.liveWireTextFieldColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,29 +106,41 @@ fun ProvidersScreen(
     val firstFocus = remember { FocusRequester() }
     var firstHasFocus by remember { mutableStateOf(false) }
     val listActive = overlay is ProvidersOverlay.None
-    LaunchedEffect(state.providers.isNotEmpty(), listActive) {
-        if (!listActive) return@LaunchedEffect
-        var held = 0
-        repeat(30) {
-            if (firstHasFocus) held++ else {
-                held = 0
-                runCatching { firstFocus.requestFocus() }
+    // Where focus goes when the list becomes active: null = the first row (screen entry),
+    // otherwise the row or Add item an overlay was opened from. Requested from this
+    // effect, not from closeOverlayTo, because closing the full-page form recomposes the
+    // list and a request made before the target row exists is silently dropped.
+    var restoreTo by remember { mutableStateOf<FocusOrigin?>(null) }
+    LaunchedEffect(state.providers, listActive, restoreTo) {
+        if (!listActive || state.providers.isEmpty()) return@LaunchedEffect
+        val target = when (val r = restoreTo) {
+            is FocusOrigin.Row ->
+                if (state.providers.any { it.id == r.providerId }) focusFor(r.providerId) else firstFocus
+            FocusOrigin.Add -> addFocus
+            null -> firstFocus
+        }
+        if (target === firstFocus) {
+            var held = 0
+            repeat(30) {
+                if (firstHasFocus) held++ else {
+                    held = 0
+                    runCatching { firstFocus.requestFocus() }
+                }
+                if (held >= 3) return@LaunchedEffect
+                kotlinx.coroutines.delay(50)
             }
-            if (held >= 3) return@LaunchedEffect
-            kotlinx.coroutines.delay(50)
+        } else {
+            // A few attempts cover the frames it takes the list to come back after the form.
+            repeat(6) {
+                runCatching { target.requestFocus() }
+                kotlinx.coroutines.delay(50)
+            }
         }
     }
 
     fun closeOverlayTo(next: ProvidersOverlay) {
         overlay = next
-        if (next is ProvidersOverlay.None) {
-            runCatching {
-                when (val o = origin) {
-                    is FocusOrigin.Row -> focusFor(o.providerId).requestFocus()
-                    FocusOrigin.Add -> addFocus.requestFocus()
-                }
-            }
-        }
+        if (next is ProvidersOverlay.None) restoreTo = origin
     }
 
     Surface(
@@ -552,7 +564,7 @@ private fun ActionMenuOverlay(
 @Composable
 private fun MenuItem(
     label: String,
-    icon: MenuIcon,
+    icon: MenuIcon?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     danger: Boolean = false,
@@ -572,8 +584,10 @@ private fun MenuItem(
                 .padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceM),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MenuGlyph(icon, tint = fg)
-            Spacer(Modifier.width(LiveWireDimens.SpaceM))
+            if (icon != null) {
+                MenuGlyph(icon, tint = fg)
+                Spacer(Modifier.width(LiveWireDimens.SpaceM))
+            }
             Text(label, style = MaterialTheme.typography.titleMedium, color = fg, modifier = Modifier.weight(1f))
             if (trailing != null) {
                 Text(trailing, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
@@ -618,7 +632,7 @@ private fun ConfirmDeleteOverlay(
         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
         Text("This removes the provider from this device.", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
-        MenuItem("Cancel", MenuIcon.CHECK_CIRCLE, onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus))
+        MenuItem("Cancel", icon = null, onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus))
         Spacer(Modifier.height(MenuGap))
         MenuItem("Delete", MenuIcon.TRASH, onClick = onConfirm, danger = true)
     }
@@ -914,7 +928,16 @@ private fun FilledField(
                 onNext = { onImeAction() },
                 onDone = { onImeAction() },
             ),
-            colors = liveWireTextFieldColors(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = LiveWireColors.OnSurface,
+                unfocusedTextColor = LiveWireColors.OnSurface,
+                focusedContainerColor = LiveWireColors.SurfaceFocused,
+                unfocusedContainerColor = LiveWireColors.SurfaceRaised,
+                cursorColor = LiveWireColors.OnSurface,
+                focusedBorderColor = LiveWireColors.Accent,
+                unfocusedBorderColor = LiveWireColors.Border,
+            ),
+            shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focusRequester)
