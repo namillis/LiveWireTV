@@ -48,7 +48,7 @@ class EpgRepository @Inject constructor(
         // Parse a window stretched by the TTL, so reopening the screen later (its window has
         // slid forward with the clock) is still a cache hit.
         val parsedWindow = EpgCachePolicy.downloadWindow(window)
-        return cache.getOrLoad(key, window = window, parsedWindow = parsedWindow, ttlMs = ttl) {
+        return cache.getOrLoad(key, providerId = cfg.id, window = window, parsedWindow = parsedWindow, ttlMs = ttl) {
             download(url, parsedWindow, channelIds)
         }
     }

@@ -30,8 +30,34 @@ object EpgCachePolicy {
         // must not share an entry: one would silently get the other's programmes only.
         val ids = channelIds?.sorted()?.joinToString(",") ?: "*"
         val material = "${cfg.id}|${guideUrl.orEmpty()}|$ids"
+        return sha256Hex(material, bytes = 16)
+    }
+
+    /**
+     * Short, non-secret hash of the provider id ALONE. It prefixes every cache file name for
+     * that provider (`<providerHash>_<keyHash>.json`) so a provider's entries can be found and
+     * deleted when it is removed or edited, without ever mapping a file back to a URL or
+     * credential. The provider id is a UUID, not a secret, but it is hashed anyway to keep file
+     * names uniform and opaque.
+     */
+    fun providerHashFor(providerId: String): String = sha256Hex(providerId, bytes = 8)
+
+    /** Filename component `<providerHash>_` shared by all of one provider's cache files. */
+    fun providerPrefixFor(providerId: String): String = "${providerHashFor(providerId)}_"
+
+    /** On-disk file name for a content [key] belonging to [providerId]: `<providerHash>_<key>.json`. */
+    fun fileNameFor(providerId: String, key: String): String = "${providerPrefixFor(providerId)}$key.json"
+
+    /**
+     * True when [fileName] is a cache file belonging to [providerId]. Old-format files written
+     * before the prefix existed (a bare `<key>.json`) never match, so they are left untouched.
+     */
+    fun isForProvider(fileName: String, providerId: String): Boolean =
+        fileName.startsWith(providerPrefixFor(providerId)) && fileName.endsWith(".json")
+
+    private fun sha256Hex(material: String, bytes: Int): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
-        return digest.take(16).joinToString("") { "%02x".format(it) }
+        return digest.take(bytes).joinToString("") { "%02x".format(it) }
     }
 
     /**
