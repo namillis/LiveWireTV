@@ -181,7 +181,7 @@ fun SearchScreen(
 
             // Indexing indicator: a thin grey progress bar with a short label, shown ONLY
             // while the corpus is still loading (§7, §9.9). Removed once results are ready.
-            if (state.loading) {
+            if (state.loading || state.enriching) {
                 Column(Modifier.padding(top = LiveWireDimens.SpaceS)) {
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth().height(3.dp),
@@ -213,7 +213,7 @@ fun SearchScreen(
                     },
                     onPlayChannel = ::playChannel,
                 )
-                grouped.isEmpty() && !state.loading -> NoResults(state.query)
+                grouped.isEmpty() && !state.loading && !state.enriching -> NoResults(state.query)
                 else -> Results(
                     grouped = grouped,
                     viewModel = viewModel,
