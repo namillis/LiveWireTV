@@ -61,8 +61,8 @@ class EpgCache @Inject constructor(
     private val memory = HashMap<String, CachedGuide>()
 
     /** Per-key lock, so two providers can load in parallel but one provider single-flights. */
-    private suspend fun lockFor(key: String): Mutex = lock.withLock {
-        locks.getOrPut(key) { Mutex() }
+    private suspend fun lockFor(entry: EntryId): Mutex = lock.withLock {
+        locks.getOrPut(entry.mapKey) { Mutex() }
     }
 
     /**
@@ -76,39 +76,49 @@ class EpgCache @Inject constructor(
      */
     suspend fun getOrLoad(
         key: String,
+        providerId: String,
         window: EpgWindow?,
         parsedWindow: EpgWindow?,
         ttlMs: Long = EpgCachePolicy.DEFAULT_TTL_MS,
         nowMs: Long = System.currentTimeMillis(),
         load: suspend () -> EpgGuide,
-    ): EpgGuide = lockFor(key).withLock {
-        read(key, window, nowMs, ttlMs)?.let { return@withLock it }
-        val guide = load()
-        write(key, guide, parsedWindow, nowMs)
-        guide
+    ): EpgGuide {
+        val entry = EntryId(providerId, key)
+        return lockFor(entry).withLock {
+            read(entry, window, nowMs, ttlMs)?.let { return@withLock it }
+            val guide = load()
+            write(entry, guide, parsedWindow, nowMs)
+            guide
+        }
     }
 
-    /** Fresh cached guide for [key] that covers [window], or null when absent, stale or too narrow. */
-    private suspend fun read(key: String, window: EpgWindow?, nowMs: Long, ttlMs: Long): EpgGuide? {
+    /** Identifies one cache entry: its content [key], namespaced by the [providerId] that owns it. */
+    private data class EntryId(val providerId: String, val key: String) {
+        /** Stable memory-map / lock key, prefixed so a provider's entries can be matched together. */
+        val mapKey: String get() = EpgCachePolicy.providerPrefixFor(providerId) + key
+    }
+
+    /** Fresh cached guide for [entry] that covers [window], or null when absent, stale or too narrow. */
+    private suspend fun read(entry: EntryId, window: EpgWindow?, nowMs: Long, ttlMs: Long): EpgGuide? {
         fun usable(c: CachedGuide) =
             EpgCachePolicy.isFresh(c.cachedAtMs, nowMs, ttlMs) &&
                 EpgCachePolicy.covers(c.windowStartMs, c.windowEndMs, window)
-        memory[key]?.let { if (usable(it)) return it.toGuide() }
+        memory[entry.mapKey]?.let { if (usable(it)) return it.toGuide() }
         val onDisk = withContext(Dispatchers.IO) {
-            runCatching { json.decodeFromString<CachedGuide>(fileFor(key).readText()) }.getOrNull()
+            runCatching { json.decodeFromString<CachedGuide>(fileFor(entry).readText()) }.getOrNull()
         } ?: return null
         if (!usable(onDisk)) return null
-        memory[key] = onDisk
+        memory[entry.mapKey] = onDisk
         return onDisk.toGuide()
     }
 
-    private suspend fun write(key: String, guide: EpgGuide, parsedWindow: EpgWindow?, nowMs: Long) {
+    private suspend fun write(entry: EntryId, guide: EpgGuide, parsedWindow: EpgWindow?, nowMs: Long) {
         val cached = guide.toCached(nowMs, parsedWindow)
-        memory[key] = cached
+        memory[entry.mapKey] = cached
         withContext(Dispatchers.IO) {
             runCatching {
                 dir.mkdirs()
-                fileFor(key).writeText(json.encodeToString<CachedGuide>(cached))
+                fileFor(entry).writeText(json.encodeToString<CachedGuide>(cached))
             }
         }
     }
@@ -120,7 +130,25 @@ class EpgCache @Inject constructor(
         withContext(Dispatchers.IO) { runCatching { dir.deleteRecursively() } }
     }
 
-    private fun fileFor(key: String) = File(dir, "$key.json")
+    /**
+     * Drops only [providerId]'s cached guides, in memory and on disk, leaving every other
+     * provider's entries intact. Call when a provider is deleted, or edited in a way that
+     * changes its guide (credentials/endpoint) so its old entries are unreachable anyway.
+     * Old-format files without a provider prefix are left untouched.
+     */
+    suspend fun clearProvider(providerId: String) = lock.withLock {
+        val prefix = EpgCachePolicy.providerPrefixFor(providerId)
+        memory.keys.removeAll { it.startsWith(prefix) }
+        // Locks stay: dropping one while a load holds it would let the next open start a
+        // second, concurrent download for the same entry.
+        withContext(Dispatchers.IO) {
+            runCatching {
+                dir.listFiles { f -> EpgCachePolicy.isForProvider(f.name, providerId) }?.forEach { it.delete() }
+            }
+        }
+    }
+
+    private fun fileFor(entry: EntryId) = File(dir, EpgCachePolicy.fileNameFor(entry.providerId, entry.key))
 
     private fun CachedGuide.toGuide(): EpgGuide {
         val byChannel = programmes.groupBy({ it.c }) {

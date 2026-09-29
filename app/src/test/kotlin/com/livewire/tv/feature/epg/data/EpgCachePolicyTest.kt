@@ -103,4 +103,56 @@ class EpgCachePolicyTest {
         val later = EpgWindow(base + ttl - 1, base + ttl - 1 + 4 * hour)
         assertTrue(EpgCachePolicy.covers(parsed.startMs, parsed.endMs, later))
     }
+
+    @Test fun `the provider hash is stable, short hex and never the raw id`() {
+        val id = "11111111-2222-3333-4444-555555555555"
+        val h = EpgCachePolicy.providerHashFor(id)
+        assertEquals(h, EpgCachePolicy.providerHashFor(id))
+        assertTrue("hash must be hex", h.matches(Regex("[0-9a-f]+")))
+        assertEquals("8 bytes -> 16 hex chars", 16, h.length)
+        assertFalse("must not leak the id", h.contains("1111"))
+    }
+
+    @Test fun `different provider ids get different hashes`() {
+        assertNotEquals(EpgCachePolicy.providerHashFor("a"), EpgCachePolicy.providerHashFor("b"))
+    }
+
+    @Test fun `the file name is providerHash underscore key dot json`() {
+        val id = "prov-1"
+        val key = "abcdef0123456789"
+        val name = EpgCachePolicy.fileNameFor(id, key)
+        assertEquals("${EpgCachePolicy.providerHashFor(id)}_$key.json", name)
+        assertTrue(name.startsWith(EpgCachePolicy.providerPrefixFor(id)))
+        assertTrue(name.endsWith(".json"))
+    }
+
+    @Test fun `the file name never contains the url or credentials`() {
+        val c = cfg("prov-1", "http://host")
+        val secretUrl = "http://host/xmltv.php?username=alice&password=hunter2"
+        val name = EpgCachePolicy.fileNameFor("prov-1", EpgCachePolicy.keyFor(c, secretUrl))
+        assertFalse(name.contains("hunter2"))
+        assertFalse(name.contains("alice"))
+        assertFalse(name.contains("host"))
+        assertTrue("only hex, underscore and .json", name.matches(Regex("[0-9a-f]+_[0-9a-f]+\\.json")))
+    }
+
+    @Test fun `isForProvider matches only that provider's prefixed files`() {
+        val mine = EpgCachePolicy.fileNameFor("prov-1", "deadbeef")
+        val other = EpgCachePolicy.fileNameFor("prov-2", "deadbeef")
+        assertTrue(EpgCachePolicy.isForProvider(mine, "prov-1"))
+        assertFalse(EpgCachePolicy.isForProvider(other, "prov-1"))
+        assertTrue(EpgCachePolicy.isForProvider(other, "prov-2"))
+    }
+
+    @Test fun `isForProvider ignores old-format unprefixed files`() {
+        // A bare <key>.json written before the prefix existed must never be claimed by any provider.
+        assertFalse(EpgCachePolicy.isForProvider("abcdef0123456789.json", "prov-1"))
+        assertFalse(EpgCachePolicy.isForProvider("abcdef0123456789.json", "prov-2"))
+    }
+
+    @Test fun `isForProvider rejects non-json and near-miss names`() {
+        val prefix = EpgCachePolicy.providerPrefixFor("prov-1")
+        assertFalse(EpgCachePolicy.isForProvider("${prefix}key.txt", "prov-1"))
+        assertFalse(EpgCachePolicy.isForProvider("key.json", "prov-1"))
+    }
 }
