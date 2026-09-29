@@ -12,6 +12,7 @@ import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,9 +49,15 @@ class GuideViewModel @Inject constructor(
 
     private var provider: ProviderConfig? = null
 
-    fun load() {
+    private var loadJob: Job? = null
+
+    fun load(forceRefresh: Boolean = false) {
+        // Guard against the double-load that a re-composed LaunchedEffect(Unit) triggers:
+        // a load already in flight (and not a forced refresh) is left to complete.
+        if (!forceRefresh && loadJob?.isActive == true) return
+        loadJob?.cancel()
         _state.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             val appSettings = settings.settings.first()
             val spanMs = TimeUnit.HOURS.toMillis(appSettings.guideWindowHours.toLong())
             val now = System.currentTimeMillis()
@@ -72,24 +79,38 @@ class GuideViewModel @Inject constructor(
                         addAll(client.liveChannels(provider!!, categoryId = category.id))
                     }
                 }
+                // Progressive display: show the channel rows immediately (no programmes yet)
+                // and clear the spinner, so the grid is usable while the large guide loads.
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        rows = channels.map { channel -> GuideRow(channel, emptyList()) },
+                        windowStartMs = windowStart,
+                    )
+                }
                 // A missing or broken guide should not hide the channel list (M3U
                 // playlists often ship without one); rows then show no programmes.
                 val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
-                val guide = runCatching { epg.fetch(provider!!, window, ids) }.getOrNull()
-                val rows = channels.map { channel ->
-                    GuideRow(
-                        channel = channel,
-                        programmes = guide?.let { g ->
-                            channel.epgChannelId?.let(g::programmesFor)
-                        } ?: emptyList(),
-                    )
-                }
-                _state.update {
-                    it.copy(loading = false, rows = rows, windowStartMs = windowStart)
+                val guide = runCatching { epg.fetch(provider!!, window, ids, forceRefresh) }.getOrNull()
+                if (guide != null) {
+                    // Fill programmes now that the guide has arrived.
+                    _state.update {
+                        it.copy(
+                            rows = channels.map { channel ->
+                                GuideRow(
+                                    channel = channel,
+                                    programmes = channel.epgChannelId?.let(guide::programmesFor) ?: emptyList(),
+                                )
+                            },
+                        )
+                    }
                 }
             } catch (_: Exception) {
+                // Only surface an error if we never got as far as showing rows.
                 _state.update {
-                    it.copy(loading = false, error = "Could not load the guide. Check the provider and network.")
+                    if (it.rows.isEmpty()) {
+                        it.copy(loading = false, error = "Could not load the guide. Check the provider and network.")
+                    } else it
                 }
             }
         }
