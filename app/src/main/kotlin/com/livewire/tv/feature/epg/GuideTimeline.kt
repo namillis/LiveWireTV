@@ -21,6 +21,21 @@ fun nowLineMinutes(nowMs: Long, windowStartMs: Long, windowSpanMs: Long): Int? {
 }
 
 /**
+ * Which cell of a row should take focus when the guide first opens: the index into
+ * [laneCells]' output whose programme is airing at [nowMs], or 0 when this row has no
+ * programme on now (an empty row, or one whose visible programmes are all past/future).
+ *
+ * Kept pure and cell-list-based so it matches exactly what the screen renders: the same
+ * [laneCells] a row draws is passed here, so index N always addresses the Nth focusable
+ * [com.livewire.tv.feature.epg] cell. The details band uses the same on-now test, so the
+ * ring and the band agree on open.
+ */
+internal fun initialFocusCellIndex(cells: List<LaneCell>, nowMs: Long): Int {
+    val onNow = cells.indexOfFirst { it.programme.airsAt(nowMs) }
+    return if (onNow >= 0) onNow else 0
+}
+
+/**
  * The guide window aligned so rows start NEAR now, not an hour before (brief). We snap the
  * start down to the previous half-hour and keep a small [leadMinutes] lead-in so the now-line
  * sits just inside the left edge with a little context before it, rather than dead-centre.
