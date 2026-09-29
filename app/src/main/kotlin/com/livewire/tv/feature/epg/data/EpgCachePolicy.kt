@@ -23,14 +23,28 @@ object EpgCachePolicy {
      * key is a one-way hash of the identity that determines guide content (id + guide URL),
      * never the URL itself. Keying on the guide URL as well as the id means changing a
      * provider's credentials or endpoint invalidates its cache.
+     *
+     * The key deliberately does NOT include the caller's channel set. A provider has ONE
+     * guide; every screen (Guide shows a few categories, Search shows every channel) reads
+     * the same downloaded document. The cache stores the parsed superset once and filters it
+     * to the caller's channels on read, so opening Search after the Guide — or vice versa —
+     * reuses the one cached guide instead of re-downloading the ~64 MB feed under a second key.
      */
-    fun keyFor(cfg: ProviderConfig, guideUrl: String?, channelIds: Set<String>? = null): String {
-        // The cached guide is filtered to [channelIds] while parsing, so callers asking for
-        // different channel sets (Home/Guide use a few categories, Search uses every channel)
-        // must not share an entry: one would silently get the other's programmes only.
-        val ids = channelIds?.sorted()?.joinToString(",") ?: "*"
-        val material = "${cfg.id}|${guideUrl.orEmpty()}|$ids"
+    fun keyFor(cfg: ProviderConfig, guideUrl: String?): String {
+        val material = "${cfg.id}|${guideUrl.orEmpty()}"
         return sha256Hex(material, bytes = 16)
+    }
+
+    /**
+     * True when a cached entry parsed for [cachedIds] holds every channel a caller asking for
+     * [requested] needs. A null [cachedIds] means the entry was parsed with no channel filter
+     * (all channels kept), so it covers any request. A null [requested] means the caller wants
+     * every channel, which only an all-channels entry can satisfy.
+     */
+    fun coversChannels(cachedIds: Set<String>?, requested: Set<String>?): Boolean {
+        if (cachedIds == null) return true          // superset: all channels present
+        if (requested == null) return false         // caller wants all; a filtered entry cannot serve it
+        return cachedIds.containsAll(requested)
     }
 
     /**
@@ -73,13 +87,34 @@ object EpgCachePolicy {
     }
 
     /**
-     * Window to parse when downloading for [requested]. The end is pushed out by [ttlMs] so
-     * the same screen reopened later within the TTL (its window slides forward with the
-     * clock) is still covered and does not re-download. The start needs no widening: later
-     * requests of the same shape start later.
+     * Extra span the parsed window reaches BACK past a caller's start. Search looks 2h into
+     * the past; the Guide only 30min. Reaching back the larger amount means a guide parsed for
+     * one screen still covers the other, so opening the second screen is a cache hit, not a
+     * reload — whichever screen downloaded first.
+     */
+    val SUPERSET_LEAD_MS: Long = TimeUnit.HOURS.toMillis(2)
+
+    /**
+     * Extra span the parsed window reaches FORWARD past a caller's end, on top of the TTL slide.
+     * The Guide's window can be several hours; Search's is 6h. Reaching forward this far means a
+     * guide parsed for the shorter screen still covers the longer one.
+     */
+    val SUPERSET_TRAIL_MS: Long = TimeUnit.HOURS.toMillis(6)
+
+    /**
+     * Window to parse when downloading for [requested]. The cache holds ONE entry per provider
+     * that every screen shares, so the parsed window is a superset: it reaches back [SUPERSET_LEAD_MS]
+     * before the request and forward [SUPERSET_TRAIL_MS] plus [ttlMs] past it. The lead/trail make
+     * the entry cover a differently-windowed sibling screen (Guide vs Search) in either open order;
+     * the TTL slide keeps the same screen reopened later within the TTL a hit as its window advances.
      */
     fun downloadWindow(requested: EpgWindow?, ttlMs: Long = DEFAULT_TTL_MS): EpgWindow? =
-        requested?.let { EpgWindow(it.startMs, it.endMs + ttlMs.coerceAtLeast(0L)) }
+        requested?.let {
+            EpgWindow(
+                startMs = it.startMs - SUPERSET_LEAD_MS,
+                endMs = it.endMs + SUPERSET_TRAIL_MS + ttlMs.coerceAtLeast(0L),
+            )
+        }
 
     /**
      * True when an entry stored at [cachedAtMs] is still fresh at [nowMs] for the given [ttlMs].
