@@ -19,6 +19,7 @@ import com.livewire.tv.feature.sports.data.ChannelMatch
 import com.livewire.tv.feature.sports.data.SportsRepository
 import com.livewire.tv.feature.sports.domain.SportsGame
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +40,10 @@ data class RecentChannel(
 
 data class SearchUiState(
     val loading: Boolean = true,
+    // True while the guide or games are still arriving after channels are live. The
+    // indexing bar stays up and "no results" waits, so a programme query is not
+    // answered before its programmes exist.
+    val enriching: Boolean = false,
     val query: String = "",
     val results: List<SearchResult> = emptyList(),
     val recentSearches: List<String> = emptyList(),
@@ -62,12 +67,23 @@ class SearchViewModel @Inject constructor(
 
     // Kept for result → playback / label resolution the screen asks for after ranking.
     private var channels: List<LiveChannel> = emptyList()
+    // The loaded EPG programmes and sports games, kept so the index can be rebuilt
+    // progressively as each source arrives (channels first, then guide, then games).
+    private var loadedProgrammes: List<EpgProgramme> = emptyList()
+    private var loadedGames: List<SportsGame> = emptyList()
     // A channel's EPG id → its programmes, so "what's on now" is an O(1) lookup per card/row.
     private var programmesByEpgId: Map<String, List<EpgProgramme>> = emptyMap()
     // A programme's channelId → the live channel that carries it, for programme playback.
     private var channelByEpgId: Map<String, LiveChannel> = emptyMap()
     // streamId → live channel, so a stored watched entry re-binds to its playlist channel.
     private var channelByStreamId: Map<String, LiveChannel> = emptyMap()
+
+    // Load guard: the corpus is loaded once per provider. [loadedFor] is the provider config
+    // (id, endpoint, login, guide URL) the finished corpus belongs to; [loadJob] tracks an
+    // in-flight load so a re-entry neither restarts nor double-loads. Switching or editing
+    // the provider makes the config differ, so Search reloads.
+    private var loadedFor: ProviderConfig? = null
+    private var loadJob: Job? = null
 
     // The persisted empty-state history. Collected once; the watched list is re-joined
     // against the channel list whenever either changes so cards get logo + now-playing.
@@ -88,21 +104,39 @@ class SearchViewModel @Inject constructor(
     }
 
     fun init() {
-        _state.update { it.copy(loading = true) }
-        viewModelScope.launch {
-            val loadedChannels = mutableListOf<LiveChannel>()
-            val programmes = mutableListOf<EpgProgramme>()
-            val games = mutableListOf<SportsGame>()
+        // The ViewModel survives section switches, so once the corpus is loaded a
+        // re-entry into Search must not re-download+re-parse the ~64 MB guide. A load
+        // already in flight is left to finish; a completed load is reused as-is.
+        val configuredProvider = storage.load().firstOrNull()
+        if (loadJob?.isActive == true) return
+        if (configuredProvider != null && configuredProvider == loadedFor) return
+        loadJob = viewModelScope.launch {
+            _state.update { it.copy(loading = true) }
+            provider = configuredProvider
 
-            storage.load().firstOrNull()?.let { configuredProvider ->
-                provider = configuredProvider
-                runCatching {
-                    // One unfiltered request returns every live channel (about 8.6k / 2.5 MB on
-                    // a large panel). Searching only a few categories silently misses most
-                    // channels.
-                    loadedChannels.addAll(client.liveChannels(configuredProvider))
-                }
-                runCatching {
+            // 1) Channels first (~0.7s / 2.5 MB). Publishing them immediately makes the
+            //    "Jump back in" rail and channel-name search usable right away, instead of
+            //    waiting on the guide. Progressive display mirrors the Guide (PR #13).
+            val loadedChannels = configuredProvider?.let {
+                runCatching { client.liveChannels(it) }.getOrDefault(emptyList())
+            } ?: emptyList()
+            publishChannels(loadedChannels)
+            // Channels are enough to leave the loading state: the empty-state rail and
+            // channel results are live now; programmes and games fill in progressively.
+            _state.update {
+                it.copy(
+                    loading = false,
+                    enriching = configuredProvider != null,
+                    results = index.search(it.query),
+                    recentChannels = resolveRecentChannels(rawWatched),
+                )
+            }
+
+            // 2) Guide and sports are independent, so run them concurrently and fold each
+            //    into the index as it arrives (rebuilding against whatever is loaded so far).
+            val epgJob = launch {
+                if (configuredProvider == null) return@launch
+                val programmes = runCatching {
                     val now = System.currentTimeMillis()
                     val window = EpgWindow(
                         startMs = now - TimeUnit.HOURS.toMillis(2),
@@ -111,37 +145,59 @@ class SearchViewModel @Inject constructor(
                     // Only programmes on channels the user can actually open are useful results.
                     val ids = loadedChannels.mapNotNullTo(HashSet()) { it.epgChannelId }
                     val guide = epg.fetch(configuredProvider, window, ids)
-                    guide.channels.forEach { channel ->
-                        programmes.addAll(guide.programmesFor(channel.id))
-                    }
-                }
+                    buildList { guide.channels.forEach { addAll(guide.programmesFor(it.id)) } }
+                }.getOrDefault(emptyList())
+                onProgrammesLoaded(programmes)
             }
-            runCatching {
-                for (league in sports.leagues().take(3)) {
-                    games.addAll(sports.scoreboard(league.id).games)
-                }
+            val sportsJob = launch {
+                val games = runCatching {
+                    buildList { for (league in sports.leagues().take(3)) addAll(sports.scoreboard(league.id).games) }
+                }.getOrDefault(emptyList())
+                onGamesLoaded(games)
             }
-
-            channels = loadedChannels
-            // First channel wins a duplicate EPG id, matching the ranked order the index uses.
-            channelByEpgId = loadedChannels
-                .filter { !it.epgChannelId.isNullOrBlank() }
-                .associateByTo(HashMap()) { it.epgChannelId!! }
-            programmesByEpgId = programmes.groupBy { it.channelId }
-            // First channel wins a duplicate stream id (they should be unique per provider).
-            channelByStreamId = loadedChannels.associateBy { it.streamId }
-
-            index = SearchIndex(channels = loadedChannels, programmes = programmes, games = games)
-            // Re-run whatever was typed while the index was still loading, and re-bind the
-            // watched history now that the channel list (logos, EPG ids) is available.
-            _state.update {
-                it.copy(
-                    loading = false,
-                    results = index.search(it.query),
-                    recentChannels = resolveRecentChannels(rawWatched),
-                )
-            }
+            epgJob.join()
+            sportsJob.join()
+            _state.update { it.copy(enriching = false) }
+            // Only a load that produced channels counts as done; an empty or failed one is
+            // retried on the next visit to Search.
+            if (loadedChannels.isNotEmpty()) loadedFor = configuredProvider
         }
+    }
+
+    /** Publish the channel corpus: bind lookups, seed the index (channels only), so channel
+     *  results and the "Jump back in" rail are live before the guide/sports arrive. */
+    private fun publishChannels(loadedChannels: List<LiveChannel>) {
+        channels = loadedChannels
+        // First channel wins a duplicate EPG id, matching the ranked order the index uses.
+        channelByEpgId = loadedChannels
+            .filter { !it.epgChannelId.isNullOrBlank() }
+            .associateByTo(HashMap()) { it.epgChannelId!! }
+        // First channel wins a duplicate stream id (they should be unique per provider).
+        channelByStreamId = loadedChannels.associateBy { it.streamId }
+        rebuildIndex()
+    }
+
+    /** Fold loaded programmes into the corpus and re-rank the current query. */
+    private fun onProgrammesLoaded(programmes: List<EpgProgramme>) {
+        loadedProgrammes = programmes
+        programmesByEpgId = programmes.groupBy { it.channelId }
+        rebuildIndex()
+        // Recent-channel cards can now show now-playing; re-bind them too.
+        _state.update {
+            it.copy(results = index.search(it.query), recentChannels = resolveRecentChannels(rawWatched))
+        }
+    }
+
+    /** Fold loaded games into the corpus and re-rank the current query. */
+    private fun onGamesLoaded(games: List<SportsGame>) {
+        loadedGames = games
+        rebuildIndex()
+        _state.update { it.copy(results = index.search(it.query)) }
+    }
+
+    /** Rebuild the ranking index from whatever parts of the corpus are loaded so far. */
+    private fun rebuildIndex() {
+        index = SearchIndex(channels = channels, programmes = loadedProgrammes, games = loadedGames)
     }
 
     fun run(query: String) {
