@@ -51,16 +51,15 @@ class SportsViewModel @Inject constructor(
                 val selected = leagues.firstOrNull()?.id
                 _state.update { it.copy(leagues = leagues, selectedLeagueId = selected) }
 
-                // Load the user's channels once for game→channel fusion (best-effort).
+                // Load the user's channels for game→channel fusion (best-effort), alongside
+                // the scoreboard rather than before it. Every channel, not a sample of
+                // categories: this provider lists no sports in its first 8 categories, so the old
+                // first-8 sample held no ESPN, Prime or NHL channel at all.
                 storage.load().firstOrNull()?.let { prov ->
                     provider = prov
-                    channels = runCatching {
-                        buildList {
-                            for (cat in client.liveCategories(prov).take(8)) {
-                                addAll(client.liveChannels(prov, categoryId = cat.id))
-                            }
-                        }
-                    }.getOrDefault(emptyList())
+                    launch {
+                        channels = runCatching { client.liveChannels(prov) }.getOrDefault(emptyList())
+                    }
                 }
 
                 if (selected != null) loadLeague(selected)
