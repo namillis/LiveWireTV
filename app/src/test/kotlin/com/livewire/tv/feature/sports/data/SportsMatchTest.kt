@@ -118,4 +118,56 @@ class SportsMatchTest {
         assertEquals("fx", matches[0].channel.streamId) // exact network ranks above the affiliate
         assertEquals("a5", matches[1].channel.streamId)
     }
+
+    // Real provider names (teck-tv, 2026-09-29) for NYR @ BOS on ESPN.
+    private val rangersAtBruins = SportsGame(
+        id = "g2", leagueId = "nhl", startTimeMs = 0L,
+        status = GameStatus(GameState.PRE),
+        home = TeamSide("1", "Boston Bruins", "BOS", isHome = true, shortName = "Bruins"),
+        away = TeamSide("2", "New York Rangers", "NYR", shortName = "Rangers"),
+        broadcastNetworks = listOf("ESPN"),
+    )
+
+    @Test fun `a channel naming both teams ranks above the network`() {
+        val m = SportsRepository.matchChannels(
+            rangersAtBruins,
+            listOf(
+                ch("1", "US - ESPN HD ◉"),
+                ch("2", "US - NHL GAME 03 : NEW YORK RANGERS @ BOSTON BRUINS SEP 29 – 8:00 PM ET / 1:00 AM UK"),
+                ch("3", "US - ESPN PLUS 61 : NHL: NYR @ BOS • MTL @ TOR SEP 29 – 8:00 PM ET / SEP 30 – 1:00 AM UK"),
+            ),
+        )
+        assertEquals(listOf("2", "3", "1"), m.map { it.channel.streamId })
+        assertEquals(SportsRepository.GAME_LISTING, m[0].matchedNetwork)
+        assertEquals("ESPN", m[2].matchedNetwork)
+    }
+
+    @Test fun `a listing by nickname matches a streaming-only game`() {
+        val game = SportsGame(
+            id = "g3", leagueId = "mlb", startTimeMs = 0L,
+            status = GameStatus(GameState.PRE),
+            home = TeamSide("1", "New York Yankees", "NYY", isHome = true, shortName = "Yankees"),
+            away = TeamSide("2", "Boston Red Sox", "BOS", shortName = "Red Sox"),
+            broadcastNetworks = listOf("Prime Video"),
+        )
+        val m = SportsRepository.matchChannels(
+            game,
+            listOf(
+                ch("1", "US - PRIME 01 :"),
+                ch("2", "US - PEACOCK 03 : RED SOX @ YANKEES SEP 29 – 8:00 PM ET / SEP 30 – 1:00 AM UK"),
+            ),
+        )
+        assertEquals(listOf("2"), m.map { it.channel.streamId })
+    }
+
+    @Test fun `a channel naming only one team is not a game listing`() {
+        val m = SportsRepository.matchChannels(
+            rangersAtBruins,
+            listOf(
+                ch("1", "US - NHL TEAMS - BOSTON BRUINS"),
+                ch("2", "US - NHL GAME 02 : MONTREAL CANADIENS @ TORONTO MAPLE LEAFS SEP 29"),
+            ),
+        )
+        assertTrue(m.isEmpty())
+    }
 }
