@@ -151,7 +151,7 @@ internal fun BoxScope.GuidePreviewLayer(state: GuidePreviewState) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
-                    (android.view.LayoutInflater.from(ctx).inflate(R.layout.livewire_player_view, null) as PlayerView)
+                    (android.view.LayoutInflater.from(ctx).inflate(R.layout.livewire_player_view, android.widget.FrameLayout(ctx), false) as PlayerView)
                         .apply {
                             player = state.player.engine.exoPlayer
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
