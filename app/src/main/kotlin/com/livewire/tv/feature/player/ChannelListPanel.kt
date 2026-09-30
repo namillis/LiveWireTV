@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -28,7 +29,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -38,15 +38,19 @@ import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireProgress
-import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
 
 /**
- * The Channels side panel (design system §9.5-style list, mockup option3-channels.png): a
- * left-hand panel listing the channels in the PLAYING channel's category — number, name,
- * now-playing + progress — with the playing one tagged WATCHING. Focus starts on the playing
- * channel. A right-side preview shows the focused channel's programme (title, time · category
- * · min left, description). OK switches channel in place; Back/▶ closes (handled by the screen).
+ * The Channels side panel (mockup option3-channels.png): a left-hand panel listing the
+ * channels in the PLAYING channel's category — number, name, now-playing + progress — with
+ * the playing one tagged WATCHING. Focus starts on the playing channel. A right-side preview,
+ * anchored to the right safe edge so it never overlaps the panel, shows the focused channel's
+ * programme (title, time · category · min left, description). OK switches channel in place;
+ * Back/▶ closes (handled by the screen).
+ *
+ * Rows are flat ([PlayerFlatRow]): no fill or border at rest, only the focused row is raised
+ * with the amber ring. The panel sits inside the 48 dp horizontal safe area so the focused
+ * ring and 1.02 scale are never clipped.
  */
 @Composable
 fun ChannelListPanel(
@@ -56,7 +60,6 @@ fun ChannelListPanel(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.fillMaxSize()) {
-        // Left panel.
         val playingIndex = state.playingIndex.coerceAtLeast(0)
         var focusedIndex by remember(state.items) { mutableIntStateOf(playingIndex) }
         val listState = rememberLazyListState()
@@ -66,14 +69,14 @@ fun ChannelListPanel(
             Modifier
                 .align(Alignment.CenterStart)
                 .fillMaxHeight()
-                .width(470.dp)
-                .padding(LiveWireDimens.SafeVertical)
+                .padding(start = LiveWireDimens.SafeHorizontal, top = LiveWireDimens.SafeVertical, bottom = LiveWireDimens.SafeVertical)
+                .width(430.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(LiveWireColors.Surface)
-                .padding(horizontal = LiveWireDimens.SpaceS, vertical = LiveWireDimens.SpaceL),
+                .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceL),
         ) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+                Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceS, vertical = LiveWireDimens.SpaceS),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(state.categoryName.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
@@ -81,7 +84,7 @@ fun ChannelListPanel(
                 Text("${state.items.size} channels", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
-            LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 itemsIndexed(state.items, key = { _, it -> it.channel.streamId }) { index, item ->
                     ChannelRow(
                         item = item,
@@ -96,14 +99,14 @@ fun ChannelListPanel(
             HintRow()
         }
 
-        // Right-side preview of the focused channel.
+        // Right-side preview, anchored to the right safe edge (never over the left panel).
         state.items.getOrNull(focusedIndex)?.let { focused ->
             Preview(
                 item = focused,
                 now = now,
                 modifier = Modifier.align(Alignment.BottomEnd)
                     .padding(horizontal = LiveWireDimens.SafeHorizontal, vertical = LiveWireDimens.SafeVertical)
-                    .widthIn(max = 620.dp),
+                    .width(380.dp),
             )
         }
 
@@ -127,24 +130,22 @@ private fun ChannelRow(
     onFocused: () -> Unit,
     onClick: () -> Unit,
 ) {
-    LiveWireSurface(
+    PlayerFlatRow(
         onClick = onClick,
-        restingColor = LiveWireColors.Surface,
-        focusedScale = LiveWireDimens.FocusScaleWide,
         modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
-            .fillMaxWidth()
             .onFocusChanged { if (it.isFocused) onFocused() },
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceM),
+            // ~43 dp content ≈ 86 px at 1080p, so ~6 channels fit (mockup).
+            Modifier.fillMaxWidth().heightIn(min = 43.dp).padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL),
+            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
         ) {
             Text(
                 item.number,
                 style = MaterialTheme.typography.labelMedium,
                 color = LiveWireColors.OnSurfaceMuted,
-                modifier = Modifier.width(36.dp),
+                modifier = Modifier.width(34.dp),
             )
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
@@ -158,7 +159,7 @@ private fun ChannelRow(
                     )
                     if (watching) WatchingTag()
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
                     programmeLine(item.nowPlaying),
                     style = MaterialTheme.typography.bodyMedium,
@@ -167,8 +168,8 @@ private fun ChannelRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (item.nowPlaying != null) {
-                    Spacer(Modifier.height(6.dp))
-                    LiveWireProgress(item.nowPlaying.progressAt(now), Modifier.fillMaxWidth(), height = 4.dp)
+                    Spacer(Modifier.height(5.dp))
+                    LiveWireProgress(item.nowPlaying.progressAt(now), Modifier.fillMaxWidth(), height = 3.dp)
                 }
             }
         }
@@ -180,17 +181,10 @@ private fun WatchingTag() {
     Box(
         Modifier
             .clip(RoundedCornerShape(4.dp))
-            .background(Color.Transparent)
-            .padding(0.dp),
+            .background(LiveWireColors.SurfaceRaised)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(LiveWireColors.SurfaceRaised)
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-        ) {
-            Text("WATCHING", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurfaceMuted)
-        }
+        Text("WATCHING", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurfaceMuted)
     }
 }
 
@@ -221,7 +215,7 @@ private fun Preview(item: ChannelListItem, now: Long, modifier: Modifier) {
 @Composable
 private fun HintRow() {
     Row(
-        Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+        Modifier.padding(horizontal = LiveWireDimens.SpaceS, vertical = LiveWireDimens.SpaceS),
         horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
     ) {
         KeyHint("OK", "Watch")

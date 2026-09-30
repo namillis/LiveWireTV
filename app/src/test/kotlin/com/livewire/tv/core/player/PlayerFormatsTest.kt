@@ -77,6 +77,24 @@ class PlayerFormatsTest {
         assertEquals("", PlayerFormats.timeRange(0L, ninePm, ny))
     }
 
+    @Test fun `time range shows meridiem on both ends when they differ across noon-midnight`() {
+        // 8:00 PM -> 12:00 AM (next day) crosses the PM/AM boundary: both ends need meridiem.
+        val midnight = ninePm + 3L * 3_600_000L // 12:00 AM
+        assertEquals("8:00 PM–12:00 AM", PlayerFormats.timeRange(eightPm, midnight, ny))
+        // A same-half range keeps a single trailing meridiem.
+        assertEquals("8:00–9:00 PM", PlayerFormats.timeRange(eightPm, ninePm, ny))
+    }
+
+    @Test fun `range endpoints match what the progress bar renders`() {
+        // Same half: left bare, right with meridiem.
+        assertEquals("8:00", PlayerFormats.rangeStart(eightPm, ninePm, ny))
+        assertEquals("9:00 PM", PlayerFormats.rangeEnd(ninePm, ny))
+        // Crossing the boundary: left also carries its meridiem.
+        val midnight = ninePm + 3L * 3_600_000L
+        assertEquals("8:00 PM", PlayerFormats.rangeStart(eightPm, midnight, ny))
+        assertEquals("12:00 AM", PlayerFormats.rangeEnd(midnight, ny))
+    }
+
     @Test fun `minutes-left rounds down and says ends soon in the final minute`() {
         val now = eightPm
         assertEquals("60 min left", PlayerFormats.minutesLeft(ninePm, now))

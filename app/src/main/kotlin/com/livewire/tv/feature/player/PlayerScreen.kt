@@ -11,8 +11,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -41,11 +47,18 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.livewire.tv.core.player.ExoPlayerEngine
 import com.livewire.tv.core.player.PlaybackState
+import com.livewire.tv.core.player.PlayerFormats
+import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
+import com.livewire.tv.ui.theme.LiveWireColors
+import com.livewire.tv.ui.theme.LiveWireDimens
+import com.livewire.tv.ui.theme.LiveWireProgress
+import com.livewire.tv.ui.theme.LiveWireTheme
 
 /**
  * Full-screen player with the "Option 3" overlay (design system §9.6). The nav layer passes
@@ -188,7 +201,33 @@ fun PlayerScreen(
                 )
             }
 
-            // Options panel (right).
+            // A scrim dims the video whenever a side panel is open (design system §9.5:
+            // "content dimmed behind an open drawer or dialog"), so panel and preview text
+            // stay readable over any broadcast. Mockups option3-options / option3-channels.
+            AnimatedVisibility(
+                visible = panel != PlayerPanel.NONE,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Box(Modifier.fillMaxSize().background(LiveWireColors.Scrim))
+            }
+
+            // Options panel (right) + its bottom-left mini now-playing block (mockup).
+            AnimatedVisibility(
+                visible = panel == PlayerPanel.OPTIONS,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                val channel = viewModel.currentChannel()
+                OptionsMiniInfo(
+                    channelName = channel?.name ?: source.title.ifBlank { title },
+                    nowPlaying = channel?.let(viewModel::nowPlaying),
+                    now = now,
+                    modifier = Modifier.align(Alignment.BottomStart),
+                )
+            }
             AnimatedVisibility(
                 visible = panel == PlayerPanel.OPTIONS,
                 enter = slideInHorizontally { it },
@@ -243,6 +282,50 @@ private fun PictureMode.toResizeMode(): Int = when (this) {
     PictureMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
     PictureMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
     PictureMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+}
+
+/**
+ * The bottom-left mini now-playing block shown while the Options panel is open (mockup
+ * option3-options.png): channel name, programme title, and a progress bar with "N min left".
+ */
+@Composable
+private fun OptionsMiniInfo(
+    channelName: String,
+    nowPlaying: EpgProgramme?,
+    now: Long,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .widthIn(max = 620.dp)
+            .padding(horizontal = LiveWireDimens.SafeHorizontal, vertical = LiveWireDimens.SafeVertical),
+    ) {
+        Text(
+            channelName,
+            style = MaterialTheme.typography.titleMedium,
+            color = LiveWireColors.OnSurfaceMuted,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            nowPlaying?.title ?: channelName,
+            style = MaterialTheme.typography.headlineSmall,
+            color = LiveWireColors.OnSurface,
+            maxLines = 1,
+        )
+        if (nowPlaying != null) {
+            Spacer(Modifier.height(LiveWireDimens.SpaceM))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                LiveWireProgress(nowPlaying.progressAt(now), Modifier.width(360.dp), height = 4.dp)
+                Spacer(Modifier.width(LiveWireDimens.SpaceM))
+                Text(
+                    PlayerFormats.minutesLeft(nowPlaying.stopMs, now),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LiveWireColors.OnSurfaceMuted,
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

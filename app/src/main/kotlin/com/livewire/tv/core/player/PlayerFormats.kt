@@ -95,6 +95,7 @@ object PlayerFormats {
 
     private val hourMinute = DateTimeFormatter.ofPattern("h:mm", Locale.US)
     private val hourMinuteMeridiem = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+    private val meridiemOnly = DateTimeFormatter.ofPattern("a", Locale.US)
 
     private fun format(ms: Long, fmt: DateTimeFormatter, zone: ZoneId): String =
         fmt.format(Instant.ofEpochMilli(ms).atZone(zone))
@@ -107,12 +108,29 @@ object PlayerFormats {
         format(ms, hourMinuteMeridiem, zone)
 
     /**
-     * "8:00–9:00 PM" — a programme's start–end, meridiem shown once at the end. Used on the
-     * channel-list rows and the preview. Returns "" when either endpoint is missing.
+     * A start–end pair sharing ONE meridiem when both endpoints fall in the same half of the
+     * day ("8:00–9:00 PM"), and carrying a meridiem on BOTH ends when they differ across the
+     * AM/PM boundary ("8:00 PM–12:00 AM"). Used by the progress-bar endpoints and the wall
+     * clock so the two ends read consistently rather than "9:00 … 10:00 PM".
+     */
+    private fun sameMeridiem(startMs: Long, stopMs: Long, zone: ZoneId): Boolean =
+        format(startMs, meridiemOnly, zone) == format(stopMs, meridiemOnly, zone)
+
+    /** Left endpoint of a range: bare when it shares the right's meridiem, else with meridiem. */
+    fun rangeStart(startMs: Long, stopMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
+        if (sameMeridiem(startMs, stopMs, zone)) clock(startMs, zone) else clockMeridiem(startMs, zone)
+
+    /** Right endpoint of a range: always with meridiem. */
+    fun rangeEnd(stopMs: Long, zone: ZoneId = ZoneId.systemDefault()): String = clockMeridiem(stopMs, zone)
+
+    /**
+     * "8:00–9:00 PM" — a programme's start–end, meridiem shown once when both share it and on
+     * both ends when they differ. Used on the channel-list rows and the preview. Returns ""
+     * when either endpoint is missing.
      */
     fun timeRange(startMs: Long, stopMs: Long, zone: ZoneId = ZoneId.systemDefault()): String {
         if (startMs <= 0L || stopMs <= 0L) return ""
-        return "${clock(startMs, zone)}–${clockMeridiem(stopMs, zone)}"
+        return "${rangeStart(startMs, stopMs, zone)}–${rangeEnd(stopMs, zone)}"
     }
 
     /** "36 min left", "ends soon" in the last minute, or "" when nothing is on. */

@@ -128,8 +128,32 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             ?.let { http.setUserAgent(it.value) }
         val others = headers.filterKeys { !it.equals("User-Agent", ignoreCase = true) }
         if (others.isNotEmpty()) http.setDefaultRequestProperties(others)
-        return DefaultMediaSourceFactory(DefaultDataSource.Factory(appContext, http))
+        return DefaultMediaSourceFactory(DefaultDataSource.Factory(appContext, http), extractorsFactory)
             .createMediaSource(MediaItem.fromUri(url))
+    }
+
+    /**
+     * Extractors factory that DECLARES an in-band CEA-608 caption track for MPEG-TS streams.
+     *
+     * IPTV live channels are usually MPEG-TS, and US broadcasters carry closed captions as
+     * CEA-608/708 in the H.264 user-data — not as a separate PID. Media3's TS extractor
+     * ignores those caption descriptors unless the expected subtitle formats are declared up
+     * front (see DefaultTsPayloadReaderFactory.FLAG_OVERRIDE_CAPTION_DESCRIPTORS), so with the
+     * default factory such a stream reports NO text tracks even when captions are present.
+     * Declaring a CEA-608 format here makes the captions selectable as an "English CC" text
+     * track; on a stream that carries none, this adds an empty track that never produces
+     * cues, which the UI simply never shows selected — safe either way.
+     */
+    private val extractorsFactory by lazy {
+        androidx.media3.extractor.DefaultExtractorsFactory().setTsSubtitleFormats(
+            listOf(
+                Format.Builder()
+                    .setSampleMimeType(MimeTypes.APPLICATION_CEA608)
+                    .setLanguage("en")
+                    .setAccessibilityChannel(1)
+                    .build(),
+            ),
+        )
     }
 
     override fun play() { player.play() }
