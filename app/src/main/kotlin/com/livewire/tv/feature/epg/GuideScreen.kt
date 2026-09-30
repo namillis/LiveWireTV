@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -291,8 +292,8 @@ private fun GuideContent(
                     .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusCard)),
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    NowLane(nowMin, hScroll.value, now)
-                    AxisRow(state.windowStartMs, spanMinutes, hScroll.value)
+                    NowLane(nowMin, { hScroll.value }, now)
+                    AxisRow(state.windowStartMs, spanMinutes) { hScroll.value }
                     if (rows.isEmpty()) {
                         NoMatches(state.query, state.categoryName)
                     } else {
@@ -360,7 +361,7 @@ private fun GuideContent(
                 // viewport that starts at the channel column and clips to it, so it never crosses
                 // into the channel column or the axis header; it hides once now scrolls off the left.
                 if (nowMin != null && rows.isNotEmpty()) {
-                    NowLine(nowMin, hScroll.value, topInset = NOW_LANE + AXIS_HEIGHT)
+                    NowLine(nowMin, { hScroll.value }, topInset = NOW_LANE + AXIS_HEIGHT)
                 }
             }
         }
@@ -449,12 +450,18 @@ private fun GuideDetailsBand(focus: GuideFocus, now: Long, preview: GuidePreview
 }
 
 /**
+ * The header lanes and the now-line follow the grid's horizontal scroll. [scrollPx] is read
+ * inside `offset {}`, in the layout phase, so scrolling moves them without recomposing, and
+ * the pixel offset is subtracted in pixels (it is not a dp value).
+ */
+
+/**
  * NOW lane: a strip above the axis. The pill lives in a viewport box that starts at the
  * channel column and clips to it, so it can never sit over the channel column or the axis
  * header. When now scrolls off the left, the pill pins to the viewport's left edge.
  */
 @Composable
-private fun NowLane(nowMin: Int?, scrollPx: Int, now: Long) {
+private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -464,11 +471,10 @@ private fun NowLane(nowMin: Int?, scrollPx: Int, now: Long) {
         Spacer(Modifier.width(CHANNEL_COL))
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp)), Alignment.CenterStart) {
             if (nowMin != null) {
-                val raw = minutesToDp(nowMin) - scrollPx.dp
-                val x = raw.coerceAtLeast(0.dp) // pin to the viewport's left edge when scrolled off
                 Box(
                     Modifier
-                        .offset(x = x)
+                        // Pin to the viewport's left edge once now has scrolled off.
+                        .offset { IntOffset((minutesToDp(nowMin).roundToPx() - scrollPx()).coerceAtLeast(0), 0) }
                         .clip(RoundedCornerShape(50))
                         .background(LiveWireColors.Live)
                         .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -482,7 +488,7 @@ private fun NowLane(nowMin: Int?, scrollPx: Int, now: Long) {
 
 /** Time-axis header: a channel corner plus 30-minute tick labels, scrolled with the rows. */
 @Composable
-private fun AxisRow(windowStartMs: Long, spanMinutes: Int, scrollPx: Int) {
+private fun AxisRow(windowStartMs: Long, spanMinutes: Int, scrollPx: () -> Int) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -499,12 +505,14 @@ private fun AxisRow(windowStartMs: Long, spanMinutes: Int, scrollPx: Int) {
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp))) {
             var m = 0
             while (m < spanMinutes) {
-                val x = minutesToDp(m) - scrollPx.dp
+                val tick = m
                 Text(
                     clockLabel(windowStartMs + TimeUnit.MINUTES.toMillis(m.toLong())),
                     style = MaterialTheme.typography.labelMedium,
                     color = LiveWireColors.OnSurface,
-                    modifier = Modifier.offset(x = x).padding(start = 6.dp),
+                    modifier = Modifier
+                        .offset { IntOffset(minutesToDp(tick).roundToPx() - scrollPx(), 0) }
+                        .padding(start = 6.dp),
                     maxLines = 1,
                 )
                 m += 30
@@ -519,15 +527,17 @@ private fun AxisRow(windowStartMs: Long, spanMinutes: Int, scrollPx: Int) {
  * and drawn at the current time under the shared scroll. Hidden once now scrolls off left.
  */
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.NowLine(nowMin: Int, scrollPx: Int, topInset: Dp) {
-    val raw = minutesToDp(nowMin) - scrollPx.dp
-    if (raw < 0.dp) return // now has scrolled out of view to the left; hide the line
+private fun androidx.compose.foundation.layout.BoxScope.NowLine(nowMin: Int, scrollPx: () -> Int, topInset: Dp) {
     Row(Modifier.matchParentSize()) {
         Spacer(Modifier.width(CHANNEL_COL))
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp))) {
             Box(
                 Modifier
-                    .offset(x = raw, y = topInset)
+                    .offset {
+                        val x = minutesToDp(nowMin).roundToPx() - scrollPx()
+                        // Once now has scrolled out of view to the left, park the line off-screen.
+                        IntOffset(if (x < 0) -LINE_PARK_PX else x, topInset.roundToPx())
+                    }
                     .width(2.dp)
                     .fillMaxHeight()
                     .background(LiveWireColors.Live),
@@ -672,6 +682,9 @@ private fun EmptyCell(widthDp: Dp, focusRequester: FocusRequester?, onFocus: () 
 private fun LiveDot() {
     Box(Modifier.size(8.dp).clip(RoundedCornerShape(50)).background(LiveWireColors.Live))
 }
+
+/** Far enough left to be clipped by the lane viewport. */
+private const val LINE_PARK_PX = 10_000
 
 private fun minutesToDp(minutes: Int): Dp = (minutes * PX_PER_MINUTE).dp
 
