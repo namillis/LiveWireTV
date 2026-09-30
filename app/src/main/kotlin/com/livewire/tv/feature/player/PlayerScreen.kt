@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,7 +67,7 @@ fun PlayerScreen(
     val focusRequester = remember { FocusRequester() }
 
     var controlsVisible by remember { mutableStateOf(true) }
-    var revealTick by remember { mutableStateOf(0) }
+    var revealTick by remember { mutableIntStateOf(0) }
     fun reveal() {
         controlsVisible = true
         revealTick++
@@ -114,7 +115,7 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize(),
                 factory = { viewContext ->
                     (android.view.LayoutInflater.from(viewContext)
-                        .inflate(com.livewire.tv.R.layout.livewire_player_view, null) as PlayerView)
+                        .inflate(com.livewire.tv.R.layout.livewire_player_view, android.widget.FrameLayout(viewContext), false) as PlayerView)
                         .apply {
                             keepScreenOn = true
                             player = engine.exoPlayer

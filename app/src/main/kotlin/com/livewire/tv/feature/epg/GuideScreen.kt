@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -158,7 +159,7 @@ private fun GuideContent(
     // The time the user is browsing. Up/Down keep it; Left/Right set it from the cell they
     // land on (now while that cell is on air). Each row focuses the cell under it, so moving
     // down the live column over an empty row or a long programme stays in the live column.
-    var anchorMs by remember { mutableStateOf(initialPosition.anchorMs ?: now) }
+    var anchorMs by remember { mutableLongStateOf(initialPosition.anchorMs ?: now) }
     var focusedStreamId by remember { mutableStateOf(initialPosition.focusedStreamId) }
     // Set just before we move focus ourselves, so the landing cell does not reset the anchor.
     var programmaticMove by remember { mutableStateOf(false) }
@@ -674,8 +675,14 @@ private fun LiveDot() {
 
 private fun minutesToDp(minutes: Int): Dp = (minutes * PX_PER_MINUTE).dp
 
-private val timeFmt = SimpleDateFormat("h:mm a", Locale.getDefault())
-private fun clockLabel(ms: Long): String = timeFmt.format(Date(ms))
+// Rebuilt when the device locale changes, so times follow a language switch mid-session.
+private var timeFmt: Pair<Locale, SimpleDateFormat>? = null
+private fun clockLabel(ms: Long): String {
+    val locale = Locale.getDefault()
+    val fmt = timeFmt?.takeIf { it.first == locale }?.second
+        ?: SimpleDateFormat("h:mm a", locale).also { timeFmt = locale to it }
+    return fmt.format(Date(ms))
+}
 
 /** onFocusChanged that fires our callback only when this cell gains focus. */
 private fun Modifier.androidx_onFocus(onFocus: () -> Unit): Modifier =
