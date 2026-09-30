@@ -23,8 +23,8 @@ on the device.
   with rails of channels grouped by your provider's categories.
 - **Guide.** A programme grid with a red now-line. You can filter it by
   category or keyword, and it keeps your place when you come back from a
-  channel. After 2 seconds, the focused channel plays muted in the band above
-  the grid that shows the programme details. A downloaded guide is reused for up to 3 hours, so reopening the
+  channel. Above the grid, a details band describes the focused programme,
+  and after 2 seconds it also plays that channel muted. A downloaded guide is reused for up to 3 hours, so reopening the
   Guide in that time doesn't download it again.
 - **Player.** Up and Down change channel. Left opens the channel list, and
   Right opens Options: audio track, subtitles, picture mode (fit, fill, zoom),
@@ -34,8 +34,9 @@ on the device.
   and the channels you watched last.
 - **Sports.** Scores and schedules from ESPN for the NFL, college football, the
   NBA, men's college basketball, MLB, the NHL and the Premier League. Choosing
-  a game opens a picker with the channels most likely to carry it, checked
-  against your guide.
+  a game opens a picker listing your channels whose names match the game's
+  network or teams, ranked by how closely they match and checked against your
+  guide.
 - **Providers.** Add more than one Xtream or M3U provider and switch between
   them. Placeholder rows that some providers use as category headers
   (`##### NEWS #####`) are hidden.
@@ -102,7 +103,7 @@ in Settings.
   copied to Google Drive or a new device.
 - LiveWire connects to your provider (channels, guide, streams), to ESPN's
   public scoreboard API for the Sports screen, and to wherever your provider's
-  channel list says the channel logos are hosted. Nothing else.
+  channel list says the channel logos are hosted.
 - There are no analytics, ads or crash reporting. The full source is in this
   repository if you want to check.
 
@@ -116,6 +117,11 @@ in Settings.
 You need JDK 17 and the Android SDK. Gradle comes with the wrapper, and the
 Android Gradle Plugin, SDK levels and library versions are set in
 `app/build.gradle.kts` and `gradle/libs.versions.toml`.
+
+```bash
+git clone https://github.com/namillis/LiveWireTV.git
+cd LiveWireTV
+```
 
 ```bash
 ./gradlew :app:assembleDebug          # debug APK in app/build/outputs/apk/debug/
