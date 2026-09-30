@@ -39,4 +39,5 @@ class SettingsViewModel @Inject constructor(
     fun setStreamFormat(f: StreamFormat) = viewModelScope.launch { store.setStreamFormat(f) }
     fun setGuideWindowHours(h: Int) = viewModelScope.launch { store.setGuideWindowHours(h) }
     fun setShowNowPlaying(v: Boolean) = viewModelScope.launch { store.setShowNowPlaying(v) }
+    fun setGuidePreview(v: Boolean) = viewModelScope.launch { store.setGuidePreview(v) }
 }

@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -87,6 +88,8 @@ internal fun GuideCategoryColumn(
     onSelect: (String?) -> Unit,
     onQueryChange: (String) -> Unit,
     onExitRight: () -> Boolean,
+    /** Where focus goes when it arrives from the left (the nav drawer): the grid, not here. */
+    gridEntry: () -> FocusRequester?,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -113,7 +116,12 @@ internal fun GuideCategoryColumn(
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
             .onFocusChanged { expanded = it.hasFocus }
             .focusProperties {
-                enter = { requesters[selectedId] ?: requesters.getValue(null) }
+                // Arriving from the drawer (moving Right) passes through to the grid; the column
+                // opens only when the user presses Left from the grid.
+                enter = { direction ->
+                    (if (direction == FocusDirection.Right) gridEntry() else null)
+                        ?: requesters[selectedId] ?: requesters.getValue(null)
+                }
             }
             .focusGroup()
             .onPreviewKeyEvent { event ->
