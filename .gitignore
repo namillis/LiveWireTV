@@ -32,3 +32,4 @@ Thumbs.db
 .kiro/
 docs/*
 !docs/RELEASING.md
+!docs/images/
