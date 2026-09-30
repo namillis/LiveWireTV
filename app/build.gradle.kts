@@ -19,6 +19,22 @@ android {
         versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("versionName") as String?) ?: "1.0.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // --- Self-update configuration --------------------------------------------
+        // The update feature reads GitHub Releases for the app package. Owner/name and
+        // the asset naming go in BuildConfig so forks and the local e2e test can point
+        // elsewhere (-PupdateRepoOwner, -PupdateRepoName, -PupdateApiBase, ...).
+        val updateRepoOwner = (project.findProperty("updateRepoOwner") as String?) ?: "namillis"
+        val updateRepoName = (project.findProperty("updateRepoName") as String?) ?: "LiveWireTV"
+        // API base for the release lookup. Real builds hit GitHub; the emulator e2e
+        // test overrides this with -PupdateApiBase=http://127.0.0.1:8765 (adb reverse).
+        val updateApiBase = (project.findProperty("updateApiBase") as String?) ?: "https://api.github.com"
+        // Downloaded asset filename pattern; %s is the versionName (e.g. livewire-0.1.4.apk).
+        val updateAssetPattern = (project.findProperty("updateAssetPattern") as String?) ?: "livewire-%s.apk"
+        buildConfigField("String", "UPDATE_REPO_OWNER", "\"$updateRepoOwner\"")
+        buildConfigField("String", "UPDATE_REPO_NAME", "\"$updateRepoName\"")
+        buildConfigField("String", "UPDATE_API_BASE", "\"$updateApiBase\"")
+        buildConfigField("String", "UPDATE_ASSET_PATTERN", "\"$updateAssetPattern\"")
     }
 
     // Release signing. Config is populated ONLY when the keystore env vars are present
@@ -38,13 +54,23 @@ android {
     }
 
     buildTypes {
+        // UPDATES_ENABLED defaults to false for debug and true for release; either can be
+        // forced with -PupdatesEnabled=true|false (the e2e test builds debug APKs with it on).
+        val updatesEnabledOverride = (project.findProperty("updatesEnabled") as String?)?.toBooleanStrictOrNull()
+        // Extra id suffix for throwaway installs (e.g. -PappIdSuffix=.updtest), appended after
+        // the build-type suffix so it installs beside the release and normal debug apps.
+        val extraIdSuffix = (project.findProperty("appIdSuffix") as String?)?.takeIf { it.isNotBlank() }
+
         debug {
             // Distinct id so a debug/test build can be installed ALONGSIDE a release
             // build (different signing keys otherwise force an uninstall). -> com.livewire.tv.debug
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = ".debug" + (extraIdSuffix ?: "")
             versionNameSuffix = "-debug"
+            buildConfigField("boolean", "UPDATES_ENABLED", (updatesEnabledOverride ?: false).toString())
         }
         release {
+            extraIdSuffix?.let { applicationIdSuffix = it }
+            buildConfigField("boolean", "UPDATES_ENABLED", (updatesEnabledOverride ?: true).toString())
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -62,6 +88,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {
