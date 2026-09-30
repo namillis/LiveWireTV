@@ -116,6 +116,10 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         videoUnsupported = false
         _mediaInfo.value = MediaInfo()
         _status.value = PlaybackStatus(state = PlaybackState.BUFFERING)
+        // Stop first so a channel switch releases the old decoder and stream connection. A
+        // decoder reused across a resolution change (1080p -> 720p) drew the new video into
+        // part of the TextureView beside a stale frame.
+        player.stop()
         player.setMediaSource(mediaSourceFor(url, headers))
         player.playWhenReady = play
         player.prepare()
