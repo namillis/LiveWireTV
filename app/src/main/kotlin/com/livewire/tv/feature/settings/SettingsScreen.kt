@@ -216,6 +216,8 @@ private fun SettingsList(
                     onDecrement = { viewModel.setGuideWindowHours(SettingsFormat.decrementGuideWindow(s.guideWindowHours)) },
                     onIncrement = { viewModel.setGuideWindowHours(SettingsFormat.incrementGuideWindow(s.guideWindowHours)) },
                 )
+                Spacer(Modifier.height(LiveWireDimens.SpaceXs))
+                GuidePreviewRow(on = s.guidePreview) { viewModel.setGuidePreview(!s.guidePreview) }
             }
         }
         item("home") {
@@ -474,6 +476,27 @@ private fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
             fontWeight = FontWeight.Bold,
             color = if (enabled) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
         )
+    }
+}
+
+/** Guide channel preview on/off, the same switch as the now-playing row. */
+@Composable
+private fun GuidePreviewRow(on: Boolean, onToggle: () -> Unit) {
+    SettingRow(
+        title = "Channel preview",
+        description = "Play the focused channel, muted, after 2 seconds",
+        onClick = onToggle,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                SettingsFormat.onOffLabel(on),
+                style = MaterialTheme.typography.labelMedium,
+                color = LiveWireColors.OnSurface,
+                modifier = Modifier.widthIn(min = 26.dp),
+            )
+            Spacer(Modifier.width(LiveWireDimens.SpaceS))
+            NeutralSwitch(on = on)
+        }
     }
 }
 
