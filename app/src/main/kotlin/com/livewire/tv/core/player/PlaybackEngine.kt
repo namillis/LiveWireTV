@@ -21,6 +21,12 @@ data class PlaybackStatus(
 interface PlaybackEngine {
     val status: StateFlow<PlaybackStatus>
 
+    /**
+     * Audio/subtitle tracks and decoded video format, kept in sync as ExoPlayer resolves the
+     * stream. The Options panel reads this instead of touching ExoPlayer's own types.
+     */
+    val mediaInfo: StateFlow<MediaInfo>
+
     /** Attach the render surface (from the Compose PlayerView / SurfaceView). */
     fun attach(surface: Surface)
 
@@ -33,6 +39,12 @@ interface PlaybackEngine {
     fun play()
     fun pause()
     fun togglePlayPause()
+
+    /** Select the audio track with this [MediaInfo] id. No-op if the id is unknown. */
+    fun selectAudioTrack(id: String)
+
+    /** Turn subtitles on to the [MediaInfo] text-track id, or OFF when [id] is null. */
+    fun selectTextTrack(id: String?)
 
     /** Re-open the current media — the primary resilience path for a dropped live stream. */
     fun retry()
