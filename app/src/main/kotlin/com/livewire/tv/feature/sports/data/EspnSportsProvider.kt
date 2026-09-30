@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.sports.data
 
+import android.annotation.SuppressLint
 import com.livewire.tv.feature.sports.domain.GameState
 import com.livewire.tv.feature.sports.domain.GameStatus
 import com.livewire.tv.feature.sports.domain.SportsGame
@@ -165,7 +166,12 @@ private fun kotlinx.serialization.json.JsonElement?.str(): String? =
  * ESPN's scoreboard dates omit seconds ("2026-09-29T00:15Z"), which `Instant.parse`
  * rejects on Android's runtime, so every game fell back to "now" as its start time.
  * This accepts the value with or without seconds, and with `Z` or a numeric offset.
+ *
+ * Safe below API 26: core library desugaring rewrites these calls to the bundled
+ * `j$.time` copy (checked in the dex). Lint's desugared-API list names the builder's
+ * methods but not its constructor, so it reports a NewApi error that cannot happen.
  */
+@SuppressLint("NewApi")
 internal fun parseEspnDate(s: String?): Long? {
     if (s.isNullOrBlank()) return null
     val formatter = java.time.format.DateTimeFormatterBuilder()
