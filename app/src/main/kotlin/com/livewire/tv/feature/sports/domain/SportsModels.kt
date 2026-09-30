@@ -21,6 +21,8 @@ data class TeamSide(
     val logoUrl: String? = null,
     val score: Int? = null,
     val isHome: Boolean = false,
+    // Nickname as listings often write it ("Red Sox", "Yankees"); empty when unknown.
+    val shortName: String = "",
 )
 
 data class SportsGame(

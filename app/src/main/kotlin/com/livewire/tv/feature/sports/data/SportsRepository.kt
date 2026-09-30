@@ -6,6 +6,7 @@ import com.livewire.tv.feature.sports.domain.SportsLeague
 import com.livewire.tv.feature.sports.domain.SportsProvider
 import com.livewire.tv.feature.sports.domain.SportsScoreboard
 import com.livewire.tv.feature.sports.domain.SportsStandings
+import com.livewire.tv.feature.sports.domain.TeamSide
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,6 +40,7 @@ class SportsRepository @Inject constructor(
          *  - a spin-off of the same brand ("FOX News", "FOX Weather", "FOX Sports 1")
          *    still matches but sinks to the bottom, since it does not carry the game;
          *  - a squashed-name containment ("ESPN2" vs "ESPN 2") is the last resort.
+         * A channel whose name lists both teams (a per-event channel) ranks above all of these.
          * Deduped by channel, keeping its best score. Ties keep provider order.
          * Channels with the same name (providers often list a backup stream under an
          * identical name) appear once, as the best-ranked of them, since the picker
@@ -47,9 +49,22 @@ class SportsRepository @Inject constructor(
         fun matchChannels(game: SportsGame, channels: List<LiveChannel>): List<ChannelMatch> {
             data class Scored(val match: ChannelMatch, val score: Int, val order: Int)
             val best = LinkedHashMap<String, Scored>()
+            val homeNames = teamNames(game.home)
+            val awayNames = teamNames(game.away)
             channels.forEachIndexed { order, ch ->
                 val chTokens = tokenize(ch.name)
                 if (chTokens.isEmpty()) return@forEachIndexed
+                // Providers run per-event channels named after the game itself
+                // ("NHL GAME 03 : NEW YORK RANGERS @ BOSTON BRUINS", "ESPN PLUS 61 : NHL:
+                // NYR @ BOS", "PEACOCK 03 : RED SOX @ YANKEES"). Naming both teams beats any
+                // network match: it is the stream carrying this game, and it is often the
+                // only one when the network is a streaming service (ESPN+, Prime Video).
+                if (homeNames.any { indexOfSublist(chTokens, it) >= 0 } &&
+                    awayNames.any { indexOfSublist(chTokens, it) >= 0 }
+                ) {
+                    best[ch.streamId] = Scored(ChannelMatch(ch, GAME_LISTING), EVENT_SCORE, order)
+                    return@forEachIndexed
+                }
                 for (network in game.broadcastNetworks) {
                     val netTokens = tokenize(network)
                     if (netTokens.isEmpty()) continue
@@ -97,6 +112,19 @@ class SportsRepository @Inject constructor(
         }
 
         private const val MIN_SQUASHED = 3
+
+        /** Above every network score (an exact network is 100). */
+        private const val EVENT_SCORE = 200
+
+        /** What the picker shows as the reason for an event-channel match ("MATCHED THIS GAME"). */
+        const val GAME_LISTING = "this game"
+
+        /** Every way a listing may name [team]: full name, nickname, abbreviation. */
+        private fun teamNames(team: TeamSide): List<List<String>> =
+            listOf(team.name, team.shortName, team.abbreviation)
+                .map(::tokenize)
+                .filter { it.isNotEmpty() }
+                .distinct()
 
         private val qualityTags = setOf("hd", "fhd", "uhd", "4k", "sd", "hevc", "h265", "raw")
 
