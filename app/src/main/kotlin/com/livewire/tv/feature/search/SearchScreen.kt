@@ -109,11 +109,14 @@ fun SearchScreen(
     val resultsFocus = remember { FocusRequester() }
     val emptyStateFocus = remember { FocusRequester() }
     var hasResultsFocusable by remember { mutableStateOf(false) }
+    // Set on submit: move focus to the first result once the background ranking lands.
+    var focusResultsWhenReady by remember { mutableStateOf(false) }
 
     // Record a search when the user leaves Search with a committed query (2+ chars). Kept in
     // rememberUpdatedState so the onDispose below reads the query as it was at teardown, not
     // the value captured when the effect was first set up.
-    val latestQuery = rememberUpdatedState(query)
+    // Only a SUBMITTED query counts; a half-typed one in the field is never recorded.
+    val latestQuery = rememberUpdatedState(state.query)
     DisposableEffect(Unit) {
         onDispose { viewModel.recordSearchIfEligible(latestQuery.value) }
     }
@@ -131,7 +134,7 @@ fun SearchScreen(
 
     fun playChannel(channel: LiveChannel) {
         // Opening a result also commits the current query as a recent search.
-        viewModel.recordSearchIfEligible(query)
+        viewModel.recordSearchIfEligible(state.query)
         viewModel.playbackTarget(channel)?.let { onPlayChannel(it, channel.name) }
     }
 
@@ -160,8 +163,13 @@ fun SearchScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SearchField(
                     value = query,
-                    onValueChange = { query = it; viewModel.run(it) },
-                    onSearch = { runCatching { resultsFocus.requestFocus() } },
+                    // Typing only edits the field; results change when the query is submitted.
+                    // Clearing the field returns to the empty state straight away.
+                    onValueChange = { query = it; if (it.isBlank()) viewModel.submit("") },
+                    onSearch = {
+                        focusResultsWhenReady = query.isNotBlank()
+                        viewModel.submit(query)
+                    },
                     focusRequester = fieldFocus,
                     downTarget = when {
                         state.query.isBlank() && emptyHasHistory -> emptyStateFocus
@@ -172,7 +180,12 @@ fun SearchScreen(
                 )
                 Spacer(Modifier.width(LiveWireDimens.SpaceL))
                 Text(
-                    if (state.query.isBlank()) "Type with the remote keyboard" else "Results update as you type",
+                    when {
+                        query.isBlank() -> "Type with the remote keyboard"
+                        state.searching -> "Searching…"
+                        query.trim() != state.query -> "Press Search on the keyboard"
+                        else -> "Results for \"${state.query}\""
+                    },
                     style = LiveWireTheme.tokens.overline,
                     color = LiveWireColors.OnSurfaceMuted,
                     maxLines = 1,
@@ -199,6 +212,12 @@ fun SearchScreen(
 
             val grouped = remember(state.results) { SearchGrouping.group(state.results) }
             LaunchedEffect(grouped) { hasResultsFocusable = !grouped.isEmpty() }
+            LaunchedEffect(grouped, state.searching) {
+                if (focusResultsWhenReady && !state.searching) {
+                    focusResultsWhenReady = false
+                    if (!grouped.isEmpty()) runCatching { resultsFocus.requestFocus() }
+                }
+            }
 
             when {
                 state.query.isBlank() -> EmptyState(
@@ -208,12 +227,13 @@ fun SearchScreen(
                     firstFocus = emptyStateFocus,
                     onSelectSearch = { picked ->
                         query = picked
-                        viewModel.run(picked)
+                        viewModel.submit(picked)
                         runCatching { fieldFocus.requestFocus() }
                     },
                     onPlayChannel = ::playChannel,
                 )
-                grouped.isEmpty() && !state.loading && !state.enriching -> NoResults(state.query)
+                grouped.isEmpty() && !state.loading && !state.enriching && !state.searching ->
+                    NoResults(state.query)
                 else -> Results(
                     grouped = grouped,
                     viewModel = viewModel,
@@ -737,7 +757,7 @@ private fun EmptyState(
         item(key = "hint") {
             Text(
                 "Search finds live channels, what's on now and later in the guide, and today's games — " +
-                    "all at once. Start typing a channel name like FOX, a show, or a team.",
+                    "all at once. Type a channel name like FOX, a show, or a team, then press Search.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LiveWireColors.OnSurfaceMuted,
                 modifier = Modifier.widthIn(max = 560.dp),

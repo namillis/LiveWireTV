@@ -19,6 +19,7 @@ import com.livewire.tv.feature.sports.data.ChannelMatch
 import com.livewire.tv.feature.sports.data.SportsRepository
 import com.livewire.tv.feature.sports.domain.SportsGame
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -44,7 +46,10 @@ data class SearchUiState(
     // indexing bar stays up and "no results" waits, so a programme query is not
     // answered before its programmes exist.
     val enriching: Boolean = false,
+    // The SUBMITTED query: results always belong to it. Typing alone does not change it.
     val query: String = "",
+    // True while a submitted query is being ranked on a background thread.
+    val searching: Boolean = false,
     val results: List<SearchResult> = emptyList(),
     val recentSearches: List<String> = emptyList(),
     val recentChannels: List<RecentChannel> = emptyList(),
@@ -84,6 +89,7 @@ class SearchViewModel @Inject constructor(
     // the provider makes the config differ, so Search reloads.
     private var loadedFor: ProviderConfig? = null
     private var loadJob: Job? = null
+    private var searchJob: Job? = null
 
     // The persisted empty-state history. Collected once; the watched list is re-joined
     // against the channel list whenever either changes so cards get logo + now-playing.
@@ -127,10 +133,10 @@ class SearchViewModel @Inject constructor(
                 it.copy(
                     loading = false,
                     enriching = configuredProvider != null,
-                    results = index.search(it.query),
                     recentChannels = resolveRecentChannels(rawWatched),
                 )
             }
+            rerank()
 
             // 2) Guide and sports are independent, so run them concurrently and fold each
             //    into the index as it arrives (rebuilding against whatever is loaded so far).
@@ -182,16 +188,15 @@ class SearchViewModel @Inject constructor(
         programmesByEpgId = programmes.groupBy { it.channelId }
         rebuildIndex()
         // Recent-channel cards can now show now-playing; re-bind them too.
-        _state.update {
-            it.copy(results = index.search(it.query), recentChannels = resolveRecentChannels(rawWatched))
-        }
+        _state.update { it.copy(recentChannels = resolveRecentChannels(rawWatched)) }
+        rerank()
     }
 
     /** Fold loaded games into the corpus and re-rank the current query. */
     private fun onGamesLoaded(games: List<SportsGame>) {
         loadedGames = games
         rebuildIndex()
-        _state.update { it.copy(results = index.search(it.query)) }
+        rerank()
     }
 
     /** Rebuild the ranking index from whatever parts of the corpus are loaded so far. The flat
@@ -203,8 +208,32 @@ class SearchViewModel @Inject constructor(
         index = SearchIndex(channels = channels, programmes = programmes, games = loadedGames)
     }
 
-    fun run(query: String) {
-        _state.update { it.copy(query = query, results = index.search(query)) }
+    /**
+     * Search for [query]. Called when the user submits (the keyboard's Search key, or a
+     * recent-search chip), never per keystroke: ranking ~8,600 channels and ~100,000
+     * programmes takes long enough that doing it on every letter froze the field. The
+     * ranking runs on a background thread, and a newer submit cancels an older one.
+     * A blank query clears the results at once so the empty state shows.
+     */
+    fun submit(query: String) {
+        val q = query.trim()
+        searchJob?.cancel()
+        if (q.isEmpty()) {
+            _state.update { it.copy(query = "", results = emptyList(), searching = false) }
+            return
+        }
+        _state.update { it.copy(query = q, searching = true) }
+        val snapshot = index
+        searchJob = viewModelScope.launch {
+            val results = withContext(Dispatchers.Default) { snapshot.search(q) }
+            _state.update { it.copy(results = results, searching = false) }
+        }
+    }
+
+    /** Re-rank the submitted query against a corpus that just grew (guide or games arrived). */
+    private fun rerank() {
+        val q = _state.value.query
+        if (q.isNotEmpty()) submit(q)
     }
 
     fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
