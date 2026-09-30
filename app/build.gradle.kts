@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
@@ -9,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.livewire.tv"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.livewire.tv"
@@ -61,9 +60,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
     }
@@ -75,7 +71,7 @@ android {
 }
 
 // Pin the compile toolchain to JDK 17 so the build is reproducible regardless of the
-// ambient `java` on PATH (this host defaults to JDK 25, which Gradle 8.9 rejects).
+// ambient `java` on PATH (some hosts default to a newer JDK than this project targets).
 // Gradle auto-detects the JDK 17 registered via org.gradle.java.installations.paths.
 kotlin {
     jvmToolchain(17)
