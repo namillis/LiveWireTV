@@ -3,6 +3,7 @@ package com.livewire.tv.feature.epg.data
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
@@ -100,5 +101,29 @@ class XmltvParserTest {
     @Test fun `handles empty and malformed input`() {
         assertTrue(XmltvParser.parse("<tv></tv>").channels.isEmpty())
         assertEquals(0, XmltvParser.parse("<tv></tv>").programmeCount)
+    }
+
+    @Test fun `interns repeated channel id and description across programmes`() {
+        // Two programmes on the same channel with the same synopsis. A provider guide repeats
+        // both tens of thousands of times, so the parser must hand back one shared String
+        // instance for each distinct value rather than a fresh copy per programme.
+        val xml = """
+            <tv>
+              <channel id="cnn.us"><display-name>CNN</display-name></channel>
+              <programme start="20240115180000 +0000" stop="20240115190000 +0000" channel="cnn.us">
+                <title>News</title><desc>Rolling coverage.</desc>
+              </programme>
+              <programme start="20240115190000 +0000" stop="20240115200000 +0000" channel="cnn.us">
+                <title>News</title><desc>Rolling coverage.</desc>
+              </programme>
+            </tv>
+        """.trimIndent()
+        val progs = XmltvParser.parse(xml).programmesFor("cnn.us")
+        assertEquals(2, progs.size)
+        assertSame("channel id is shared across programmes", progs[0].channelId, progs[1].channelId)
+        assertSame("equal titles are shared", progs[0].title, progs[1].title)
+        assertSame("equal descriptions are shared", progs[0].description, progs[1].description)
+        // Value is preserved, not just identity.
+        assertEquals("Rolling coverage.", progs[0].description)
     }
 }

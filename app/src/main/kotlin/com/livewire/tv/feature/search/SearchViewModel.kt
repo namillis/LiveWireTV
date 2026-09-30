@@ -67,12 +67,12 @@ class SearchViewModel @Inject constructor(
 
     // Kept for result → playback / label resolution the screen asks for after ranking.
     private var channels: List<LiveChannel> = emptyList()
-    // The loaded EPG programmes and sports games, kept so the index can be rebuilt
-    // progressively as each source arrives (channels first, then guide, then games).
-    private var loadedProgrammes: List<EpgProgramme> = emptyList()
-    private var loadedGames: List<SportsGame> = emptyList()
-    // A channel's EPG id → its programmes, so "what's on now" is an O(1) lookup per card/row.
+    // A channel's EPG id → its programmes, kept so the index can be rebuilt progressively as
+    // each source arrives and so "what's on now" is an O(1) lookup per card/row. This is the
+    // single retained copy of the guide's programmes: the flat list the ranking index needs is
+    // derived from these values when the index is rebuilt, not held as a second field.
     private var programmesByEpgId: Map<String, List<EpgProgramme>> = emptyMap()
+    private var loadedGames: List<SportsGame> = emptyList()
     // A programme's channelId → the live channel that carries it, for programme playback.
     private var channelByEpgId: Map<String, LiveChannel> = emptyMap()
     // streamId → live channel, so a stored watched entry re-binds to its playlist channel.
@@ -179,7 +179,6 @@ class SearchViewModel @Inject constructor(
 
     /** Fold loaded programmes into the corpus and re-rank the current query. */
     private fun onProgrammesLoaded(programmes: List<EpgProgramme>) {
-        loadedProgrammes = programmes
         programmesByEpgId = programmes.groupBy { it.channelId }
         rebuildIndex()
         // Recent-channel cards can now show now-playing; re-bind them too.
@@ -195,9 +194,13 @@ class SearchViewModel @Inject constructor(
         _state.update { it.copy(results = index.search(it.query)) }
     }
 
-    /** Rebuild the ranking index from whatever parts of the corpus are loaded so far. */
+    /** Rebuild the ranking index from whatever parts of the corpus are loaded so far. The flat
+     *  programme list is derived here from [programmesByEpgId] rather than retained separately,
+     *  so the guide's programmes are held once. */
     private fun rebuildIndex() {
-        index = SearchIndex(channels = channels, programmes = loadedProgrammes, games = loadedGames)
+        val programmes = if (programmesByEpgId.isEmpty()) emptyList()
+            else programmesByEpgId.values.flatten()
+        index = SearchIndex(channels = channels, programmes = programmes, games = loadedGames)
     }
 
     fun run(query: String) {
