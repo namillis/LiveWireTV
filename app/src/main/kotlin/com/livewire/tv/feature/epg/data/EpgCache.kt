@@ -10,10 +10,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.encodeToStream
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -118,6 +119,7 @@ class EpgCache internal constructor(
 
     /** Fresh cached guide for [entry] covering [window] and [requested] channels, filtered to
      *  them; or null when absent, stale, too narrow a window, or missing requested channels. */
+    @OptIn(ExperimentalSerializationApi::class)
     private suspend fun read(
         entry: EntryId,
         window: EpgWindow?,
@@ -131,13 +133,20 @@ class EpgCache internal constructor(
                 EpgCachePolicy.coversChannels(c.channelIds, requested)
         memory[entry.mapKey]?.let { if (usable(it)) return it.toGuide().filtered(requested, window) }
         val onDisk = withContext(Dispatchers.IO) {
-            runCatching { json.decodeFromString<CachedGuide>(fileFor(entry).readText()) }.getOrNull()
+            // Decode straight from the file stream rather than reading it into one ~18 MB
+            // String first: readText() + decodeFromString would hold the whole JSON text AND
+            // the decoded object graph live at the same time, which is a large part of the
+            // open-time heap peak. decodeFromStream reads incrementally instead.
+            runCatching {
+                fileFor(entry).inputStream().buffered().use { json.decodeFromStream<CachedGuide>(it) }
+            }.getOrNull()
         } ?: return null
         if (!usable(onDisk)) return null
         memory[entry.mapKey] = onDisk
         return onDisk.toGuide().filtered(requested, window)
     }
 
+    @OptIn(ExperimentalSerializationApi::class)
     private suspend fun write(
         entry: EntryId,
         guide: EpgGuide,
@@ -150,7 +159,10 @@ class EpgCache internal constructor(
         withContext(Dispatchers.IO) {
             runCatching {
                 dir.mkdirs()
-                fileFor(entry).writeText(json.encodeToString<CachedGuide>(cached))
+                // Encode to the file stream instead of building one large String in memory
+                // first: on the measured guide encodeToString would allocate an ~18 MB String
+                // on top of the object graph during the write.
+                fileFor(entry).outputStream().buffered().use { json.encodeToStream(cached, it) }
             }
         }
     }
@@ -183,11 +195,25 @@ class EpgCache internal constructor(
     private fun fileFor(entry: EntryId) = File(dir, EpgCachePolicy.fileNameFor(entry.providerId, entry.key))
 
     private fun CachedGuide.toGuide(): EpgGuide {
-        val byChannel = programmes.groupBy({ it.c }) {
-            EpgProgramme(channelId = it.c, startMs = it.s, stopMs = it.e, title = it.t, description = it.d, category = it.g)
+        // Intern while rebuilding domain objects: the decoded CachedProgramme list holds a
+        // fresh String per field per element (one channel id repeated on every programme, a
+        // synopsis repeated on every airing), so collapsing equal strings to one instance
+        // here removes the same ~18 MB of duplicate retained text the parser interning does.
+        val interner = StringInterner()
+        val byChannel = programmes.groupBy({ interner.internNonNull(it.c) }) {
+            EpgProgramme(
+                channelId = interner.internNonNull(it.c),
+                startMs = it.s,
+                stopMs = it.e,
+                title = interner.internNonNull(it.t),
+                description = interner.intern(it.d),
+                category = interner.intern(it.g),
+            )
         }
         return EpgGuide(
-            channels = channels.map { EpgChannel(id = it.id, displayName = it.n, iconUrl = it.i) },
+            channels = channels.map {
+                EpgChannel(id = interner.internNonNull(it.id), displayName = interner.internNonNull(it.n), iconUrl = it.i)
+            },
             programmesByChannel = byChannel,
         )
     }
