@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.epg
 
+import com.livewire.tv.feature.epg.domain.EpgProgramme
 import java.util.concurrent.TimeUnit
 
 /**
@@ -33,6 +34,37 @@ fun nowLineMinutes(nowMs: Long, windowStartMs: Long, windowSpanMs: Long): Int? {
 internal fun initialFocusCellIndex(cells: List<LaneCell>, nowMs: Long): Int {
     val onNow = cells.indexOfFirst { it.programme.airsAt(nowMs) }
     return if (onNow >= 0) onNow else 0
+}
+
+/**
+ * Which cell of a row Up/Down should land on: the one airing at [anchorMs] (the time the
+ * user is browsing), else the cell nearest to it in time. A row with no cells has a single
+ * empty cell, index 0. Up/Down never change the anchor, so passing over an empty row or a
+ * long programme does not drag focus to a different time slot.
+ */
+internal fun cellIndexForAnchor(cells: List<LaneCell>, anchorMs: Long): Int {
+    if (cells.isEmpty()) return 0
+    val containing = cells.indexOfFirst { anchorMs >= it.programme.startMs && anchorMs < it.programme.stopMs }
+    if (containing >= 0) return containing
+    return cells.indices.minBy { i ->
+        val p = cells[i].programme
+        when {
+            anchorMs < p.startMs -> p.startMs - anchorMs
+            else -> anchorMs - p.stopMs + 1
+        }
+    }
+}
+
+/**
+ * The anchor a Left/Right move sets when it lands on [programme]: now while it is on air
+ * (so browsing the live column keeps following the live programme), otherwise its start,
+ * clipped to the window so a programme that began before the window anchors at the edge.
+ * Null (an empty row's cell) means "keep the current anchor".
+ */
+internal fun anchorForCell(programme: EpgProgramme?, nowMs: Long, windowStartMs: Long): Long? = when {
+    programme == null -> null
+    programme.airsAt(nowMs) -> nowMs
+    else -> maxOf(programme.startMs, windowStartMs)
 }
 
 /**
