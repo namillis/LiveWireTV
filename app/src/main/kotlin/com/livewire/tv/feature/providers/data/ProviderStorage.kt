@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.providers.data
 
+import androidx.core.content.edit
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
@@ -44,9 +45,9 @@ class ProviderStorage @Inject constructor(
     }
 
     private fun save(providers: List<ProviderConfig>) {
-        prefs.edit()
-            .putString(KEY, json.encodeToString(ListSerializer(ProviderConfig.serializer()), providers))
-            .apply()
+        prefs.edit {
+            putString(KEY, json.encodeToString(ListSerializer(ProviderConfig.serializer()), providers))
+        }
     }
 
     /** Upsert by id (new providers append to the end). */
