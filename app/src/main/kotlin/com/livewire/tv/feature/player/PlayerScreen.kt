@@ -38,11 +38,13 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
@@ -70,6 +72,7 @@ import com.livewire.tv.ui.theme.LiveWireTheme
  * [PlayerAction]. Overlay auto-hides after ~5s; any key reveals it.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(
     target: PlaybackTarget,
@@ -119,13 +122,23 @@ fun PlayerScreen(
         controlsVisible = false
     }
 
-    // Back: close a sub-list, then the panel, then exit (keeps the key-up BackHandler fix).
-    BackHandler {
-        when {
-            panel == PlayerPanel.OPTIONS && optionsState.onBack() -> reveal()
-            panel != PlayerPanel.NONE -> { panel = PlayerPanel.NONE; reveal() }
-            else -> onExit()
+    // Back inside an open panel: close a sub-list, else the panel, then hand focus back to
+    // the player root so the next D-pad key is not lost.
+    fun backInPanel() {
+        if (panel == PlayerPanel.OPTIONS && optionsState.onBack()) {
+            reveal()
+            return
         }
+        panel = PlayerPanel.NONE
+        reveal()
+        focusRequester.requestFocus()
+    }
+
+    // Back with no panel exits (keeps the key-up BackHandler fix). Back inside a panel is
+    // taken by onPreviewKeyEvent below instead: Compose moves focus out of the panel's list
+    // on Back before this handler runs, which cost the user a second press to close it.
+    BackHandler {
+        if (panel != PlayerPanel.NONE) backInPanel() else onExit()
     }
 
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -135,6 +148,16 @@ fun PlayerScreen(
                 .background(Color.Black)
                 .focusRequester(focusRequester)
                 .focusable()
+                .onPreviewKeyEvent { event ->
+                    // Only while a panel is open; with no panel Back reaches BackHandler.
+                    if (panel == PlayerPanel.NONE || event.key.nativeKeyCode != KeyEvent.KEYCODE_BACK) {
+                        return@onPreviewKeyEvent false
+                    }
+                    // Act on key-up (consuming key-down too) so the key-up never reaches
+                    // whatever takes focus after the panel closes.
+                    if (event.type == KeyEventType.KeyUp) backInPanel()
+                    true
+                }
                 .onKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                     val playerKey = event.toPlayerKey() ?: return@onKeyEvent false
@@ -142,11 +165,19 @@ fun PlayerScreen(
                     if (playerKey == PlayerKey.BACK) return@onKeyEvent false
                     reveal()
                     when (val action = PlayerInput.onKey(panel, playerKey)) {
-                        is PlayerAction.OpenPanel -> { panel = action.panel; if (action.panel == PlayerPanel.OPTIONS) optionsState.reset(); true }
-                        PlayerAction.TogglePlayPause -> { engine.togglePlayPause(); true }
+                        is PlayerAction.OpenPanel -> { panel = action.panel; if (action.panel == PlayerPanel.OPTIONS) optionsState.start(); true }
+                        PlayerAction.TogglePlayPause -> {
+                            // The Retry button can't take focus while the root owns the D-pad, so OK retries.
+                            when {
+                                source.error != null -> viewModel.resolve(target, title)
+                                status.state == PlaybackState.ERROR -> engine.retry()
+                                else -> engine.togglePlayPause()
+                            }
+                            true
+                        }
                         PlayerAction.ChannelUp -> { viewModel.previousChannel(); true }
                         PlayerAction.ChannelDown -> { viewModel.nextChannel(); true }
-                        PlayerAction.ClosePanel -> { panel = PlayerPanel.NONE; true }
+                        PlayerAction.ClosePanel -> { panel = PlayerPanel.NONE; focusRequester.requestFocus(); true }
                         PlayerAction.Handled -> true
                         PlayerAction.Ignored -> false
                         PlayerAction.Exit -> { onExit(); true }
@@ -259,6 +290,7 @@ fun PlayerScreen(
                         viewModel.switchTo(item)
                         panel = PlayerPanel.NONE
                         reveal()
+                        focusRequester.requestFocus()
                     },
                 )
             }
@@ -278,6 +310,7 @@ private fun androidx.compose.ui.input.key.KeyEvent.toPlayerKey(): PlayerKey? = w
     else -> null
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 private fun PictureMode.toResizeMode(): Int = when (this) {
     PictureMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
     PictureMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL

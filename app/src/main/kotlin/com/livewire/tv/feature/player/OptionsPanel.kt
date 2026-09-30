@@ -54,8 +54,15 @@ class OptionsPanelState {
     var view by mutableStateOf(OptionsView.ROOT)
         private set
 
-    fun open(v: OptionsView) { view = v }
+    /** The sub-list last opened from the root, so returning to the root refocuses its row. */
+    var lastOpened by mutableStateOf(OptionsView.AUDIO)
+        private set
+
+    fun open(v: OptionsView) { lastOpened = v; view = v }
     fun reset() { view = OptionsView.ROOT }
+
+    /** Fresh open of the panel: root list, focus on the first row. */
+    fun start() { lastOpened = OptionsView.AUDIO; view = OptionsView.ROOT }
 
     /** Handle Back: true = stepped a sub-list up to root (consumed); false = already at root. */
     fun onBack(): Boolean {
@@ -91,6 +98,8 @@ fun OptionsPanel(
 ) {
     val view = state.view
     val firstRow = remember(view) { FocusRequester() }
+    // Root rows that open a sub-list, so Back to the root lands on the row the user came from.
+    val rootRows = remember { OptionsView.entries.associateWith { FocusRequester() } }
 
     Box(
         modifier
@@ -118,7 +127,7 @@ fun OptionsPanel(
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Box(Modifier.weight(1f)) {
                 when (view) {
-                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, firstRow, onReload) { state.open(it) }
+                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, rootRows, onReload) { state.open(it) }
                     OptionsView.AUDIO -> AudioList(mediaInfo, firstRow) { onSelectAudio(it); state.reset() }
                     OptionsView.SUBTITLES -> SubtitlesList(mediaInfo, firstRow) { onSelectText(it); state.reset() }
                     OptionsView.PICTURE -> PictureList(pictureMode, firstRow) { onSelectPicture(it); state.reset() }
@@ -129,15 +138,18 @@ fun OptionsPanel(
         }
     }
 
-    // The panel's own initial focus: the first row. Back-to-root also re-focuses the top row.
-    androidx.compose.runtime.LaunchedEffect(view) { runCatching { firstRow.requestFocus() } }
+    // Initial focus is the first row. Back to the root refocuses the row that opened the sub-list.
+    androidx.compose.runtime.LaunchedEffect(view) {
+        val target = if (view == OptionsView.ROOT) rootRows.getValue(state.lastOpened) else firstRow
+        runCatching { target.requestFocus() }
+    }
 }
 
 @Composable
 private fun RootList(
     mediaInfo: MediaInfo,
     pictureMode: PictureMode,
-    firstRow: FocusRequester,
+    rows: Map<OptionsView, FocusRequester>,
     onReload: () -> Unit,
     onOpen: (OptionsView) -> Unit,
 ) {
@@ -148,17 +160,17 @@ private fun RootList(
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         item {
-            OptionRow(R.drawable.ic_opt_audio, "Audio", audioValue, hasChevron = true, focusRequester = firstRow) {
+            OptionRow(R.drawable.ic_opt_audio, "Audio", audioValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.AUDIO)) {
                 onOpen(OptionsView.AUDIO)
             }
         }
         item {
-            OptionRow(R.drawable.ic_opt_subtitles, "Subtitles", subtitleValue, hasChevron = true) {
+            OptionRow(R.drawable.ic_opt_subtitles, "Subtitles", subtitleValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.SUBTITLES)) {
                 onOpen(OptionsView.SUBTITLES)
             }
         }
         item {
-            OptionRow(R.drawable.ic_opt_picture, "Picture", pictureMode.label, hasChevron = true) {
+            OptionRow(R.drawable.ic_opt_picture, "Picture", pictureMode.label, hasChevron = true, focusRequester = rows.getValue(OptionsView.PICTURE)) {
                 onOpen(OptionsView.PICTURE)
             }
         }
@@ -167,7 +179,7 @@ private fun RootList(
             OptionRow(R.drawable.ic_opt_reload, "Reload stream", value = null, hasChevron = false) { onReload() }
         }
         item {
-            OptionRow(R.drawable.ic_opt_info, "Stream info", streamInfoValue.ifBlank { null }, hasChevron = true) {
+            OptionRow(R.drawable.ic_opt_info, "Stream info", streamInfoValue.ifBlank { null }, hasChevron = true, focusRequester = rows.getValue(OptionsView.STREAM_INFO)) {
                 onOpen(OptionsView.STREAM_INFO)
             }
         }

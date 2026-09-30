@@ -70,7 +70,7 @@ fun ChannelListPanel(
                 .align(Alignment.CenterStart)
                 .fillMaxHeight()
                 .padding(start = LiveWireDimens.SafeHorizontal, top = LiveWireDimens.SafeVertical, bottom = LiveWireDimens.SafeVertical)
-                .width(430.dp)
+                .width(LiveWireDimens.SafeHorizontal + 340.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(LiveWireColors.Surface)
                 .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceL),
@@ -190,7 +190,15 @@ private fun WatchingTag() {
 
 @Composable
 private fun Preview(item: ChannelListItem, now: Long, modifier: Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.Start) {
+    // Own backing card: the video behind is dimmed only 55%, and broadcasters' white
+    // lower-thirds still bleed through plain text at that level.
+    Column(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(LiveWireColors.Surface.copy(alpha = 0.94f))
+            .padding(LiveWireDimens.SpaceL),
+        horizontalAlignment = Alignment.Start,
+    ) {
         Text("PREVIEW · CH ${item.number}", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
