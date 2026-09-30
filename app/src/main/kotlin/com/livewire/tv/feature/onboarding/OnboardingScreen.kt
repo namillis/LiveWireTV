@@ -55,6 +55,7 @@ import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
+import com.livewire.tv.ui.theme.dpadVerticalExit
 import com.livewire.tv.ui.touchClickable
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -388,6 +389,10 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
     val isM3u = state.isM3u
     var showPassword by remember { mutableStateOf(false) }
 
+    // A single vertical focus column walks the visual 2-column grid in reading order:
+    // Name -> Server/Playlist URL -> (Xtream) Username -> Password -> Show toggle -> Connect,
+    // or (M3U) Guide URL -> Connect. D-pad Up/Down drives it via dpadVerticalExit, which
+    // moves focus explicitly and so is not swallowed by the text caret (Left/Right are).
     val nameFocus = remember { FocusRequester() }
     val urlFocus = remember { FocusRequester() }
     val userFocus = remember { FocusRequester() }
@@ -396,16 +401,31 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
     val epgFocus = remember { FocusRequester() }
     val connectFocus = remember { FocusRequester() }
 
-    // Column order: Name, Server(URL), then (Xtream) Username/Password or (M3U) Guide, then Connect.
-    val afterUrl = if (isM3u) epgFocus else userFocus
-    val beforeConnect = if (isM3u) epgFocus else passwordFocus
+    // Down targets, in reading order.
+    val nameDown = urlFocus
+    val urlDown = if (isM3u) epgFocus else userFocus
+    val beforeConnect = if (isM3u) epgFocus else revealFocus
 
-    LaunchedEffect(Unit) { runCatching { nameFocus.requestFocus() } }
+    // Returning from a failed connect lands on the field the error is about (Server URL for
+    // "can't reach", Password for a bad login); an error with no field, or a fresh visit,
+    // starts on Name.
+    LaunchedEffect(Unit) {
+        val target = when (state.error?.focusField) {
+            ProviderInputValidator.Field.URL -> urlFocus
+            ProviderInputValidator.Field.USERNAME -> userFocus
+            ProviderInputValidator.Field.PASSWORD -> passwordFocus
+            ProviderInputValidator.Field.EPG_URL -> epgFocus
+            null -> nameFocus
+        }
+        runCatching { target.requestFocus() }
+    }
 
     // Local field-level validation (shown after an attempt, or for a URL once typed).
     val urlNoun = if (isM3u) "playlist URL" else "server URL"
     val urlError = ProviderInputValidator.urlProblem(state.url, urlNoun)
         .takeIf { state.attempted || state.url.isNotBlank() }
+        // A full provider link is valid input: Connect splits it into the three fields.
+        ?.takeUnless { !isM3u && ProviderInputValidator.parseXtreamLink(state.url) != null }
     val epgError = ProviderInputValidator.urlProblem(state.epgUrl, "guide URL")
         .takeIf { isM3u && state.epgUrl.isNotBlank() }
     val userError = "Enter your username.".takeIf { !isM3u && state.attempted && state.username.isBlank() }
@@ -444,22 +464,20 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                     left = {
                         ProviderFilledField(
                             label = "Name", value = state.name, onValue = vm::setName,
-                            focusRequester = nameFocus, upFocus = nameFocus, downFocus = afterUrl,
+                            focusRequester = nameFocus, upFocus = nameFocus, downFocus = nameDown,
                             optional = true,
                             imeAction = ImeAction.Next, onImeAction = { runCatching { urlFocus.requestFocus() } },
-                            modifier = Modifier.focusProperties { right = urlFocus },
                         )
                     },
                     right = {
                         ProviderFilledField(
                             label = if (isM3u) "Playlist URL" else "Server URL",
                             value = state.url, onValue = vm::setUrl,
-                            focusRequester = urlFocus, upFocus = urlFocus, downFocus = afterUrl,
+                            focusRequester = urlFocus, upFocus = nameFocus, downFocus = urlDown,
                             help = if (isM3u) "A link to your .m3u playlist file" else "You can paste the full link your provider sent",
                             error = urlError,
                             keyboardType = KeyboardType.Uri,
-                            imeAction = ImeAction.Next, onImeAction = { runCatching { afterUrl.requestFocus() } },
-                            modifier = Modifier.focusProperties { left = nameFocus },
+                            imeAction = ImeAction.Next, onImeAction = { runCatching { urlDown.requestFocus() } },
                         )
                     },
                 )
@@ -480,33 +498,31 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                         left = {
                             ProviderFilledField(
                                 label = "Username", value = state.username, onValue = vm::setUsername,
-                                focusRequester = userFocus, upFocus = urlFocus, downFocus = connectFocus,
+                                focusRequester = userFocus, upFocus = urlFocus, downFocus = passwordFocus,
                                 error = userError,
                                 imeAction = ImeAction.Next, onImeAction = { runCatching { passwordFocus.requestFocus() } },
-                                modifier = Modifier.focusProperties { right = passwordFocus },
                             )
                         },
                         right = {
                             ProviderFilledField(
                                 label = "Password", value = state.password, onValue = vm::setPassword,
-                                focusRequester = passwordFocus, upFocus = urlFocus, downFocus = connectFocus,
+                                focusRequester = passwordFocus, upFocus = urlFocus, downFocus = revealFocus,
                                 password = true, passwordVisible = showPassword,
                                 error = passwordError,
                                 keyboardType = KeyboardType.Password,
                                 imeAction = ImeAction.Done, onImeAction = { vm.connect() },
-                                modifier = Modifier.focusProperties { left = userFocus; right = revealFocus },
-                                trailing = {
-                                    PasswordRevealToggle(
-                                        visible = showPassword,
-                                        onToggle = { showPassword = !showPassword },
-                                        modifier = Modifier
-                                            .focusRequester(revealFocus)
-                                            .focusProperties { left = passwordFocus; up = urlFocus; down = connectFocus }
-                                            .touchClickable { showPassword = !showPassword },
-                                    )
-                                },
                             )
                         },
+                    )
+                    // Show/hide password as its own focusable row so it is D-pad reachable
+                    // without fighting the text caret (Left/Right inside a field move the caret).
+                    PasswordRevealToggle(
+                        visible = showPassword,
+                        onToggle = { showPassword = !showPassword },
+                        modifier = Modifier
+                            .focusRequester(revealFocus)
+                            .focusProperties { up = passwordFocus; down = connectFocus }
+                            .dpadVerticalExit(up = passwordFocus, down = connectFocus),
                     )
                 }
 
