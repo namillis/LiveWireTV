@@ -3,7 +3,7 @@ package com.livewire.tv.feature.update.data
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -47,7 +47,7 @@ class UpdateInstaller @Inject constructor(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
         val intent = Intent(
             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-            Uri.parse("package:${context.packageName}"),
+            "package:${context.packageName}".toUri(),
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         // Only offer it if something can handle it (Google TV/Fire OS may hide the page).
         return if (intent.resolveActivity(context.packageManager) != null) intent else null
