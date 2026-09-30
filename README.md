@@ -6,8 +6,8 @@
 
 LiveWire is an IPTV player for Android TV, Google TV and Fire TV. You bring
 your own Xtream Codes or M3U provider. There's no account and no LiveWire
-server. The app talks to your provider directly, and your login stays on the
-device.
+server. The app talks to your provider directly, and your login is stored only
+on the device.
 
 ![Home screen](docs/images/home.jpg)
 
@@ -23,8 +23,8 @@ device.
   with rails of channels grouped by your provider's categories.
 - **Guide.** A programme grid with a red now-line. You can filter it by
   category or keyword, and it keeps your place when you come back from a
-  channel. The focused channel plays muted in the details band after 2
-  seconds. A downloaded guide is reused for up to 3 hours, so reopening the
+  channel. After 2 seconds, the focused channel plays muted in the band above
+  the grid that shows the programme details. A downloaded guide is reused for up to 3 hours, so reopening the
   Guide in that time doesn't download it again.
 - **Player.** Up and Down change channel. Left opens the channel list, and
   Right opens Options: audio track, subtitles, picture mode (fit, fill, zoom),
@@ -59,7 +59,7 @@ and sideload it.
      Unknown sources, then turn on the app you'll install with.
 2. **Install the APK** in one of these ways:
    - **Downloader app** (Fire TV and Google TV): enter
-     `github.com/namillis/LiveWireTV/releases/latest`, scroll to *Assets*, and
+     `https://github.com/namillis/LiveWireTV/releases/latest`, scroll to *Assets*, and
      select the `livewire-<version>.apk` link.
    - **adb** from a computer on the same network:
      ```bash
@@ -73,7 +73,8 @@ and sideload it.
 
 ## Setup
 
-On first launch LiveWire asks for a provider. You can add more later under
+On first launch LiveWire asks for a provider. Your IPTV provider gives you
+these details when you sign up. You can add more later under
 Settings → Manage providers.
 
 - **Xtream Codes:** server address, username and password. The guide is
