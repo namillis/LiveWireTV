@@ -16,12 +16,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +38,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -55,6 +65,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
 
 private const val PX_PER_MINUTE = 3          // 3dp per minute = 90dp per 30 min (design system §9.4)
 private val ROW_HEIGHT = 48.dp               // §9.4 row height; 7 full rows fit at 1080p
@@ -80,6 +91,8 @@ fun GuideScreen(
     viewModel: GuideViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Re-runs on every return to the Guide; the ViewModel keeps the grid when it is still
+    // fresh, so coming back from the player does not reload it or lose the user's place.
     LaunchedEffect(Unit) { viewModel.load() }
 
     Surface(
@@ -100,10 +113,18 @@ fun GuideScreen(
             state.error != null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text(state.error!!, modifier = Modifier.padding(24.dp))
             }
-            state.rows.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+            state.allRows.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text("No guide data for this provider.")
             }
-            else -> GuideContent(state, onPlayChannel) { channel -> viewModel.playbackTarget(channel) }
+            else -> GuideContent(
+                state = state,
+                initialPosition = viewModel.position,
+                onPositionChange = { viewModel.position = it },
+                onSelectCategory = viewModel::setCategory,
+                onQueryChange = viewModel::setQuery,
+                onPlayChannel = onPlayChannel,
+                targetFor = viewModel::playbackTarget,
+            )
         }
     }
 }
@@ -111,41 +132,99 @@ fun GuideScreen(
 @Composable
 private fun GuideContent(
     state: GuideUiState,
+    initialPosition: GuidePosition,
+    onPositionChange: (GuidePosition) -> Unit,
+    onSelectCategory: (String?) -> Unit,
+    onQueryChange: (String) -> Unit,
     onPlayChannel: (PlaybackTarget, String) -> Unit,
     targetFor: (LiveChannel) -> PlaybackTarget?,
 ) {
     val now = System.currentTimeMillis()
-    val hScroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val rows = state.rows
+    // Focus moves run a frame or two later (after a filter changes the list), so they must
+    // read the rows as they are then, not as they were when the move was requested.
+    val latestRows by rememberUpdatedState(rows)
+    // Both scroll positions start where the user left them (the ViewModel outlives the trip
+    // to the player; this composable does not).
+    val hScroll = rememberScrollState(initialPosition.horizontalScroll)
+    val listState = rememberLazyListState(initialPosition.listIndex, initialPosition.listOffset)
     val spanMinutes = TimeUnit.MILLISECONDS.toMinutes(state.windowSpanMs).toInt()
     val laneWidth = minutesToDp(spanMinutes)
 
-    // The details band follows the focused cell. Default to the first row's on-now programme
-    // so the band is populated before the user moves focus.
-    val firstRow = state.rows.first()
-    var focus by remember(state.rows) {
-        mutableStateOf(GuideFocus(firstRow.channel, onNow(firstRow.programmes, now)))
+    // The time the user is browsing. Up/Down keep it; Left/Right set it from the cell they
+    // land on (now while that cell is on air). Each row focuses the cell under it, so moving
+    // down the live column over an empty row or a long programme stays in the live column.
+    var anchorMs by remember { mutableStateOf(initialPosition.anchorMs ?: now) }
+    var focusedStreamId by remember { mutableStateOf(initialPosition.focusedStreamId) }
+    // Set just before we move focus ourselves, so the landing cell does not reset the anchor.
+    var programmaticMove by remember { mutableStateOf(false) }
+
+    // Focus handle per row, attached to that row's anchor cell.
+    val rowRequesters = remember { HashMap<String, FocusRequester>() }
+
+    fun savePosition() {
+        onPositionChange(
+            GuidePosition(
+                focusedStreamId = focusedStreamId,
+                anchorMs = anchorMs,
+                listIndex = listState.firstVisibleItemIndex,
+                listOffset = listState.firstVisibleItemScrollOffset,
+                horizontalScroll = hScroll.value,
+            ),
+        )
+    }
+    DisposableEffect(Unit) { onDispose { savePosition() } }
+
+    /** Focus [rowIndex]'s cell at the anchor, scrolling it into the list first if needed. */
+    fun focusRow(rowIndex: Int): Boolean {
+        if (rowIndex !in latestRows.indices) return false
+        scope.launch {
+            val row = latestRows.getOrNull(rowIndex) ?: return@launch
+            val visible = listState.layoutInfo.visibleItemsInfo.any { it.index == rowIndex }
+            if (!visible) {
+                listState.scrollToItem(rowIndex)
+                withFrameNanos { }
+            }
+            programmaticMove = true
+            if (runCatching { rowRequesters[row.channel.streamId]?.requestFocus() }.isFailure) {
+                programmaticMove = false
+            }
+        }
+        return true
     }
 
-    // On open, land the amber ring on the programme airing NOW, not the first (often already
-    // ended) cell. We request focus on the first row's on-now cell once its programmes have
-    // loaded (PR #13 shows rows with empty programmes first, then fills them). We must NOT
-    // yank focus if the user has already moved it, so we guard on both a "placed" flag and a
-    // "user moved first" flag, and only auto-place while focus is still where the framework
-    // put it by default.
-    val initialFocusRequester = remember { FocusRequester() }
-    var initialFocusPlaced by remember { mutableStateOf(false) }
+    // The details band follows the focused cell; before anything is focused it shows the
+    // restored (or first) row's programme at the anchor.
+    val restoreIndex = rows.indexOfFirst { it.channel.streamId == focusedStreamId }.coerceAtLeast(0)
+    var focus by remember(rows) {
+        val r = rows.getOrNull(restoreIndex)
+        mutableStateOf(r?.let { GuideFocus(it.channel, it.programmes.firstOrNull { p -> p.airsAt(anchorMs) }) })
+    }
+
+    // On open (and on return), land the ring on the restored row -- the first row on a fresh
+    // open -- at the anchor time. Wait for programmes so it lands on a real cell, and never
+    // move focus the user has already moved.
+    var focusPlaced by remember { mutableStateOf(false) }
     var userMovedFocus by remember { mutableStateOf(false) }
-
-    val firstRowCells = laneCells(firstRow.programmes, state.windowStartMs, state.windowSpanMs)
-    val firstRowFocusIndex = initialFocusCellIndex(firstRowCells, now)
-
-    // Fires when the first row's cells first appear (programmes arrived) — or immediately on a
-    // warm open where they are already present. Skips if the user has already moved focus.
-    LaunchedEffect(firstRowCells.isNotEmpty(), userMovedFocus) {
-        if (firstRowCells.isNotEmpty() && !initialFocusPlaced && !userMovedFocus) {
-            runCatching { initialFocusRequester.requestFocus() }
-            initialFocusPlaced = true
+    val restoreHasCells = rows.getOrNull(restoreIndex)?.programmes?.isNotEmpty() == true
+    LaunchedEffect(rows.isNotEmpty(), restoreHasCells || state.programmesLoaded, userMovedFocus) {
+        if (rows.isNotEmpty() && (restoreHasCells || state.programmesLoaded) && !focusPlaced && !userMovedFocus) {
+            withFrameNanos { }
+            focusRow(restoreIndex)
+            focusPlaced = true
         }
+    }
+
+    // A new filter shows a new list: start it at the top. (Skip the first run, which is the
+    // screen opening with its restored scroll position.)
+    var filterSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(state.categoryId, state.query) {
+        if (filterSeen) {
+            listState.scrollToItem(0)
+            focusedStreamId = null
+        }
+        filterSeen = true
     }
 
     Column(
@@ -158,53 +237,125 @@ private fun GuideContent(
                 bottom = LiveWireDimens.SafeVertical,
             ),
     ) {
-        GuideDetailsBand(focus, now)
+        focus?.let { GuideDetailsBand(it, now) }
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
 
-        // The grid: NOW lane + axis header, then the scrolling rows, with the red now-line
-        // overlaid across the lane area.
-        val nowMin = nowLineMinutes(now, state.windowStartMs, state.windowSpanMs)
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(LiveWireDimens.RadiusCard))
-                .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusCard)),
-        ) {
-            Column(Modifier.fillMaxSize()) {
-                NowLane(nowMin, hScroll.value, now)
-                AxisRow(state.windowStartMs, spanMinutes, hScroll.value)
-                LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(state.rows) { index, row ->
-                        GuideRowView(
-                            row = row,
-                            windowStartMs = state.windowStartMs,
-                            windowSpanMs = state.windowSpanMs,
-                            now = now,
-                            hScroll = hScroll,
-                            laneWidth = laneWidth,
-                            spanMinutes = spanMinutes,
-                            // Only the first row carries the initial-focus requester, on its
-                            // on-now cell; -1 disables it for every other row.
-                            initialFocusRequester = if (index == 0) initialFocusRequester else null,
-                            initialFocusCellIndex = if (index == 0) firstRowFocusIndex else -1,
-                            onFocus = { prog ->
-                                focus = GuideFocus(row.channel, prog)
-                                // If the user drives focus before we've auto-placed it, do not
-                                // steal it back once programmes arrive.
-                                if (!initialFocusPlaced) userMovedFocus = true
-                            },
-                            onClick = { targetFor(row.channel)?.let { onPlayChannel(it, row.channel.name) } },
-                        )
+        Row(Modifier.fillMaxSize()) {
+            GuideCategoryColumn(
+                categories = state.categories,
+                totalChannels = state.totalChannels,
+                selectedId = state.categoryId,
+                query = state.query,
+                onSelect = { id ->
+                    onSelectCategory(id)
+                    // Choosing a category goes straight to its channels, at the live column.
+                    anchorMs = now
+                    scope.launch {
+                        withFrameNanos { }
+                        withFrameNanos { }
+                        focusRow(0)
+                    }
+                },
+                onQueryChange = onQueryChange,
+                onExitRight = {
+                    val back = rows.indexOfFirst { it.channel.streamId == focusedStreamId }
+                    focusRow(if (back >= 0) back else listState.firstVisibleItemIndex)
+                },
+            )
+            Spacer(Modifier.width(LiveWireDimens.SpaceS))
+
+            // The grid: NOW lane + axis header, then the scrolling rows, with the red now-line
+            // overlaid across the lane area.
+            val nowMin = nowLineMinutes(now, state.windowStartMs, state.windowSpanMs)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(LiveWireDimens.RadiusCard))
+                    .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusCard)),
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    NowLane(nowMin, hScroll.value, now)
+                    AxisRow(state.windowStartMs, spanMinutes, hScroll.value)
+                    if (rows.isEmpty()) {
+                        NoMatches(state.query, state.categoryName)
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                // Up/Down move one row and keep the anchor time. Default focus
+                                // search would pick the cell nearest the focused cell's centre,
+                                // which for a wide cell (an empty row, a long film) is hours away.
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                    val current = rows.indexOfFirst { it.channel.streamId == focusedStreamId }
+                                    if (current < 0) return@onPreviewKeyEvent false
+                                    when (event.key) {
+                                        Key.DirectionDown -> { focusRow(current + 1); true }
+                                        Key.DirectionUp -> { focusRow(current - 1); true }
+                                        else -> false
+                                    }
+                                },
+                        ) {
+                            items(rows, key = { it.channel.streamId }) { row ->
+                                val requester = remember { FocusRequester() }
+                                DisposableEffect(row.channel.streamId) {
+                                    rowRequesters[row.channel.streamId] = requester
+                                    onDispose { if (rowRequesters[row.channel.streamId] === requester) rowRequesters.remove(row.channel.streamId) }
+                                }
+                                GuideRowView(
+                                    row = row,
+                                    windowStartMs = state.windowStartMs,
+                                    windowSpanMs = state.windowSpanMs,
+                                    now = now,
+                                    hScroll = hScroll,
+                                    laneWidth = laneWidth,
+                                    spanMinutes = spanMinutes,
+                                    anchorMs = anchorMs,
+                                    anchorRequester = requester,
+                                    onFocus = { prog ->
+                                        focus = GuideFocus(row.channel, prog)
+                                        focusedStreamId = row.channel.streamId
+                                        if (programmaticMove) {
+                                            programmaticMove = false
+                                        } else {
+                                            // A Left/Right move (or entering from the column):
+                                            // the landing cell sets the time being browsed.
+                                            anchorForCell(prog, now, state.windowStartMs)?.let { anchorMs = it }
+                                            if (!focusPlaced) userMovedFocus = true
+                                        }
+                                        savePosition()
+                                    },
+                                    onClick = {
+                                        savePosition()
+                                        targetFor(row.channel)?.let { onPlayChannel(it, row.channel.name) }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
-            }
-            // Red now-line, drawn above the cells, below the header lanes. It lives in a
-            // viewport that starts at the channel column and clips to it, so it never crosses
-            // into the channel column or the axis header; it hides once now scrolls off the left.
-            if (nowMin != null) {
-                NowLine(nowMin, hScroll.value, topInset = NOW_LANE + AXIS_HEIGHT)
+                // Red now-line, drawn above the cells, below the header lanes. It lives in a
+                // viewport that starts at the channel column and clips to it, so it never crosses
+                // into the channel column or the axis header; it hides once now scrolls off the left.
+                if (nowMin != null && rows.isNotEmpty()) {
+                    NowLine(nowMin, hScroll.value, topInset = NOW_LANE + AXIS_HEIGHT)
+                }
             }
         }
+    }
+}
+
+/** Shown in the grid when the filters leave no channels. */
+@Composable
+private fun NoMatches(query: String, categoryName: String) {
+    Box(Modifier.fillMaxSize().padding(LiveWireDimens.SpaceL), Alignment.Center) {
+        Text(
+            if (query.isNotBlank()) "No channels in $categoryName match “${query.trim()}”."
+            else "No channels in $categoryName.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = LiveWireColors.OnSurfaceMuted,
+        )
     }
 }
 
@@ -370,8 +521,8 @@ private fun GuideRowView(
     hScroll: androidx.compose.foundation.ScrollState,
     laneWidth: Dp,
     spanMinutes: Int,
-    initialFocusRequester: FocusRequester?,
-    initialFocusCellIndex: Int,
+    anchorMs: Long,
+    anchorRequester: FocusRequester,
     onFocus: (EpgProgramme?) -> Unit,
     onClick: () -> Unit,
 ) {
@@ -392,13 +543,13 @@ private fun GuideRowView(
         // Programme lane on the shared timeline / scroll.
         Row(Modifier.horizontalScroll(hScroll).width(laneWidth)) {
             val cells = laneCells(row.programmes, windowStartMs, windowSpanMs)
+            // The cell Up/Down (and a restore) lands on: the one under the anchor time.
+            val anchorIndex = cellIndexForAnchor(cells, anchorMs)
             if (cells.isEmpty()) {
-                // A row with no programmes: it exposes a single empty cell. It only carries the
-                // initial-focus requester when this row is the target and the on-now index fell
-                // back to 0 (nothing is airing), so an all-empty first row still gets the ring.
+                // A row with no programmes exposes a single empty cell.
                 EmptyCell(
                     widthDp = minutesToDp(spanMinutes),
-                    focusRequester = initialFocusRequester?.takeIf { initialFocusCellIndex == 0 },
+                    focusRequester = anchorRequester,
                     onFocus = { onFocus(null) },
                     onClick = onClick,
                 )
@@ -409,9 +560,7 @@ private fun GuideRowView(
                         programme = cell.programme,
                         widthDp = minutesToDp(cell.minutes),
                         now = now,
-                        // Attach the requester to the on-now cell (or the fallback index) so the
-                        // ring lands there on open; null everywhere else.
-                        focusRequester = initialFocusRequester?.takeIf { cellIndex == initialFocusCellIndex },
+                        focusRequester = anchorRequester.takeIf { cellIndex == anchorIndex },
                         onFocus = { onFocus(cell.programme) },
                         onClick = onClick,
                     )
@@ -501,10 +650,6 @@ private fun LiveDot() {
 }
 
 private fun minutesToDp(minutes: Int): Dp = (minutes * PX_PER_MINUTE).dp
-
-/** The programme on now in [programmes], or null. */
-private fun onNow(programmes: List<EpgProgramme>, now: Long): EpgProgramme? =
-    programmes.firstOrNull { it.airsAt(now) }
 
 private val timeFmt = SimpleDateFormat("h:mm a", Locale.getDefault())
 private fun clockLabel(ms: Long): String = timeFmt.format(Date(ms))
