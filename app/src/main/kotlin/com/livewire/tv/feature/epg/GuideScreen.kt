@@ -56,6 +56,7 @@ import androidx.tv.material3.Text
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.home.brandTint
 import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
@@ -124,6 +125,7 @@ fun GuideScreen(
                 onQueryChange = viewModel::setQuery,
                 onPlayChannel = onPlayChannel,
                 targetFor = viewModel::playbackTarget,
+                resolvePreview = viewModel::previewSource,
             )
         }
     }
@@ -138,6 +140,7 @@ private fun GuideContent(
     onQueryChange: (String) -> Unit,
     onPlayChannel: (PlaybackTarget, String) -> Unit,
     targetFor: (LiveChannel) -> PlaybackTarget?,
+    resolvePreview: suspend (String) -> PlaybackSource?,
 ) {
     val now = System.currentTimeMillis()
     val scope = rememberCoroutineScope()
@@ -159,6 +162,14 @@ private fun GuideContent(
     var focusedStreamId by remember { mutableStateOf(initialPosition.focusedStreamId) }
     // Set just before we move focus ourselves, so the landing cell does not reset the anchor.
     var programmaticMove by remember { mutableStateOf(false) }
+
+    // True while a programme cell holds focus; the category column and drawer do not count.
+    var gridFocused by remember { mutableStateOf(false) }
+    val preview = rememberGuidePreview(
+        streamId = focusedStreamId.takeIf { gridFocused },
+        enabled = state.previewEnabled,
+        resolve = resolvePreview,
+    )
 
     // Focus handle per row, attached to that row's anchor cell.
     val rowRequesters = remember { HashMap<String, FocusRequester>() }
@@ -237,7 +248,7 @@ private fun GuideContent(
                 bottom = LiveWireDimens.SafeVertical,
             ),
     ) {
-        focus?.let { GuideDetailsBand(it, now) }
+        focus?.let { GuideDetailsBand(it, now, preview) }
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
 
         Row(Modifier.fillMaxSize()) {
@@ -257,6 +268,11 @@ private fun GuideContent(
                     }
                 },
                 onQueryChange = onQueryChange,
+                gridEntry = {
+                    val id = focusedStreamId?.takeIf { id -> listState.layoutInfo.visibleItemsInfo.any { it.key == id } }
+                        ?: listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key as? String
+                    id?.let { rowRequesters[it] }
+                },
                 onExitRight = {
                     val back = rows.indexOfFirst { it.channel.streamId == focusedStreamId }
                     focusRow(if (back >= 0) back else listState.firstVisibleItemIndex)
@@ -283,6 +299,7 @@ private fun GuideContent(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
+                                .onFocusChanged { gridFocused = it.hasFocus }
                                 // Up/Down move one row and keep the anchor time. Default focus
                                 // search would pick the cell nearest the focused cell's centre,
                                 // which for a wide cell (an empty row, a long film) is hours away.
@@ -327,6 +344,9 @@ private fun GuideContent(
                                         savePosition()
                                     },
                                     onClick = {
+                                        // Close the preview's stream first: many providers
+                                        // allow one connection, and the player needs it.
+                                        preview.player.stop()
                                         savePosition()
                                         targetFor(row.channel)?.let { onPlayChannel(it, row.channel.name) }
                                     },
@@ -361,7 +381,7 @@ private fun NoMatches(query: String, categoryName: String) {
 
 /** Guide details band (design system §9.1, guide variant ~90dp): focused programme + a synopsis. */
 @Composable
-private fun GuideDetailsBand(focus: GuideFocus, now: Long) {
+private fun GuideDetailsBand(focus: GuideFocus, now: Long, preview: GuidePreviewState) {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
     val brand = brandTint(focus.channel.name)
     val prog = focus.programme
@@ -372,54 +392,57 @@ private fun GuideDetailsBand(focus: GuideFocus, now: Long) {
             .clip(shape)
             .background(LiveWireColors.Surface)
             .background(brand.copy(alpha = if (LiveWireTheme.tokens.tier == com.livewire.tv.ui.theme.PerformanceTier.LOW) 0.16f else 0.20f))
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
-            .padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
+            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape),
     ) {
-        // Clock lives in the band (no page title, per §8).
-        Text(
-            clockLabel(now),
-            style = MaterialTheme.typography.labelMedium,
-            color = LiveWireColors.OnSurfaceMuted,
-            modifier = Modifier.align(Alignment.TopEnd),
-        )
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (prog != null && prog.airsAt(now)) {
-                        LiveDot()
-                        Spacer(Modifier.width(LiveWireDimens.SpaceS))
+        // The muted preview sits behind the text, fading in from the right.
+        GuidePreviewLayer(preview)
+        Box(Modifier.matchParentSize().padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS)) {
+            // Clock lives in the band (no page title, per §8).
+            Text(
+                clockLabel(now),
+                style = MaterialTheme.typography.labelMedium,
+                color = LiveWireColors.OnSurfaceMuted,
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (prog != null && prog.airsAt(now)) {
+                            LiveDot()
+                            Spacer(Modifier.width(LiveWireDimens.SpaceS))
+                        }
+                        Text(
+                            focus.channel.name,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = LiveWireColors.OnSurfaceMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    Text(
-                        focus.channel.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = LiveWireColors.OnSurfaceMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                // The band is kept short so the grid fits 7 rows: label, one-line title and
-                // one-line synopsis must fit its 68dp of inner height.
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    prog?.title ?: "No programme information",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = LiveWireColors.OnSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (prog != null) {
+                    // The band is kept short so the grid fits 7 rows: label, one-line title and
+                    // one-line synopsis must fit its 68dp of inner height.
                     Spacer(Modifier.height(2.dp))
-                    val range = "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
-                    val synopsis = prog.description?.takeIf { it.isNotBlank() }
                     Text(
-                        synopsis ?: (range + (prog.category?.let { " · $it" } ?: "")),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = LiveWireColors.OnSurfaceMuted,
+                        prog?.title ?: "No programme information",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = LiveWireColors.OnSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (prog != null) {
+                        Spacer(Modifier.height(2.dp))
+                        val range = "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
+                        val synopsis = prog.description?.takeIf { it.isNotBlank() }
+                        Text(
+                            synopsis ?: (range + (prog.category?.let { " · $it" } ?: "")),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = LiveWireColors.OnSurfaceMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-            }
+        }
         }
     }
 }

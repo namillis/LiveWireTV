@@ -22,6 +22,8 @@ data class AppSettings(
     val streamFormat: StreamFormat = StreamFormat.TS,
     val guideWindowHours: Int = 4,
     val showNowPlayingOnCards: Boolean = true,
+    /** Play the focused channel, muted, behind the Guide's details band. */
+    val guidePreview: Boolean = true,
 )
 
 private val Context.dataStore by preferencesDataStore(name = "livewire_settings")
@@ -35,6 +37,7 @@ class SettingsStore @Inject constructor(
         val FORMAT = stringPreferencesKey("streamFormat")
         val GUIDE_HOURS = intPreferencesKey("guideWindowHours")
         val NOW_PLAYING = booleanPreferencesKey("showNowPlaying")
+        val GUIDE_PREVIEW = booleanPreferencesKey("guidePreview")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -42,6 +45,7 @@ class SettingsStore @Inject constructor(
             streamFormat = StreamFormat.fromName(p[Keys.FORMAT]),
             guideWindowHours = p[Keys.GUIDE_HOURS] ?: 4,
             showNowPlayingOnCards = p[Keys.NOW_PLAYING] ?: true,
+            guidePreview = p[Keys.GUIDE_PREVIEW] ?: true,
         )
     }
 
@@ -55,5 +59,9 @@ class SettingsStore @Inject constructor(
 
     suspend fun setShowNowPlaying(v: Boolean) {
         context.dataStore.edit { it[Keys.NOW_PLAYING] = v }
+    }
+
+    suspend fun setGuidePreview(v: Boolean) {
+        context.dataStore.edit { it[Keys.GUIDE_PREVIEW] = v }
     }
 }
