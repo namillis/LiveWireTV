@@ -224,12 +224,12 @@ private fun BottomBlock(model: RestingOverlayModel, status: PlaybackStatus, now:
         }
 
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
-        NowNext(model, now)
+        NowNext(model, now, failed = status.state == PlaybackState.ERROR)
     }
 }
 
 @Composable
-private fun NowNext(model: RestingOverlayModel, now: Long) {
+private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean) {
     val nowPlaying = model.nowPlaying
     if (nowPlaying == null) {
         // No EPG: show the "on now" label with a clear no-info line, no empty gaps (requirement 1).
@@ -238,7 +238,7 @@ private fun NowNext(model: RestingOverlayModel, now: Long) {
             Text("No programme information", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
         }
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
-        HintRow()
+        HintRow(failed)
         return
     }
 
@@ -271,9 +271,9 @@ private fun NowNext(model: RestingOverlayModel, now: Long) {
 
     Spacer(Modifier.height(LiveWireDimens.SpaceM))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-        Text(PlayerFormats.rangeStart(nowPlaying.startMs, nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(PlayerFormats.clockMeridiem(nowPlaying.startMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
         LiveWireProgress(nowPlaying.progressAt(now), Modifier.weight(1f), height = 4.dp)
-        Text(PlayerFormats.rangeEnd(nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(PlayerFormats.clockMeridiem(nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
     }
 
     Spacer(Modifier.height(LiveWireDimens.SpaceM))
@@ -293,14 +293,14 @@ private fun NowNext(model: RestingOverlayModel, now: Long) {
             }
         }
         Spacer(Modifier.weight(1f))
-        HintRow()
+        HintRow(failed)
     }
 }
 
 @Composable
-private fun HintRow() {
+private fun HintRow(failed: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-        HintChip("OK", "Pause")
+        HintChip("OK", if (failed) "Retry" else "Pause")
         HintChip("▲▼", "Channel")
     }
 }
