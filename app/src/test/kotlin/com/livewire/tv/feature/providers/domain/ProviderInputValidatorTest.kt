@@ -55,4 +55,85 @@ class ProviderInputValidatorTest {
         assertEquals("", cfg.username)
         assertNull(cfg.epgUrl)
     }
+
+    // ── normalizeUrl ──
+
+    @Test
+    fun normalizeAddsHttpWhenSchemeMissing() {
+        assertEquals("http://provider.example:8080", ProviderInputValidator.normalizeUrl("provider.example:8080"))
+        assertEquals("http://provider.example", ProviderInputValidator.normalizeUrl("  provider.example  "))
+    }
+
+    @Test
+    fun normalizeKeepsExistingSchemeAndStripsOneTrailingSlash() {
+        assertEquals("https://provider.example", ProviderInputValidator.normalizeUrl("https://provider.example/"))
+        assertEquals("http://h/path", ProviderInputValidator.normalizeUrl("http://h/path/"))
+        // The scheme's own "//" is never stripped.
+        assertEquals("http://h", ProviderInputValidator.normalizeUrl("http://h"))
+    }
+
+    @Test
+    fun normalizeLeavesBlankInputAlone() {
+        assertEquals("", ProviderInputValidator.normalizeUrl("   "))
+    }
+
+    // ── parseXtreamLink ──
+
+    @Test
+    fun parsesGetPhpLinkIntoServerUserPassword() {
+        val creds = ProviderInputValidator.parseXtreamLink(
+            "http://provider.example:8080/get.php?username=demo_user&password=secretpass&type=m3u_plus&output=ts",
+        )
+        assertEquals("http://provider.example:8080", creds?.server)
+        assertEquals("demo_user", creds?.username)
+        assertEquals("secretpass", creds?.password)
+    }
+
+    @Test
+    fun parsesPlayerApiLinkWithoutPort() {
+        val creds = ProviderInputValidator.parseXtreamLink(
+            "http://provider.example/player_api.php?username=demo_user&password=secretpass",
+        )
+        // Default port 80 is dropped from the rebuilt server root.
+        assertEquals("http://provider.example", creds?.server)
+        assertEquals("demo_user", creds?.username)
+        assertEquals("secretpass", creds?.password)
+    }
+
+    @Test
+    fun parsesLinkWithMissingSchemeViaNormalisation() {
+        val creds = ProviderInputValidator.parseXtreamLink(
+            "provider.example:8080/get.php?username=demo_user&password=secretpass",
+        )
+        assertEquals("http://provider.example:8080", creds?.server)
+        assertEquals("demo_user", creds?.username)
+    }
+
+    @Test
+    fun keepsNonDefaultHttpsPort() {
+        val creds = ProviderInputValidator.parseXtreamLink(
+            "https://provider.example:8443/get.php?username=demo_user&password=secretpass",
+        )
+        assertEquals("https://provider.example:8443", creds?.server)
+    }
+
+    @Test
+    fun dropsDefaultHttpsPort() {
+        val creds = ProviderInputValidator.parseXtreamLink(
+            "https://provider.example:443/player_api.php?username=demo_user&password=secretpass",
+        )
+        assertEquals("https://provider.example", creds?.server)
+    }
+
+    @Test
+    fun rejectsNonXtreamOrIncompleteLinks() {
+        // A plain server URL, not a get.php/player_api.php link.
+        assertNull(ProviderInputValidator.parseXtreamLink("http://provider.example:8080"))
+        // get.php but no credentials.
+        assertNull(ProviderInputValidator.parseXtreamLink("http://provider.example/get.php?type=m3u_plus"))
+        // Missing password.
+        assertNull(ProviderInputValidator.parseXtreamLink("http://provider.example/get.php?username=demo_user"))
+        // Blank.
+        assertNull(ProviderInputValidator.parseXtreamLink("   "))
+    }
 }
