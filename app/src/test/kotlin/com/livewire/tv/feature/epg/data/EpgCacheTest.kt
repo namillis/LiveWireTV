@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -242,5 +243,40 @@ class EpgCacheTest {
         }
         assertEquals("only the programme within the Guide window survives the read filter", 1, guide.programmesFor("a").size)
         assertEquals("Soon", guide.programmesFor("a").first().title)
+    }
+
+    @Test fun `disk round-trip preserves values and interns repeated strings on decode`() = runTest {
+        // Two channels carry programmes with the same title and description. Written by one
+        // cache, read back by a SECOND cache pointed at the same folder so the read must go
+        // through the streamed on-disk decode (not the in-memory entry).
+        val dir = tmp.newFolder()
+        val xml = "<?xml version=\"1.0\"?><tv>" +
+            "<channel id=\"a\"><display-name>A</display-name></channel>" +
+            "<channel id=\"b\"><display-name>B</display-name></channel>" +
+            "<programme start=\"${fmt(now)}\" stop=\"${fmt(now + hour)}\" channel=\"a\"><title>News</title><desc>Rolling coverage.</desc></programme>" +
+            "<programme start=\"${fmt(now)}\" stop=\"${fmt(now + hour)}\" channel=\"b\"><title>News</title><desc>Rolling coverage.</desc></programme>" +
+            "</tv>"
+        val writer = EpgCache(dir)
+        val loads = AtomicInteger()
+        writer.getOrLoad(key, providerId, searchWindow, parsedWindow, null, null, ttl, now) {
+            loads.incrementAndGet(); XmltvParser.parse(xml, parsedWindow, channelIds = null)
+        }
+        assertEquals(1, loads.get())
+
+        // Fresh cache instance: forces the streamed disk decode, not the memory hit.
+        val reader = EpgCache(dir)
+        val guide = reader.getOrLoad(key, providerId, searchWindow, parsedWindow, null, null, ttl, now) {
+            loads.incrementAndGet(); error("should have been served from disk")
+        }
+        assertEquals("served from disk, loader not called again", 1, loads.get())
+
+        val pa = guide.programmesFor("a").single()
+        val pb = guide.programmesFor("b").single()
+        // Values preserved through the round-trip.
+        assertEquals("News", pa.title)
+        assertEquals("Rolling coverage.", pa.description)
+        // Interned on decode: equal strings across channels share one instance.
+        assertSame("titles interned on decode", pa.title, pb.title)
+        assertSame("descriptions interned on decode", pa.description, pb.description)
     }
 }
