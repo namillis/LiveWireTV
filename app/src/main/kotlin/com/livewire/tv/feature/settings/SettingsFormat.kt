@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.settings
 
+import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.providers.domain.ProviderType
 import com.livewire.tv.feature.settings.data.StreamFormat
 
 /**
@@ -48,4 +50,21 @@ object SettingsFormat {
 
     /** The written state beside the now-playing switch (§7 written-state rule). */
     fun onOffLabel(on: Boolean): String = if (on) "On" else "Off"
+
+    /** Shown when no provider is configured. */
+    const val NO_PROVIDER = "No provider"
+
+    /**
+     * The active provider as "Name · Xtream" or "Name · M3U" (the first stored provider is
+     * the active one). Only the user's own label and the type: never the URL or login.
+     */
+    fun providerSummary(providers: List<ProviderConfig>): String {
+        val active = providers.firstOrNull() ?: return NO_PROVIDER
+        val type = when (active.type) {
+            ProviderType.XTREAM -> "Xtream"
+            ProviderType.M3U -> "M3U"
+        }
+        val name = active.name.trim().ifEmpty { type }
+        return if (name == type) type else "$name · $type"
+    }
 }
