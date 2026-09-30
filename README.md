@@ -36,8 +36,8 @@ on the device.
   NBA, men's college basketball, MLB, the NHL and the Premier League. Choosing
   a game opens a picker with the channels most likely to carry it, checked
   against your guide.
-- **Providers.** Add as many Xtream or M3U providers as you like and switch
-  between them. Placeholder rows that some providers use as category headers
+- **Providers.** Add more than one Xtream or M3U provider and switch between
+  them. Placeholder rows that some providers use as category headers
   (`##### NEWS #####`) are hidden.
 - **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,
   and now-playing text on Home cards.
@@ -56,12 +56,16 @@ and sideload it.
      apps. If Developer options is hidden, open Settings → My Fire TV → About
      and select the device name seven times.
    - **Google TV / Android TV:** Settings → Apps → Security & restrictions →
-     Unknown sources, then turn on the app you'll install with.
+     Unknown sources, then allow the app you'll use to install LiveWire
+     (for example Downloader or your file manager).
 2. **Install the APK** in one of these ways:
-   - **Downloader app** (Fire TV and Google TV): enter
+   - **Downloader app** (Fire TV and Google TV), free from the Amazon
+     Appstore or Google Play: enter
      `https://github.com/namillis/LiveWireTV/releases/latest`, scroll to *Assets*, and
      select the `livewire-<version>.apk` link.
-   - **adb** from a computer on the same network:
+   - **adb** from a computer on the same network. Turn on network or ADB
+     debugging in Developer options, and find the TV's IP address under its
+     network settings:
      ```bash
      adb connect <tv-ip>:5555
      adb install -r livewire-<version>.apk
@@ -99,7 +103,8 @@ in Settings.
 - LiveWire connects to your provider (channels, guide, streams), to ESPN's
   public scoreboard API for the Sports screen, and to wherever your provider's
   channel list says the channel logos are hosted. Nothing else.
-- There are no analytics, ads or crash reporting.
+- There are no analytics, ads or crash reporting. The full source is in this
+  repository if you want to check.
 
 ## Requirements
 
