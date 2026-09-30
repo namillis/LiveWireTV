@@ -138,7 +138,12 @@ class OnboardingViewModel @Inject constructor(
      * so the user can paste one link (plan section 1, step 5).
      */
     fun setUrl(v: String) = set { s ->
-        if (!s.isM3u) {
+        // Split a pasted get.php / player_api.php link into server + username + password.
+        // Only for a paste (several characters arriving in one change): typing the link key
+        // by key would otherwise split it the moment "password=x" appeared, and every later
+        // keystroke would land in the server field.
+        val pasted = v.length - s.url.length > 1
+        if (!s.isM3u && pasted) {
             ProviderInputValidator.parseXtreamLink(v)?.let { creds ->
                 return@set s.copy(
                     url = creds.server,
@@ -161,6 +166,12 @@ class OnboardingViewModel @Inject constructor(
     fun connect() {
         val s = _state.value
         if (s.busy) return
+        // A full get.php / player_api.php link typed key by key is only split here, on Connect.
+        if (!s.isM3u) {
+            ProviderInputValidator.parseXtreamLink(s.url)?.let { creds ->
+                set { it.copy(url = creds.server, username = creds.username, password = creds.password) }
+            }
+        }
         set { it.copy(attempted = true) }
         val draft = _state.value.draft()
         ProviderInputValidator.validate(draft)?.let { problem ->

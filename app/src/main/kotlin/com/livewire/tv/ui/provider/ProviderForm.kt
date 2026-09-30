@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +32,12 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -40,6 +50,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
+import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
 import com.livewire.tv.ui.theme.dpadVerticalExit
 
@@ -89,6 +100,8 @@ fun ProviderFilledField(
     upFocus: FocusRequester,
     downFocus: FocusRequester,
     modifier: Modifier = Modifier,
+    leftFocus: FocusRequester? = null,
+    rightFocus: FocusRequester? = null,
     optional: Boolean = false,
     password: Boolean = false,
     passwordVisible: Boolean = false,
@@ -101,6 +114,18 @@ fun ProviderFilledField(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
+    // TV remote model: moving onto a field only focuses it; OK opens the keyboard. Without
+    // this the keyboard pops on every focus change and then swallows the D-pad, so Up/Down
+    // walk the keys instead of the form.
+    var editing by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    @OptIn(ExperimentalLayoutApi::class)
+    val imeVisible = WindowInsets.isImeVisible
+    // readOnly until OK: a read-only field never starts an input session, so focusing it
+    // cannot pop the keyboard. OK flips it editable and asks for the keyboard; closing the
+    // keyboard (Back, or its Next/Done key) drops back to the D-pad focus model.
+    LaunchedEffect(editing) { if (editing) keyboard?.show() }
+    LaunchedEffect(imeVisible) { if (!imeVisible) editing = false }
     val visualTransformation =
         if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None
 
@@ -125,6 +150,7 @@ fun ProviderFilledField(
                 value = value,
                 onValueChange = onValue,
                 singleLine = true,
+                readOnly = !editing,
                 textStyle = MaterialTheme.typography.titleMedium.copy(color = LiveWireColors.OnSurface),
                 cursorBrush = SolidColor(LiveWireColors.OnSurface),
                 visualTransformation = visualTransformation,
@@ -133,8 +159,27 @@ fun ProviderFilledField(
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester)
-                    .onFocusChanged { focused = it.isFocused }
-                    .focusProperties { up = upFocus; down = downFocus }
+                    .onFocusChanged {
+                        focused = it.isFocused
+                        if (!it.isFocused) editing = false
+                    }
+                    .onPreviewKeyEvent { e ->
+                        val ok = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
+                        if (ok && !editing && e.type == KeyEventType.KeyDown) {
+                            editing = true
+                            true
+                        } else {
+                            ok && !editing // swallow the matching KeyUp too
+                        }
+                    }
+                    // All four directions live on the focusable node itself, not the
+                    // wrapping Column — otherwise left/right are silently ignored.
+                    .focusProperties {
+                        up = upFocus
+                        down = downFocus
+                        leftFocus?.let { left = it }
+                        rightFocus?.let { right = it }
+                    }
                     .dpadVerticalExit(up = upFocus, down = downFocus),
             )
             if (trailing != null) {
@@ -200,9 +245,10 @@ private fun FieldLabel(
 }
 
 /**
- * A Show/Hide control for a password field, styled as the mockup's small mono affordance.
- * It is a focus target of its own so a remote user can toggle it; [focusRequester],
- * [upFocus] and [downFocus] chain it into the form column.
+ * A Show/Hide control for a password field, as a focusable row of its own so a remote
+ * user can reach it with Up/Down and press OK to toggle (the caret eats Left/Right inside
+ * the field). Built on [LiveWireSurface] so it is focusable, shows the amber ring, and
+ * handles OK. The caller supplies up/down chaining via [modifier].
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -211,17 +257,22 @@ fun PasswordRevealToggle(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .onFocusChanged { focused = it.isFocused }
-            .padding(horizontal = LiveWireDimens.SpaceXs),
+    LiveWireSurface(
+        onClick = onToggle,
+        restingColor = LiveWireColors.SurfaceRaised,
+        shape = RoundedCornerShape(FieldRadius),
+        modifier = modifier,
     ) {
-        Text(
-            if (visible) "Hide" else "Show",
-            style = MaterialTheme.typography.labelMedium,
-            color = if (focused) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+        ) {
+            Text(
+                if (visible) "Hide password" else "Show password",
+                style = MaterialTheme.typography.titleMedium,
+                color = LiveWireColors.OnSurface,
+            )
+        }
     }
 }
 
