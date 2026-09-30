@@ -88,6 +88,7 @@ class EspnSportsProvider @Inject constructor(
                 logoUrl = t["logo"].str(),
                 score = c["score"].str()?.toIntOrNull(),
                 isHome = c["homeAway"].str() == "home",
+                shortName = t["shortDisplayName"].str().orEmpty(),
             )
         }
 
