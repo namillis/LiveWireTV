@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,7 +37,6 @@ import com.livewire.tv.core.player.MediaInfo
 import com.livewire.tv.core.player.PlayerFormats
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
-import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
 
 /** PlayerView aspect handling for the Picture row. Maps to AspectRatioFrameLayout resize modes. */
@@ -95,11 +95,11 @@ fun OptionsPanel(
     Box(
         modifier
             .fillMaxHeight()
+            .padding(top = LiveWireDimens.SafeVertical, bottom = LiveWireDimens.SafeVertical, end = LiveWireDimens.SafeHorizontal)
             .width(430.dp)
-            .padding(LiveWireDimens.SafeVertical)
             .clip(RoundedCornerShape(14.dp))
             .background(LiveWireColors.Surface)
-            .padding(horizontal = LiveWireDimens.SpaceS, vertical = LiveWireDimens.SpaceL),
+            .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceL),
     ) {
         Column(Modifier.fillMaxHeight()) {
             val header = when (view) {
@@ -251,14 +251,13 @@ private fun OptionRow(
     focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
-    LiveWireSurface(
+    PlayerFlatRow(
         onClick = onClick,
-        restingColor = LiveWireColors.Surface,
-        focusedScale = LiveWireDimens.FocusScaleWide,
-        modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier).fillMaxWidth(),
+        modifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceM),
+            // ~32 dp content ≈ 64 px at 1080p (mockup option rows).
+            Modifier.fillMaxWidth().heightIn(min = 32.dp).padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
         ) {
@@ -278,14 +277,12 @@ private fun OptionRow(
 /** A sub-list choice row with a check mark when it is the current selection. */
 @Composable
 private fun ChoiceRow(label: String, selected: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
-    LiveWireSurface(
+    PlayerFlatRow(
         onClick = onClick,
-        restingColor = LiveWireColors.Surface,
-        focusedScale = LiveWireDimens.FocusScaleWide,
-        modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier).fillMaxWidth(),
+        modifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceM),
+            Modifier.fillMaxWidth().heightIn(min = 32.dp).padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, modifier = Modifier.weight(1f))
@@ -315,11 +312,13 @@ private fun EmptyNote(text: String) {
 @Composable
 private fun HintRow(view: OptionsView) {
     val closeLabel = if (view == OptionsView.ROOT) "Close" else "Back"
+    // Stream info is read-only: OK does nothing there, so show only the Back hint (item 8).
+    val showChange = view != OptionsView.STREAM_INFO
     Row(
         Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
         horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
     ) {
-        KeyHint("OK", "Change")
+        if (showChange) KeyHint("OK", "Change")
         KeyHint("◀ BACK", closeLabel)
     }
 }
