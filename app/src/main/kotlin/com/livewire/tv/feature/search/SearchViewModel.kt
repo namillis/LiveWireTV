@@ -262,7 +262,7 @@ class SearchViewModel @Inject constructor(
      * match, which the picker renders as its no-channel empty state.
      */
     fun channelsForGame(game: SportsGame): List<ChannelMatch> =
-        SportsRepository.matchChannels(game, channels)
+        SportsRepository.matchChannels(game, channels, programmesByEpgId)
 
     /**
      * Record [query] as a recent search when it clears the minimum length (2+ chars). Called
