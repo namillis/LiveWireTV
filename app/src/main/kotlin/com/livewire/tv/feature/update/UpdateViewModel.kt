@@ -50,11 +50,19 @@ class UpdateViewModel @Inject constructor(
         data object Checking : UpdateUiState
         /** Installed build is current. [current] is the version string for the About row. */
         data class UpToDate(val current: String) : UpdateUiState
-        /** A newer release is available. */
+        /**
+         * A newer release is available. Carries display-ready fields the dialog renders
+         * directly (formatted by [UpdateFormat] / the ViewModel), so the composable holds no
+         * formatting logic:
+         *  - [currentVersion]: the installed version, for "You're on X";
+         *  - [metaLine]: the "Released <date> · <size> · installs over the top…" line;
+         *  - [notes]: the What's-new bullet lines (empty when the release had no body).
+         */
         data class Available(
             val version: String,
-            val notes: String?,
-            val sizeBytes: Long,
+            val currentVersion: String,
+            val metaLine: String,
+            val notes: List<UpdateFormat.NoteLine>,
         ) : UpdateUiState
         /** Downloading the APK. */
         data class Downloading(val pct: Int, val bytes: Long, val total: Long) : UpdateUiState
@@ -119,8 +127,9 @@ class UpdateViewModel @Inject constructor(
                     currentRelease = result.release
                     UpdateUiState.Available(
                         version = result.release.version,
-                        notes = result.release.notes,
-                        sizeBytes = apkSizeOf(result.release),
+                        currentVersion = currentVersionName(),
+                        metaLine = buildMetaLine(result.release),
+                        notes = UpdateFormat.notesLines(result.release.notes),
                     )
                 }
                 is UpdateCheckResult.UpToDate -> UpdateUiState.UpToDate(result.currentVersion)
@@ -206,6 +215,46 @@ class UpdateViewModel @Inject constructor(
     /** Clear the "Updated to X" marker after it has been shown once. */
     fun clearPendingUpdatedVersion() {
         viewModelScope.launch { settings.setPendingUpdatedVersion(null) }
+    }
+
+    /**
+     * "Try again" from a [UpdateUiState.Failed] dialog: re-run the download+verify+install when
+     * a release is in hand (a download/verify/install failure), otherwise re-run the check (a
+     * check failure, where no release was captured).
+     */
+    fun retry() {
+        if (currentRelease != null) download() else checkNow()
+    }
+
+    /** Toggle the "check for updates automatically" setting from the About row. */
+    fun setAutoCheck(enabled: Boolean) {
+        viewModelScope.launch { settings.setAutoCheckUpdates(enabled) }
+    }
+
+    /** The installed build's release version (own `-debug` suffix stripped), for display. */
+    private fun currentVersionName(): String =
+        BuildConfig.VERSION_NAME.removeSuffix("-debug")
+
+    /**
+     * The dialog meta line: "Released <date> · <size> · installs over the top, keeps your
+     * providers". The date is formatted with the device locale here (the framework-free
+     * [UpdateFormat] can't reach a locale); the rest is pure.
+     */
+    private fun buildMetaLine(release: ReleaseInfo): String {
+        val parts = ArrayList<String>()
+        UpdateFormat.releasedFragment(formatReleaseDate(release.publishedAtEpochMs))?.let { parts += it }
+        val size = apkSizeOf(release)
+        if (size > 0) parts += UpdateFormat.size(size)
+        parts += "installs over the top, keeps your providers"
+        return parts.joinToString(" · ")
+    }
+
+    private fun formatReleaseDate(epochMs: Long?): String? {
+        if (epochMs == null) return null
+        return runCatching {
+            java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault())
+                .format(java.util.Date(epochMs))
+        }.getOrNull()
     }
 
     private fun apkSizeOf(release: ReleaseInfo): Long =
