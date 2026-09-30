@@ -273,7 +273,7 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
  * The shared row chrome: a full-width [LiveWireSurface] (wide focus scale so the ring never
  * clips) with the title + description on the left and the control cluster on the right. Row
  * height is kept near the mockup's ~46dp (92px ÷ 2) via a min-height + compact padding. A
- * [rowModifier] is applied to the surface so a row (the guide stepper) can intercept keys.
+ * [modifier] is applied to the surface so a row (the guide stepper) can intercept keys.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -281,14 +281,14 @@ private fun SettingRow(
     title: String,
     description: String,
     onClick: () -> Unit,
-    rowModifier: Modifier = Modifier,
+    modifier: Modifier = Modifier,
     control: @Composable () -> Unit,
 ) {
     LiveWireSurface(
         onClick = onClick,
         restingColor = LiveWireColors.Surface,
         focusedScale = LiveWireDimens.FocusScaleWide,
-        modifier = rowModifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
@@ -332,7 +332,7 @@ private fun StreamFormatRow(
         title = "Stream format",
         description = "How channels are requested from the provider",
         onClick = onCycle,
-        rowModifier = Modifier
+        modifier = Modifier
             .focusRequester(focusRequester)
             .onFocusChanged { onFocusChanged(it.isFocused) },
     ) {
@@ -409,7 +409,7 @@ private fun GuideWindowRow(hours: Int, onDecrement: () -> Unit, onIncrement: () 
         title = "Guide window",
         description = "Hours of programmes shown across the timeline",
         onClick = onIncrement,
-        rowModifier = Modifier.onPreviewKeyEvent { event ->
+        modifier = Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             when (event.key) {
                 Key.DirectionLeft -> {
