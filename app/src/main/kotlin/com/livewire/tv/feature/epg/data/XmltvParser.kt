@@ -47,6 +47,11 @@ object XmltvParser {
 
     private fun parse(parser: XmlPullParser, window: EpgWindow?, channelIds: Set<String>?): EpgGuide {
         fun wanted(id: String) = channelIds == null || id in channelIds
+        // One shared instance per distinct channel id / title / description / category. A
+        // channel id recurs on every programme it carries and a synopsis recurs on every
+        // airing, so interning during the parse keeps the retained guide from holding tens
+        // of thousands of duplicate String objects. Discarded with the parse.
+        val interner = StringInterner()
         val channels = mutableListOf<EpgChannel>()
         val programmes = mutableMapOf<String, MutableList<EpgProgramme>>()
 
@@ -96,7 +101,11 @@ object XmltvParser {
                     "channel" -> {
                         val id = chId
                         if (!id.isNullOrEmpty() && wanted(id)) {
-                            channels.add(EpgChannel(id = id, displayName = chName ?: id, iconUrl = chIcon))
+                            channels.add(EpgChannel(
+                                id = interner.internNonNull(id),
+                                displayName = interner.internNonNull(chName ?: id),
+                                iconUrl = chIcon,
+                            ))
                         }
                         chId = null
                     }
@@ -106,12 +115,12 @@ object XmltvParser {
                         val stop = pStop
                         if (!channelId.isNullOrEmpty() && wanted(channelId) && start != null && stop != null) {
                             val programme = EpgProgramme(
-                                channelId = channelId,
+                                channelId = interner.internNonNull(channelId),
                                 startMs = start,
                                 stopMs = stop,
-                                title = pTitle ?: "No title",
-                                description = pDesc,
-                                category = pCategory,
+                                title = interner.internNonNull(pTitle ?: "No title"),
+                                description = interner.intern(pDesc),
+                                category = interner.intern(pCategory),
                             )
                             if (window == null || window.overlaps(programme)) {
                                 programmes.getOrPut(channelId) { mutableListOf() }.add(programme)
