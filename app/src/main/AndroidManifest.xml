@@ -14,6 +14,16 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
+    <!-- Package visibility (API 30+): lets UpdateInstaller check that the
+         "Install unknown apps" settings screen exists before opening it. Some
+         Google TV / Fire OS builds hide it. -->
+    <queries>
+        <intent>
+            <action android:name="android.settings.MANAGE_UNKNOWN_APP_SOURCES" />
+            <data android:scheme="package" />
+        </intent>
+    </queries>
+
     <application
         android:name=".LiveWireApp"
         android:allowBackup="false"
