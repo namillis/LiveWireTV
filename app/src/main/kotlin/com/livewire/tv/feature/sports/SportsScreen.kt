@@ -103,7 +103,8 @@ fun SportsScreen(
                 pickerGame?.let { game ->
                     ChannelPicker(
                         game = game,
-                        matches = viewModel.channelsFor(game),
+                        // Re-ranked when the guide arrives, even while the picker is open.
+                        matches = remember(game, state.guideVersion) { viewModel.channelsFor(game) },
                         onPick = { m ->
                             pickerGame = null
                             viewModel.playbackTarget(m.channel)?.let { target ->
