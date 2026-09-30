@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.sports.data
 
+import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.sports.domain.GameState
 import com.livewire.tv.feature.sports.domain.GameStatus
@@ -169,5 +170,89 @@ class SportsMatchTest {
             ),
         )
         assertTrue(m.isEmpty())
+    }
+
+    // Guide matching. The game starts at T; listings are placed around it.
+    private val t = 1_000_000_000L
+    private val hour = 3_600_000L
+    private val guideGame = rangersAtBruins.copy(startTimeMs = t)
+
+    private fun epgCh(id: String, name: String, epg: String) =
+        LiveChannel(streamId = id, name = name, categoryId = "c1", epgChannelId = epg)
+
+    private fun prog(epg: String, title: String, desc: String? = null, start: Long = t, hours: Long = 3) =
+        EpgProgramme(channelId = epg, startMs = start, stopMs = start + hours * hour, title = title, description = desc)
+
+    @Test fun `a guide listing naming both teams ranks first`() {
+        val m = SportsRepository.matchChannels(
+            guideGame,
+            listOf(
+                epgCh("1", "US - NHL GAME 03 : NEW YORK RANGERS @ BOSTON BRUINS", "nhl3"),
+                epgCh("2", "US - ESPN 1 HD", "espn1"),
+            ),
+            mapOf("espn1" to listOf(prog("espn1", "New York Rangers at Boston Bruins"))),
+        )
+        assertEquals(listOf("2", "1"), m.map { it.channel.streamId })
+        assertEquals(SportsRepository.GUIDE_LISTING, m[0].matchedNetwork)
+    }
+
+    @Test fun `a game title with the teams in the description matches`() {
+        val m = SportsRepository.matchChannels(
+            guideGame.copy(broadcastNetworks = emptyList()),
+            listOf(epgCh("1", "US - NESN HD", "nesn")),
+            mapOf("nesn" to listOf(prog("nesn", "NHL Hockey", "Boston Bruins host the New York Rangers."))),
+        )
+        assertEquals(listOf("1"), m.map { it.channel.streamId })
+    }
+
+    @Test fun `a description alone does not match a non-game show`() {
+        // A news show previewing the game names both teams but does not carry it.
+        val m = SportsRepository.matchChannels(
+            guideGame.copy(broadcastNetworks = emptyList()),
+            listOf(epgCh("1", "US - ESPN NEWS HD", "news")),
+            mapOf("news" to listOf(prog("news", "SportsCenter", "Rangers and Bruins preview."))),
+        )
+        assertTrue(m.isEmpty())
+    }
+
+    @Test fun `a network match showing another programme ranks below one with no guide`() {
+        val m = SportsRepository.matchChannels(
+            guideGame,
+            listOf(epgCh("1", "US - ESPN HD", "espn"), epgCh("2", "US - ESPN FHD", "none")),
+            mapOf("espn" to listOf(prog("espn", "SportsCenter"))),
+        )
+        assertEquals(listOf("2", "1"), m.map { it.channel.streamId })
+    }
+
+    @Test fun `a listing outside the game's time does not count`() {
+        val m = SportsRepository.matchChannels(
+            guideGame.copy(broadcastNetworks = emptyList()),
+            listOf(epgCh("1", "US - ESPN 1 HD", "espn1")),
+            mapOf("espn1" to listOf(prog("espn1", "New York Rangers at Boston Bruins", start = t + 5 * hour))),
+        )
+        assertTrue(m.isEmpty())
+    }
+
+    @Test fun `a shared guide id confirms only the network's own channels`() {
+        // Real provider data: ESPN, ESPN 1, ESPN ACC Network and ESPN SEC Network all use
+        // the guide id "espn.us", so its listing cannot vouch for the ACC or SEC channel.
+        val listing = mapOf("espn.us" to listOf(prog("espn.us", "Chicago Blackhawks at Vegas Golden Knights")))
+        val game = guideGame.copy(
+            home = TeamSide("1", "Vegas Golden Knights", "VGK", isHome = true, shortName = "Golden Knights"),
+            away = TeamSide("2", "Chicago Blackhawks", "CHI", shortName = "Blackhawks"),
+        )
+        val m = SportsRepository.matchChannels(
+            game,
+            listOf(
+                epgCh("1", "US - ESPN ACC NETWORK HD ◉", "espn.us"),
+                epgCh("2", "US - ESPN HD ◉", "espn.us"),
+                epgCh("3", "US - ESPN 1 HD ◉", "espn.us"),
+                epgCh("4", "US - ESPN SEC NETWORK HD ◉", "espn.us"),
+            ),
+            listing,
+        )
+        assertEquals(listOf("2", "3"), m.take(2).map { it.channel.streamId })
+        assertTrue(m.take(2).all { it.matchedNetwork == SportsRepository.GUIDE_LISTING })
+        assertTrue(m.drop(2).none { it.matchedNetwork == SportsRepository.GUIDE_LISTING })
     }
 }
