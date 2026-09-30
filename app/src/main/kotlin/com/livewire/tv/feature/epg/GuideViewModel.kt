@@ -8,6 +8,7 @@ import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.settings.data.SettingsStore
@@ -41,6 +42,8 @@ data class GuideUiState(
     val programmesLoaded: Boolean = false,
     val windowStartMs: Long = 0,
     val windowSpanMs: Long = TimeUnit.HOURS.toMillis(4),
+    /** The Settings switch for the muted channel preview. */
+    val previewEnabled: Boolean = false,
 ) {
     /** The rows the grid shows: [allRows] narrowed by the category and keyword filters. */
     val rows: List<GuideRow> by lazy { filterGuideRows(allRows, categoryId, query) }
@@ -175,6 +178,20 @@ class GuideViewModel @Inject constructor(
             now - loadedAtMs < FRESH_FOR_MS &&
             // The window starts 30 min before now; past that the now-line drifts too far right.
             guideWindowStart(now) == s.windowStartMs
+    }
+
+    init {
+        // Follow the Settings switch live, so turning it off stops a preview on return.
+        viewModelScope.launch {
+            settings.settings.collect { s -> _state.update { it.copy(previewEnabled = s.guidePreview) } }
+        }
+    }
+
+    /** The stream to preview for [streamId], resolved the same way the player resolves it. */
+    suspend fun previewSource(streamId: String): PlaybackSource? {
+        val cfg = provider ?: return null
+        val format = settings.settings.first().streamFormat
+        return client.playbackSource(cfg, streamId, format.ext)
     }
 
     fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
