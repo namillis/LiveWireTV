@@ -68,10 +68,36 @@ jobs:
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           cp "$APK" "livewire-${{ steps.ver.outputs.name }}.apk"
 
+      - name: Generate checksum and update manifest
+        id: integrity
+        run: |
+          NAME="${{ steps.ver.outputs.name }}"
+          CODE="${{ steps.ver.outputs.code }}"
+          APK="livewire-${NAME}.apk"
+          # sha256sum-format sidecar: "<64-hex>  <filename>" (the updater parses the first token).
+          sha256sum "$APK" > "${APK}.sha256"
+          SHA=$(cut -d' ' -f1 "${APK}.sha256")
+          SIZE=$(wc -c < "$APK" | tr -d ' ')
+          # minSdk is fixed in the module; keep it here so the manifest is self-describing.
+          MINSDK=23
+          cat > update.json <<EOF
+          {
+            "version": "${NAME}",
+            "versionCode": ${CODE},
+            "sha256": "${SHA}",
+            "size": ${SIZE},
+            "minSdk": ${MINSDK}
+          }
+          EOF
+          echo "Published ${APK}.sha256 and update.json (sha256=${SHA} size=${SIZE})"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: livewire-${{ steps.ver.outputs.name }}.apk
+          files: |
+            livewire-${{ steps.ver.outputs.name }}.apk
+            livewire-${{ steps.ver.outputs.name }}.apk.sha256
+            update.json
           generate_release_notes: true
           body: |
             LiveWire ${{ github.ref_name }}

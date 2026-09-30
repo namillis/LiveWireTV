@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG-only manifest additions. Merged into the debug build's manifest and absent
+     from release. Registers the headless self-update trigger used for the emulator
+     end-to-end test (see UpdateDebugReceiver). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <receiver
+            android:name=".feature.update.debug.UpdateDebugReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.livewire.tv.debug.RUN_UPDATE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

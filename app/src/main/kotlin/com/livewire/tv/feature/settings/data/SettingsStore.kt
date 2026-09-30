@@ -24,6 +24,16 @@ data class AppSettings(
     val showNowPlayingOnCards: Boolean = true,
     /** Play the focused channel, muted, behind the Guide's details band. */
     val guidePreview: Boolean = true,
+    // --- Self-update state ---
+    /** Epoch ms of the last update check (0 = never). Gates the 24h auto-check. */
+    val lastUpdateCheck: Long = 0L,
+    /** A version the user chose to skip, so it isn't surfaced again (null = none). */
+    val skippedVersion: String? = null,
+    /** Whether to check for updates automatically on launch (default on). */
+    val autoCheckUpdates: Boolean = true,
+    /** Set to the target version just before an install commits; read once on next launch
+     *  to show "Updated to X", then cleared (null = nothing pending). */
+    val pendingUpdatedVersion: String? = null,
 )
 
 private val Context.dataStore by preferencesDataStore(name = "livewire_settings")
@@ -38,6 +48,10 @@ class SettingsStore @Inject constructor(
         val GUIDE_HOURS = intPreferencesKey("guideWindowHours")
         val NOW_PLAYING = booleanPreferencesKey("showNowPlaying")
         val GUIDE_PREVIEW = booleanPreferencesKey("guidePreview")
+        val LAST_UPDATE_CHECK = androidx.datastore.preferences.core.longPreferencesKey("lastUpdateCheck")
+        val SKIPPED_VERSION = stringPreferencesKey("skippedVersion")
+        val AUTO_CHECK_UPDATES = booleanPreferencesKey("autoCheckUpdates")
+        val PENDING_UPDATED_VERSION = stringPreferencesKey("pendingUpdatedVersion")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -46,6 +60,10 @@ class SettingsStore @Inject constructor(
             guideWindowHours = p[Keys.GUIDE_HOURS] ?: 4,
             showNowPlayingOnCards = p[Keys.NOW_PLAYING] ?: true,
             guidePreview = p[Keys.GUIDE_PREVIEW] ?: true,
+            lastUpdateCheck = p[Keys.LAST_UPDATE_CHECK] ?: 0L,
+            skippedVersion = p[Keys.SKIPPED_VERSION]?.ifBlank { null },
+            autoCheckUpdates = p[Keys.AUTO_CHECK_UPDATES] ?: true,
+            pendingUpdatedVersion = p[Keys.PENDING_UPDATED_VERSION]?.ifBlank { null },
         )
     }
 
@@ -63,5 +81,27 @@ class SettingsStore @Inject constructor(
 
     suspend fun setGuidePreview(v: Boolean) {
         context.dataStore.edit { it[Keys.GUIDE_PREVIEW] = v }
+    }
+
+    // --- Self-update state ---
+
+    suspend fun setLastUpdateCheck(epochMs: Long) {
+        context.dataStore.edit { it[Keys.LAST_UPDATE_CHECK] = epochMs }
+    }
+
+    suspend fun setSkippedVersion(version: String?) {
+        context.dataStore.edit {
+            if (version.isNullOrBlank()) it.remove(Keys.SKIPPED_VERSION) else it[Keys.SKIPPED_VERSION] = version
+        }
+    }
+
+    suspend fun setAutoCheckUpdates(v: Boolean) {
+        context.dataStore.edit { it[Keys.AUTO_CHECK_UPDATES] = v }
+    }
+
+    suspend fun setPendingUpdatedVersion(version: String?) {
+        context.dataStore.edit {
+            if (version.isNullOrBlank()) it.remove(Keys.PENDING_UPDATED_VERSION) else it[Keys.PENDING_UPDATED_VERSION] = version
+        }
     }
 }
