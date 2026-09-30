@@ -1,97 +1,197 @@
-# LiveWire (native)
+# LiveWire
 
 [![CI](https://github.com/namillis/LiveWireTV/actions/workflows/ci.yml/badge.svg)](https://github.com/namillis/LiveWireTV/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/namillis/LiveWireTV?sort=semver)](https://github.com/namillis/LiveWireTV/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Pure-client Android **TV**/mobile IPTV & media player. Native rewrite of the
-Flutter prototype — Kotlin + Jetpack Compose (Compose for TV) + Media3/ExoPlayer,
-no backend. See `docs/ADR-0001-native-kotlin-exoplayer.md` for why, and
-`docs/REWRITE_PLAN.md` for the phased plan.
+LiveWire is an IPTV player for Android TV, Google TV and Fire TV. You bring
+your own Xtream Codes or M3U provider. There's no account and no LiveWire
+server. The app talks to your provider directly, and your login is stored only
+on the device.
 
-## Status
+![Home screen](docs/images/home.jpg)
 
-Phase 0 (scaffold) complete: the app builds to an installable Android TV APK and
-boots to a blank Compose-for-TV surface. Features land in Phases 1–7 per the plan.
+| Guide | Player options |
+|---|---|
+| ![Guide](docs/images/guide.jpg) | ![Player options panel](docs/images/player.jpg) |
+| **Sports** | **Settings** |
+| ![Sports scoreboard](docs/images/sports.jpg) | ![Settings](docs/images/settings.jpg) |
 
-## Build requirements
+## Features
 
-- **JDK 17** (AGP 8.5 requires it; the toolchain is pinned to it).
-- **Android SDK** with platform 35 + build-tools (this host: `~/android-sdk`).
-- Gradle is provided by the wrapper (`./gradlew`), pinned to **8.9**.
+- **Home.** A hero band shows what's on the focused channel now and next,
+  with rails of channels grouped by your provider's categories.
+- **Guide.** A programme grid with a red now-line. You can filter it by
+  category or keyword, and it keeps your place when you come back from a
+  channel. Above the grid, a details band describes the focused programme,
+  and after 2 seconds it also plays that channel muted. A downloaded guide is reused for up to 3 hours, so reopening the
+  Guide in that time doesn't download it again.
+- **Player.** Up and Down change channel. Left opens the channel list, and
+  Right opens Options: audio track, subtitles, picture mode (fit, fill, zoom),
+  reload and stream info.
+- **Search.** Results are grouped into channels, programmes that are on now
+  or later, and games. When the field is empty it shows your recent searches
+  and the channels you watched last.
+- **Sports.** Scores and schedules from ESPN for the NFL, college football, the
+  NBA, men's college basketball, MLB, the NHL and the Premier League. Choosing
+  a game opens a picker listing your channels whose names match the game's
+  network or teams, ranked by how closely they match and checked against your
+  guide.
+- **Providers.** Add more than one Xtream or M3U provider and switch between
+  them. Placeholder rows that some providers use as category headers
+  (`##### NEWS #####`) are hidden.
+- **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,
+  and now-playing text on Home cards.
 
-### JDK note (important on this host)
+Everything works with a TV remote's D-pad. On phones and touch TVs, taps work too.
 
-AGP 8.5 requires **JDK 17**. The Kotlin compile toolchain is pinned via
-`kotlin { jvmToolchain(17) }` in `app/build.gradle.kts`, so compiled bytecode is
-always JDK-17.
+## Install
 
-If your machine's default `java` is **not** 17 (this dev host defaults to JDK 25,
-which Gradle cannot run under), point Gradle at a JDK 17 **without editing any
-tracked file** — the tracked `gradle.properties` intentionally carries no host
-paths. Use either:
+LiveWire isn't in the Play Store or the Amazon Appstore. Download the APK from
+the [latest release](https://github.com/namillis/LiveWireTV/releases/latest)
+and sideload it.
+
+1. **Allow installs from unknown sources** for the app you'll install with.
+   Menu names vary by device.
+   - **Fire TV:** Settings → My Fire TV → Developer options → Install unknown
+     apps. If Developer options is hidden, open Settings → My Fire TV → About
+     and select the device name seven times.
+   - **Google TV / Android TV:** Settings → Apps → Security & restrictions →
+     Unknown sources, then allow the app you'll use to install LiveWire
+     (for example Downloader or your file manager).
+2. **Install the APK** in one of these ways:
+   - **Downloader app** (Fire TV and Google TV), free from the Amazon
+     Appstore or Google Play: enter
+     `https://github.com/namillis/LiveWireTV/releases/latest`, scroll to *Assets*, and
+     select the `livewire-<version>.apk` link.
+   - **adb** from a computer on the same network. Turn on network or ADB
+     debugging in Developer options, and find the TV's IP address under its
+     network settings:
+     ```bash
+     adb connect <tv-ip>:5555
+     adb install -r livewire-<version>.apk
+     ```
+   - **A file manager**, from a USB drive or network share.
+3. **Updating:** install the new APK over the old one. Every release is signed
+   with the same key, so your providers and settings are kept. The app doesn't
+   check for updates yet.
+
+## Setup
+
+On first launch LiveWire asks for a provider. Your IPTV provider gives you
+these details when you sign up. You can add more later under
+Settings → Manage providers.
+
+- **Xtream Codes:** server address, username and password. The guide is
+  loaded from the same server.
+- **M3U playlist:** the playlist URL, and optionally a guide (XMLTV) URL. If
+  you leave the guide URL empty, LiveWire uses the one advertised in the
+  playlist header (`url-tvg` or `x-tvg-url`), if there is one. Movie and
+  series entries in a playlist are skipped; LiveWire plays live TV only.
+
+Plain `http://` providers are allowed, because many IPTV servers don't offer
+HTTPS. Traffic to those servers, including your login, is not encrypted.
+
+If channels won't play, try switching Stream format between MPEG-TS and HLS
+in Settings.
+
+## Privacy
+
+- Provider logins are stored on the device with Android's encrypted shared
+  preferences. The key never leaves the device.
+- Backups and device-to-device transfer are turned off, so app data isn't
+  copied to Google Drive or a new device.
+- LiveWire connects to your provider (channels, guide, streams), to ESPN's
+  public scoreboard API for the Sports screen, and to wherever your provider's
+  channel list says the channel logos are hosted.
+- There are no analytics, ads or crash reporting. The full source is in this
+  repository if you want to check.
+
+## Requirements
+
+- Android 6.0 (API 23) or later.
+- Built for TVs and TV sticks. It also installs on phones and tablets.
+
+## Build from source
+
+You need JDK 17 and the Android SDK. Gradle comes with the wrapper, and the
+Android Gradle Plugin, SDK levels and library versions are set in
+`app/build.gradle.kts` and `gradle/libs.versions.toml`.
 
 ```bash
-# option A — user-global Gradle properties (never in the repo):
-#   ~/.gradle/gradle.properties
-org.gradle.java.home=/absolute/path/to/jdk-17
-org.gradle.java.installations.paths=/absolute/path/to/jdk-17
-
-# option B — environment, per shell:
-export JAVA_HOME=/absolute/path/to/jdk-17
+git clone https://github.com/namillis/LiveWireTV.git
+cd LiveWireTV
 ```
-
-On this dev host, option A is already set in `~/.gradle/gradle.properties`
-pointing at `/usr/lib/jvm/java-17-amazon-corretto.x86_64`, so `./gradlew` works
-with no per-shell setup.
-
-## Common commands
 
 ```bash
-./gradlew :app:assembleDebug          # build the debug APK
-./gradlew :app:testDebugUnitTest      # run JVM unit tests
-./gradlew :app:lint                   # Android lint
-./gradlew :app:assembleRelease        # minified release APK (R8 + resource shrink)
+./gradlew :app:assembleDebug          # debug APK in app/build/outputs/apk/debug/
+./gradlew :app:testDebugUnitTest      # unit tests
+./gradlew :app:lintDebug              # Android lint
+./gradlew :app:assembleRelease        # minified release APK
 ```
 
-Debug APK output: `app/build/outputs/apk/debug/app-debug.apk`
-
-## Install on a device / TV
+The debug build's package is `com.livewire.tv.debug`, so it installs next to a
+release build without replacing it. To launch it from adb:
 
 ```bash
-adb connect <TV-IP>:5555
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb logcat | grep -i livewire        # watch logs while testing
+adb shell am start -n com.livewire.tv.debug/com.livewire.tv.MainActivity
 ```
 
-The app registers a `LEANBACK_LAUNCHER` intent, so it appears on the Android TV
-home row, and a normal `LAUNCHER` intent so it also installs on phones/tablets.
+If your default `java` isn't 17, point Gradle at a JDK 17 without editing
+tracked files, either with `org.gradle.java.home` in
+`~/.gradle/gradle.properties` or by exporting `JAVA_HOME`.
 
-## Layout
+CI runs the unit tests, lint and a debug build on every pull request and
+every push to `main`.
+
+## Project layout
 
 ```
 app/src/main/kotlin/com/livewire/tv/
-  LiveWireApp.kt        # Hilt @HiltAndroidApp
-  MainActivity.kt       # @AndroidEntryPoint, hosts the Compose-for-TV scaffold
-  ui/theme/Theme.kt     # LiveWire teal, dark
-app/src/main/res/       # manifest resources: icon, TV banner, theme, strings
-docs/                   # ADR + rewrite plan
+  core/player/     PlaybackEngine interface and its ExoPlayer implementation
+  core/net/        Response stream helpers (gzip handling)
+  di/              Hilt modules
+  navigation/      Nav host and the left navigation drawer
+  ui/              Theme, shared surfaces and text fields, touch support
+  feature/
+    onboarding/    First-run provider setup
+    providers/     Xtream and M3U clients, provider storage, Providers screen
+    epg/           Guide screen, XMLTV parsing and the guide cache
+    home/          Home screen
+    player/        Player screen, overlay, Options and channel list panels
+    search/        Search and search history
+    sports/        ESPN scoreboard and the channel picker
+    settings/      Settings screen and stored preferences
+scripts/measure.sh Memory, start-up and APK size measurements on a real device
 ```
 
-## Stack
+The player UI talks to `PlaybackEngine`, not to ExoPlayer directly, so another
+playback engine can be added later without changing the screens.
 
-Compose + `androidx.tv` · Media3/ExoPlayer (+HLS) · Hilt · Room · DataStore ·
-EncryptedSharedPreferences · Coil · Retrofit + kotlinx-serialization + OkHttp ·
-Navigation-Compose · Coroutines. Versions are centralized in
-`gradle/libs.versions.toml`.
+## Releasing
 
-## Fonts
+Pushing a tag like `v0.1.4` builds a signed release APK and publishes it as a
+GitHub Release. See [docs/RELEASING.md](docs/RELEASING.md) for the steps,
+version numbering and signing setup.
 
-The UI bundles three [SIL Open Font License](https://scripts.sil.org/OFL)
-families, subset to Latin and shipped in `app/src/main/res/font/` (no
-downloadable fonts — AOSP TV images have no Play Services):
+## Credits
 
-- **Inter** v4.1 (text) — [rsms/inter](https://github.com/rsms/inter)
-- **Space Grotesk** (display) — [floriankarsten/space-grotesk](https://github.com/floriankarsten/space-grotesk) via [google/fonts](https://github.com/google/fonts/tree/main/ofl/spacegrotesk)
-- **JetBrains Mono** v2.304 (mono, tabular figures) — [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono)
+- Playback by [AndroidX Media3 / ExoPlayer](https://github.com/androidx/media).
+- Fonts: [Inter](https://github.com/rsms/inter),
+  [Space Grotesk](https://github.com/floriankarsten/space-grotesk) and
+  [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), all under the
+  SIL Open Font License. They're bundled, trimmed to Latin characters, because
+  many TV devices can't download fonts. Licence texts and source versions are
+  in [third_party/fonts/](third_party/fonts/).
+- Sports data comes from ESPN's public site API. LiveWire isn't affiliated
+  with or endorsed by ESPN.
 
-License texts, exact source URLs/versions, and the subsetting recipe are in
-[`third_party/fonts/`](third_party/fonts/).
+## Disclaimer
+
+LiveWire is a player only. It doesn't provide, host or link to any channels or
+streams. You need your own provider, and you're responsible for making sure
+you have the right to watch what it serves.
+
+## License
+
+[MIT](LICENSE)
