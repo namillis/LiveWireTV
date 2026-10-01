@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -274,7 +273,8 @@ private fun NotesBox(lines: List<UpdateFormat.NoteLine>, focusRequester: FocusRe
                         if (atTop) {
                             true // swallow: stay in the box, don't escape upward
                         } else {
-                            scope.launch { listState.scrollBy(-NotesScrollStep) }
+                            // Step by whole lines so the viewport never lands mid-line.
+                            scope.launch { listState.scrollToItem((listState.firstVisibleItemIndex - 1).coerceAtLeast(0)) }
                             true
                         }
                     }
@@ -283,7 +283,7 @@ private fun NotesBox(lines: List<UpdateFormat.NoteLine>, focusRequester: FocusRe
                         if (atBottom) {
                             false // let focus move down to the action row
                         } else {
-                            scope.launch { listState.scrollBy(NotesScrollStep) }
+                            scope.launch { listState.scrollToItem(listState.firstVisibleItemIndex + 1) }
                             true
                         }
                     }
@@ -291,13 +291,16 @@ private fun NotesBox(lines: List<UpdateFormat.NoteLine>, focusRequester: FocusRe
                 }
             },
     ) {
+        // Padding sits OUTSIDE the list so its viewport is exactly N whole lines. With the
+        // padding inside (contentPadding), the line above the first visible one is drawn into
+        // the top padding and shows half-clipped after scrolling.
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(
-                horizontal = LiveWireDimens.SpaceL,
-                vertical = NotesVPadding,
-            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = NotesVPadding)
+                .height(boxHeight),
+            contentPadding = PaddingValues(horizontal = LiveWireDimens.SpaceL),
         ) {
             items(lines) { line -> NoteLineRow(line) }
         }
@@ -397,9 +400,9 @@ private fun ProgressDialog(pct: Int, bytes: Long, total: Long, verifying: Boolea
         }
 
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
-        StepRow(label = "Downloading the update", sub = "the new version is fetched", active = !verifying, done = verifying)
+        StepRow(label = "Downloading the update", sub = "from the LiveWire releases page on GitHub", icon = if (verifying) ActionIcon.CHECK else ActionIcon.DOWNLOAD, active = !verifying, done = verifying)
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
-        StepRow(label = "Checking the download…", sub = "verifies size and SHA-256 before installing", active = verifying, done = false)
+        StepRow(label = "Checking the download…", sub = "makes sure it's the genuine, complete file before installing", icon = ActionIcon.SHIELD, active = verifying, done = false)
 
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
         Row(
@@ -407,23 +410,29 @@ private fun ProgressDialog(pct: Int, bytes: Long, total: Long, verifying: Boolea
                 .fillMaxWidth()
                 .focusProperties { up = cancelFocus; down = cancelFocus },
         ) {
-            ActionButton(label = "Cancel", onClick = onCancel, modifier = Modifier.weight(1f).focusRequester(cancelFocus), icon = ActionIcon.CLOSE)
+            // Compact, left-aligned like the mockup — a full-width Cancel reads as the main action.
+            ActionButton(label = "Cancel", onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus), icon = ActionIcon.CLOSE)
         }
     }
 }
 
 /** One step in the download→verify checklist. [active] brightens it; [done] marks it complete. */
 @Composable
-private fun StepRow(label: String, sub: String, active: Boolean, done: Boolean) {
+private fun StepRow(label: String, sub: String, icon: ActionIcon, active: Boolean, done: Boolean) {
     val titleColor = if (active || done) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            if (done) "✓" else if (active) "•" else "◦",
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = titleColor,
-            modifier = Modifier.width(20.dp),
-        )
+        // Round badge with a line glyph (mockup: ↓ for download, shield for the check, ✓ once done).
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(StepBadgeSize)
+                .clip(RoundedCornerShape(50))
+                .background(if (active || done) LiveWireColors.SurfaceRaised else LiveWireColors.Surface)
+                .border(1.dp, LiveWireColors.OnSurfaceMuted.copy(alpha = 0.35f), RoundedCornerShape(50)),
+        ) {
+            ButtonGlyph(icon, color = titleColor, glyphSize = 12.dp)
+        }
+        Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.titleMedium, color = titleColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(sub, style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -569,7 +578,10 @@ private fun WarnGlyph() {
 }
 
 /** The icon a dialog action button draws to the left of its label (mockup line icons). */
-private enum class ActionIcon { DOWNLOAD, CLOCK, CLOSE, SETTINGS, RETRY }
+private enum class ActionIcon { DOWNLOAD, CLOCK, CLOSE, SETTINGS, RETRY, SHIELD, CHECK }
+
+/** Round badge beside each download/verify step (mockup ~28px circle at 2x density). */
+private val StepBadgeSize = 28.dp
 
 /** A dialog action button (§9.5). Focus ring/scale/glow come from [LiveWireSurface] (amber). */
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -609,9 +621,8 @@ private fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier 
  * error-screen settings/retry marks. Drawn on-surface (never amber — amber is focus only).
  */
 @Composable
-private fun ButtonGlyph(icon: ActionIcon) {
-    val color = LiveWireColors.OnSurface
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(18.dp)) {
+private fun ButtonGlyph(icon: ActionIcon, color: androidx.compose.ui.graphics.Color = LiveWireColors.OnSurface, glyphSize: androidx.compose.ui.unit.Dp = 18.dp) {
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(glyphSize)) {
         val w = size.width
         val h = size.height
         val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
@@ -640,6 +651,22 @@ private fun ButtonGlyph(icon: ActionIcon) {
             ActionIcon.SETTINGS -> {
                 drawCircle(color, radius = w * 0.16f, center = androidx.compose.ui.geometry.Offset(w / 2, h / 2), style = stroke)
                 drawCircle(color, radius = w * 0.40f, center = androidx.compose.ui.geometry.Offset(w / 2, h / 2), style = stroke)
+            }
+            ActionIcon.SHIELD -> {
+                val p = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(w * 0.5f, h * 0.08f)
+                    lineTo(w * 0.85f, h * 0.22f)
+                    lineTo(w * 0.85f, h * 0.48f)
+                    quadraticTo(w * 0.85f, h * 0.80f, w * 0.5f, h * 0.94f)
+                    quadraticTo(w * 0.15f, h * 0.80f, w * 0.15f, h * 0.48f)
+                    lineTo(w * 0.15f, h * 0.22f)
+                    close()
+                }
+                drawPath(p, color, style = stroke)
+            }
+            ActionIcon.CHECK -> {
+                drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.18f, h * 0.52f), androidx.compose.ui.geometry.Offset(w * 0.42f, h * 0.76f), stroke.width, androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(color, androidx.compose.ui.geometry.Offset(w * 0.42f, h * 0.76f), androidx.compose.ui.geometry.Offset(w * 0.84f, h * 0.26f), stroke.width, androidx.compose.ui.graphics.StrokeCap.Round)
             }
             ActionIcon.RETRY -> {
                 drawArc(
@@ -670,6 +697,4 @@ private const val NotesVisibleLines = 6
 private val NotesVPadding = 12.dp
 /** The faded "▼ scroll for more" cue band at the bottom of a scrollable notes box. */
 private val NotesCueHeight = 28.dp
-/** Pixels scrolled per D-pad Up/Down press inside the notes box (~one line). */
-private const val NotesScrollStep = 56f
 private val ButtonHeight = 40.dp
