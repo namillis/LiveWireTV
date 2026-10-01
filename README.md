@@ -72,9 +72,11 @@ and sideload it.
      adb install -r livewire-<version>.apk
      ```
    - **A file manager**, from a USB drive or network share.
-3. **Updating:** install the new APK over the old one. Every release is signed
-   with the same key, so your providers and settings are kept. The app doesn't
-   check for updates yet.
+3. **Updating:** LiveWire checks GitHub for a new release once a day and offers
+   to install it from Home. You can also check under Settings → About → Check
+   for updates. The first time, Android asks you to allow LiveWire to install
+   apps. To update by hand, install the new APK over the old one. Every release
+   is signed with the same key, so your providers and settings are kept.
 
 ## Setup
 
