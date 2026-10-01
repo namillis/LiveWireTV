@@ -92,6 +92,11 @@ fun SettingsScreen(
     val providerSummary by viewModel.providerSummary.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.refreshProviderSummary() }
 
+    // The self-update surface, scoped to the Activity so a check started here shares state with
+    // Home (and its dialog can appear over either screen).
+    val updateViewModel = com.livewire.tv.feature.update.rememberActivityUpdateViewModel()
+    val updateState by updateViewModel.state.collectAsStateWithLifecycle()
+
     // Focus the first row (Stream format) when Settings opens, so the PLAYBACK header is visible
     // and the first D-pad press acts on a setting instead of falling into the nav drawer — the
     // same pattern Home uses for its first card.
@@ -113,28 +118,36 @@ fun SettingsScreen(
         modifier = Modifier.fillMaxSize(),
         colors = SurfaceDefaults.colors(containerColor = LiveWireColors.Canvas),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    start = LiveWireDimens.SafeHorizontal,
-                    end = LiveWireDimens.SafeHorizontal,
-                    top = LiveWireDimens.SafeVertical,
-                    bottom = LiveWireDimens.SafeVertical,
-                ),
-        ) {
-            TopLine(providerSummary = providerSummary)
-            Spacer(Modifier.height(LiveWireDimens.SpaceL))
-            SettingsList(
-                s = s,
-                providerSummary = providerSummary,
-                viewModel = viewModel,
-                onOpenProviders = onOpenProviders,
-                firstRowFocus = firstRowFocus,
-                onFirstRowFocusChanged = { firstRowHasFocus = it },
-                modifier = Modifier.weight(1f),
-            )
-            HintLine()
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = LiveWireDimens.SafeHorizontal,
+                        end = LiveWireDimens.SafeHorizontal,
+                        top = LiveWireDimens.SafeVertical,
+                        bottom = LiveWireDimens.SafeVertical,
+                    ),
+            ) {
+                TopLine(providerSummary = providerSummary)
+                Spacer(Modifier.height(LiveWireDimens.SpaceL))
+                SettingsList(
+                    s = s,
+                    providerSummary = providerSummary,
+                    viewModel = viewModel,
+                    updateViewModel = updateViewModel,
+                    updateState = updateState,
+                    onOpenProviders = onOpenProviders,
+                    firstRowFocus = firstRowFocus,
+                    onFirstRowFocusChanged = { firstRowHasFocus = it },
+                    modifier = Modifier.weight(1f),
+                )
+                HintLine()
+            }
+
+            // The manual "Check for updates" row can surface the update dialog over Settings
+            // (the user asked here), so Settings hosts the same shared overlay Home does.
+            com.livewire.tv.feature.update.UpdateOverlay(viewModel = updateViewModel)
         }
     }
 }
@@ -181,6 +194,8 @@ private fun SettingsList(
     s: AppSettings,
     providerSummary: String,
     viewModel: SettingsViewModel,
+    updateViewModel: com.livewire.tv.feature.update.UpdateViewModel,
+    updateState: com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState,
     onOpenProviders: () -> Unit,
     firstRowFocus: FocusRequester,
     onFirstRowFocusChanged: (Boolean) -> Unit,
@@ -238,7 +253,14 @@ private fun SettingsList(
             }
         }
         item("about") {
-            SettingsGroup("About") { AboutRow() }
+            SettingsGroup("About") {
+                AboutGroup(
+                    s = s,
+                    updateState = updateState,
+                    onCheckNow = updateViewModel::checkNow,
+                    onToggleAutoCheck = { updateViewModel.setAutoCheck(!s.autoCheckUpdates) },
+                )
+            }
         }
     }
 }
@@ -584,11 +606,111 @@ private fun ProvidersRow(summary: String, onOpen: () -> Unit) {
 }
 
 /**
- * About: a dashed-look, non-focusable info row (§9.9). It is not a [LiveWireSurface] — it takes
- * no focus and carries no ring — so the focus column ends at Providers.
+ * About: the version+build row, a focusable "Check for updates" row, the auto-check switch, and
+ * a "Last checked" row (brief step 5). Debug builds where updates are compiled out
+ * ([BuildConfig.UPDATES_ENABLED] false) show a Check row that reads "Updates are off in debug
+ * builds" and does nothing.
+ *
+ * The Check row's subtitle reflects the live [updateState]: "Checking…", "Version X is
+ * available", the up-to-date line, or an error's message. OK on it runs a manual check; the
+ * dialog (hosted by the screen's [UpdateOverlay]) appears if a newer version is found.
  */
 @Composable
-private fun AboutRow() {
+private fun AboutGroup(
+    s: AppSettings,
+    updateState: com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState,
+    onCheckNow: () -> Unit,
+    onToggleAutoCheck: () -> Unit,
+) {
+    val fmt = com.livewire.tv.feature.update.UpdateFormat
+    val updatesEnabled = com.livewire.tv.BuildConfig.UPDATES_ENABLED
+    val currentVersion = fmt.cleanVersion(com.livewire.tv.BuildConfig.VERSION_NAME)
+
+    // Version + build (info row, non-focusable).
+    AboutInfoRow(
+        title = fmt.versionLine(com.livewire.tv.BuildConfig.VERSION_NAME, com.livewire.tv.BuildConfig.VERSION_CODE.toLong()),
+        description = "Android TV IPTV player",
+    )
+    Spacer(Modifier.height(LiveWireDimens.SpaceXs))
+
+    // Check for updates.
+    val checkSubtitle = when {
+        !updatesEnabled -> fmt.DEBUG_DISABLED_SUBTITLE
+        updateState is com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState.Checking -> fmt.CHECKING_SUBTITLE
+        updateState is com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState.Available ->
+            fmt.availableSubtitle(updateState.version)
+        updateState is com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState.Failed ->
+            updateState.error.message
+        updateState is com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState.UpToDate ->
+            fmt.upToDateSubtitle(updateState.current)
+        else -> fmt.upToDateSubtitle(currentVersion)
+    }
+    SettingRow(
+        title = "Check for updates",
+        description = checkSubtitle,
+        onClick = { if (updatesEnabled) onCheckNow() },
+    ) {
+        val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
+        Row(
+            modifier = Modifier
+                .heightIn(min = ControlHeight)
+                .clip(shape)
+                .background(LiveWireColors.SurfaceRaised)
+                .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+                .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Check now",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (updatesEnabled) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                maxLines = 1,
+            )
+        }
+    }
+
+    if (updatesEnabled) {
+        Spacer(Modifier.height(LiveWireDimens.SpaceXs))
+        // Auto-check switch (white when on, never amber).
+        SettingRow(
+            title = "Check for updates automatically",
+            description = "Once a day when LiveWire starts — never while you're watching",
+            onClick = onToggleAutoCheck,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    SettingsFormat.onOffLabel(s.autoCheckUpdates),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LiveWireColors.OnSurface,
+                    modifier = Modifier.widthIn(min = 26.dp),
+                )
+                Spacer(Modifier.width(LiveWireDimens.SpaceS))
+                NeutralSwitch(on = s.autoCheckUpdates)
+            }
+        }
+
+        Spacer(Modifier.height(LiveWireDimens.SpaceXs))
+        // Last checked (info row, relative time).
+        val lastChecked = remember(s.lastUpdateCheck) {
+            val now = System.currentTimeMillis()
+            val abs = if (s.lastUpdateCheck > 0L) {
+                SimpleDateFormat("MMM d · h:mm a", Locale.getDefault()).format(Date(s.lastUpdateCheck))
+            } else {
+                null
+            }
+            fmt.lastCheckedLabel(s.lastUpdateCheck, now, abs)
+        }
+        AboutInfoRow(title = "Last checked", description = "Automatic daily check", trailing = lastChecked)
+    }
+}
+
+/**
+ * A non-focusable About info row: title + description on the left, an optional muted [trailing]
+ * value on the right. Bordered like the other rows but takes no focus (§9.9).
+ */
+@Composable
+private fun AboutInfoRow(title: String, description: String, trailing: String? = null) {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
     Row(
         modifier = Modifier
@@ -601,15 +723,26 @@ private fun AboutRow() {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                "LiveWire · v1.0.0",
-                style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = LiveWireColors.OnSurface,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                "Android TV IPTV player",
+                description,
                 style = MaterialTheme.typography.bodyMedium,
+                color = LiveWireColors.OnSurfaceMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(LiveWireDimens.SpaceM))
+            Text(
+                trailing,
+                style = MaterialTheme.typography.labelMedium,
                 color = LiveWireColors.OnSurfaceMuted,
                 maxLines = 1,
             )
