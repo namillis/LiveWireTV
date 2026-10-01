@@ -406,10 +406,15 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
     val urlDown = if (isM3u) epgFocus else userFocus
     val beforeConnect = if (isM3u) epgFocus else revealFocus
 
+    var initialFocusDone by remember { mutableStateOf(false) }
     // Returning from a failed connect lands on the field the error is about (Server URL for
     // "can't reach", Password for a bad login); an error with no field, or a fresh visit,
-    // starts on Name.
-    LaunchedEffect(Unit) {
+    // starts on Name. Keyed on the error so a failure that arrives before the Connecting
+    // screen replaces this one still moves focus.
+    LaunchedEffect(state.error) {
+        // Typing clears the error; don't move focus out of the field being edited then.
+        if (state.error == null && initialFocusDone) return@LaunchedEffect
+        initialFocusDone = true
         val target = when (state.error?.focusField) {
             ProviderInputValidator.Field.URL -> urlFocus
             ProviderInputValidator.Field.USERNAME -> userFocus
@@ -448,12 +453,16 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                 style = MaterialTheme.typography.headlineSmall,
                 color = LiveWireColors.OnSurface,
             )
-            Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-            Text(
-                "Enter what your provider sent you.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
-            )
+            // The error banner replaces the subtitle, so the page still fits at 1080p
+            // without scrolling the step indicator off the top.
+            if (state.error == null) {
+                Spacer(Modifier.height(LiveWireDimens.SpaceXs))
+                Text(
+                    "Enter what your provider sent you.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LiveWireColors.OnSurfaceMuted,
+                )
+            }
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
 
             state.error?.let { ConnectErrorBanner(it) }
@@ -465,6 +474,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                         ProviderFilledField(
                             label = "Name", value = state.name, onValue = vm::setName,
                             focusRequester = nameFocus, upFocus = nameFocus, downFocus = nameDown,
+                            rightFocus = urlFocus,
                             optional = true,
                             imeAction = ImeAction.Next, onImeAction = { runCatching { urlFocus.requestFocus() } },
                         )
@@ -474,6 +484,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                             label = if (isM3u) "Playlist URL" else "Server URL",
                             value = state.url, onValue = vm::setUrl,
                             focusRequester = urlFocus, upFocus = nameFocus, downFocus = urlDown,
+                            leftFocus = nameFocus,
                             help = if (isM3u) "A link to your .m3u playlist file" else "You can paste the full link your provider sent",
                             error = urlError,
                             keyboardType = KeyboardType.Uri,
@@ -499,6 +510,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                             ProviderFilledField(
                                 label = "Username", value = state.username, onValue = vm::setUsername,
                                 focusRequester = userFocus, upFocus = urlFocus, downFocus = passwordFocus,
+                                rightFocus = passwordFocus,
                                 error = userError,
                                 imeAction = ImeAction.Next, onImeAction = { runCatching { passwordFocus.requestFocus() } },
                             )
@@ -507,6 +519,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                             ProviderFilledField(
                                 label = "Password", value = state.password, onValue = vm::setPassword,
                                 focusRequester = passwordFocus, upFocus = urlFocus, downFocus = revealFocus,
+                                leftFocus = userFocus,
                                 password = true, passwordVisible = showPassword,
                                 error = passwordError,
                                 keyboardType = KeyboardType.Password,

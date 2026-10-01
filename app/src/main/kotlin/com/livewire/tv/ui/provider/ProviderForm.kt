@@ -164,6 +164,16 @@ fun ProviderFilledField(
                         if (!it.isFocused) editing = false
                     }
                     .onPreviewKeyEvent { e ->
+                        // Not editing: Left/Right go to the field beside this one (two-column
+                        // grid). The text field would otherwise eat them as caret moves.
+                        if (!editing && e.type == KeyEventType.KeyDown) {
+                            val side = when (e.key) {
+                                Key.DirectionLeft -> leftFocus
+                                Key.DirectionRight -> rightFocus
+                                else -> null
+                            }
+                            if (side != null) return@onPreviewKeyEvent runCatching { side.requestFocus() }.isSuccess
+                        }
                         val ok = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
                         if (ok && !editing && e.type == KeyEventType.KeyDown) {
                             editing = true
