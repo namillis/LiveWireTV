@@ -59,6 +59,27 @@ that have been checked on the emulator or a device, and CI on `main` is green.
 Never move or re-push an existing tag. If a release is bad, fix it on `main`
 and tag the next patch version.
 
+## Release assets
+
+Each release publishes three files, all attached by `release.yml`:
+
+| Asset | Purpose |
+|---|---|
+| `livewire-X.Y.Z.apk` | The app. |
+| `livewire-X.Y.Z.apk.sha256` | `sha256sum`-format checksum (`<64-hex>  <filename>`). The in-app updater downloads this and verifies the APK's SHA-256 against it before installing. |
+| `update.json` | A small machine-readable manifest: `{ version, versionCode, sha256, size, minSdk }`. Handy for a lightweight "is there an update" probe without parsing the releases API. |
+
+The in-app self-update feature (in `feature/update/`) reads `releases/latest`,
+compares the tag against the running `versionName`, downloads the APK, verifies
+its size, SHA-256 (against the `.sha256` asset) and signing certificate (which
+must match the installed app), then hands it to Android's installer. The
+`.sha256` asset is therefore **required** for the updater to install a release:
+a release without it fails verification rather than installing unverified.
+
+Do not remove these steps or rename their output files without updating
+`BuildConfig.UPDATE_ASSET_PATTERN` in `app/build.gradle.kts` — the updater looks
+for `livewire-<version>.apk` and its `.sha256` sidecar by name.
+
 ## Signing
 
 The workflow signs the APK when these repository secrets are set
