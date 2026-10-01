@@ -24,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -62,10 +63,24 @@ class SearchViewModel @Inject constructor(
     private val epg: EpgRepository,
     private val sports: SportsRepository,
     private val historyStore: RecentHistoryStore,
+    private val favorites: com.livewire.tv.feature.favorites.data.FavoritesStore,
+    private val settingsStore: com.livewire.tv.feature.settings.data.SettingsStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
+
+    /** Favourited stream ids for the active provider, for the result star + hold-OK menu. */
+    private val _favoriteIds = MutableStateFlow<Set<String>>(emptySet())
+    val favoriteIds: StateFlow<Set<String>> = _favoriteIds.asStateFlow()
+
+    /** Add/remove confirmation for the top-right toast; token increases on each toggle. */
+    private val _confirmation = MutableStateFlow(com.livewire.tv.feature.home.FavoriteConfirmation())
+    val confirmation: StateFlow<com.livewire.tv.feature.home.FavoriteConfirmation> = _confirmation.asStateFlow()
+    private var confirmToken = 0
+    private var favoritesJob: Job? = null
+    private var streamFormat: com.livewire.tv.feature.settings.data.StreamFormat =
+        com.livewire.tv.feature.settings.data.StreamFormat.TS
 
     private var provider: ProviderConfig? = null
     private var index = SearchIndex()
@@ -119,6 +134,9 @@ class SearchViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             _state.update { it.copy(loading = true) }
             provider = configuredProvider
+            configuredProvider?.let { observeFavorites(it.id) }
+            streamFormat = runCatching { settingsStore.settings.first().streamFormat }
+                .getOrDefault(com.livewire.tv.feature.settings.data.StreamFormat.TS)
 
             // 1) Channels first (~0.7s / 2.5 MB). Publishing them immediately makes the
             //    "Jump back in" rail and channel-name search usable right away, instead of
@@ -236,9 +254,46 @@ class SearchViewModel @Inject constructor(
         if (q.isNotEmpty()) submit(q)
     }
 
+    /** Keep [favoriteIds] in step with the store for the active provider (result star + menu). */
+    private fun observeFavorites(providerId: String) {
+        favoritesJob?.cancel()
+        favoritesJob = viewModelScope.launch {
+            favorites.favoriteIds(providerId).collect { ids -> _favoriteIds.value = ids }
+        }
+    }
+
+    /** Toggle [channel] in the active provider's favourites (hold-OK menu) and raise a toast. */
+    fun toggleFavorite(channel: LiveChannel) {
+        val cfg = provider ?: return
+        viewModelScope.launch {
+            val wasFavourite = favorites.isFavorite(cfg.id, channel.streamId)
+            favorites.toggle(cfg.id, channel)
+            confirmToken += 1
+            _confirmation.value = com.livewire.tv.feature.home.FavoriteConfirmation(
+                token = confirmToken,
+                message = com.livewire.tv.feature.favorites.ui.FavoritesUi.confirmationLabel(nowFavourite = !wasFavourite),
+            )
+        }
+    }
+
     fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
         provider?.let { PlaybackTarget(providerId = it.id, streamId = channel.streamId) }
 
+    /** Assemble the Channel info panel model for [channel] from the loaded corpus. */
+    fun channelInfoFor(channel: LiveChannel): com.livewire.tv.feature.favorites.ui.ChannelInfoModel {
+        val now = System.currentTimeMillis()
+        val programmes = channel.epgChannelId?.let { programmesByEpgId[it] }.orEmpty().sortedBy { it.startMs }
+        return com.livewire.tv.feature.favorites.ui.ChannelInfoModel(
+            channel = channel,
+            providerName = provider?.name.orEmpty(),
+            categoryLabel = null,
+            formatLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.formatLabel(streamFormat),
+            qualityLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.qualityLabel(channel.name),
+            nowPlaying = programmes.firstOrNull { it.airsAt(now) },
+            upNext = programmes.filter { it.startMs > now },
+            isFavourite = channel.streamId in _favoriteIds.value,
+        )
+    }
     /** What's on now on [channel] (for the CHANNELS rail card's "N min left"), or null. */
     fun nowPlaying(channel: LiveChannel, now: Long = System.currentTimeMillis()): EpgProgramme? {
         val id = channel.epgChannelId ?: return null

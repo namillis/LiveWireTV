@@ -94,6 +94,8 @@ fun OptionsPanel(
     onSelectText: (String?) -> Unit,
     onSelectPicture: (PictureMode) -> Unit,
     onReload: () -> Unit,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val view = state.view
@@ -127,7 +129,7 @@ fun OptionsPanel(
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Box(Modifier.weight(1f)) {
                 when (view) {
-                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, rootRows, onReload) { state.open(it) }
+                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, rootRows, onReload, isFavorite, onToggleFavorite) { state.open(it) }
                     OptionsView.AUDIO -> AudioList(mediaInfo, firstRow) { onSelectAudio(it); state.reset() }
                     OptionsView.SUBTITLES -> SubtitlesList(mediaInfo, firstRow) { onSelectText(it); state.reset() }
                     OptionsView.PICTURE -> PictureList(pictureMode, firstRow) { onSelectPicture(it); state.reset() }
@@ -151,6 +153,8 @@ private fun RootList(
     pictureMode: PictureMode,
     rows: Map<OptionsView, FocusRequester>,
     onReload: () -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onOpen: (OptionsView) -> Unit,
 ) {
     val audioValue = mediaInfo.audioTracks.firstOrNull { it.id == mediaInfo.selectedAudioId }?.summary
@@ -159,6 +163,15 @@ private fun RootList(
     val streamInfoValue = PlayerFormats.streamInfoSummary(mediaInfo.video)
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        item {
+            OptionRow(
+                iconRes = if (isFavorite) R.drawable.ic_fav_star_filled else R.drawable.ic_fav_star_outline,
+                label = com.livewire.tv.feature.favorites.ui.FavoritesUi.favouriteActionLabel(isFavorite),
+                value = null,
+                hasChevron = false,
+            ) { onToggleFavorite() }
+        }
+        item { Separator() }
         item {
             OptionRow(R.drawable.ic_opt_audio, "Audio", audioValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.AUDIO)) {
                 onOpen(OptionsView.AUDIO)

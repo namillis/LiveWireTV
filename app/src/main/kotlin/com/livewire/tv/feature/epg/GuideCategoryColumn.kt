@@ -97,8 +97,13 @@ internal fun GuideCategoryColumn(
     val width by animateDpAsState(if (expanded) EXPANDED_WIDTH else COLLAPSED_WIDTH, label = "categoryWidth")
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
     val fieldRequester = remember { FocusRequester() }
-    // One requester per entry: null id = "All channels".
-    val entries: List<GuideCategory?> = remember(categories) { listOf(null) + categories }
+    // Entry order (mockup option2-guide): ★ Favourites (sentinel id) first when present, then
+    // "All channels" (null id), then the provider categories. A null entry renders All channels.
+    val entries: List<GuideCategory?> = remember(categories) {
+        val favorites = categories.firstOrNull { it.id == FAVORITES_CATEGORY_ID }
+        val rest = categories.filterNot { it.id == FAVORITES_CATEGORY_ID }
+        listOfNotNull(favorites) + listOf(null) + rest
+    }
     val requesters = remember(entries) { entries.associate { it?.id to FocusRequester() } }
     val selectedIndex = entries.indexOfFirst { it?.id == selectedId }.coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
@@ -153,6 +158,7 @@ internal fun GuideCategoryColumn(
                         name = entry?.name ?: "All channels",
                         count = entry?.channelCount ?: totalChannels,
                         selected = entry?.id == selectedId,
+                        star = entry?.id == FAVORITES_CATEGORY_ID,
                         requester = requesters.getValue(entry?.id),
                         onClick = { onSelect(entry?.id) },
                     )
@@ -259,6 +265,7 @@ private fun CategoryItem(
     selected: Boolean,
     requester: FocusRequester,
     onClick: () -> Unit,
+    star: Boolean = false,
 ) {
     LiveWireSurface(
         onClick = onClick,
@@ -279,6 +286,13 @@ private fun CategoryItem(
                     .background(if (selected) LiveWireColors.Accent else LiveWireColors.Surface.copy(alpha = 0f)),
             )
             Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+            if (star) {
+                com.livewire.tv.feature.favorites.ui.FavoriteStar(
+                    size = 12.dp,
+                    tint = if (selected) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                )
+                Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+            }
             Text(
                 name,
                 style = MaterialTheme.typography.bodyMedium,
@@ -299,7 +313,6 @@ private fun CategoryItem(
 
 private fun selectedName(categories: List<GuideCategory>, id: String?): String =
     categories.firstOrNull { it.id == id }?.name ?: "All channels"
-
 /** Lays text out rotated a quarter-turn anticlockwise, reading bottom to top. */
 private fun Modifier.verticalText(): Modifier = this
     .layout { measurable, constraints ->

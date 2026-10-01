@@ -3,6 +3,7 @@ package com.livewire.tv.feature.providers
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgCache
+import com.livewire.tv.feature.favorites.data.FavoritesStore
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.domain.ProviderConfig
@@ -29,6 +30,7 @@ class ProvidersViewModel @Inject constructor(
     private val storage: ProviderStorage,
     private val repository: ProviderRepository,
     private val epgCache: EpgCache,
+    private val favoritesStore: FavoritesStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProvidersUiState())
@@ -73,6 +75,8 @@ class ProvidersViewModel @Inject constructor(
             repository.forget()
             // Delete only this provider's cached guide (memory + disk); other providers keep theirs.
             epgCache.clearProvider(id)
+            // …and its favourites, which are keyed by this provider id and otherwise orphaned.
+            favoritesStore.removeProvider(id)
         }
         load()
     }

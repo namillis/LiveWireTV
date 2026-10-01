@@ -68,6 +68,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val PX_PER_MINUTE = 3          // 3dp per minute = 90dp per 30 min (design system §9.4)
@@ -90,7 +91,7 @@ private data class GuideFocus(val channel: LiveChannel, val programme: EpgProgra
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun GuideScreen(
-    onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
+    onPlayChannel: (target: PlaybackTarget, title: String, fromFavorites: Boolean) -> Unit,
     viewModel: GuideViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -128,6 +129,8 @@ fun GuideScreen(
                 onPlayChannel = onPlayChannel,
                 targetFor = viewModel::playbackTarget,
                 resolvePreview = viewModel::previewSource,
+                onToggleFavorite = viewModel::toggleFavorite,
+                channelInfoFor = viewModel::channelInfoFor,
             )
         }
     }
@@ -140,9 +143,11 @@ private fun GuideContent(
     onPositionChange: (GuidePosition) -> Unit,
     onSelectCategory: (String?) -> Unit,
     onQueryChange: (String) -> Unit,
-    onPlayChannel: (PlaybackTarget, String) -> Unit,
+    onPlayChannel: (PlaybackTarget, String, Boolean) -> Unit,
     targetFor: (LiveChannel) -> PlaybackTarget?,
     resolvePreview: suspend (String) -> PlaybackSource?,
+    onToggleFavorite: (LiveChannel) -> Unit,
+    channelInfoFor: (LiveChannel) -> com.livewire.tv.feature.favorites.ui.ChannelInfoModel,
 ) {
     val now = System.currentTimeMillis()
     val scope = rememberCoroutineScope()
@@ -167,6 +172,10 @@ private fun GuideContent(
 
     // True while a programme cell holds focus; the category column and drawer do not count.
     var gridFocused by remember { mutableStateOf(false) }
+    // The channel whose hold-OK menu is open, or null when closed.
+    var menuChannel by remember { mutableStateOf<LiveChannel?>(null) }
+    // The channel whose Channel info panel is open, or null when closed.
+    var infoChannel by remember { mutableStateOf<LiveChannel?>(null) }
     val preview = rememberGuidePreview(
         streamId = focusedStreamId.takeIf { gridFocused },
         enabled = state.previewEnabled,
@@ -207,6 +216,36 @@ private fun GuideContent(
         return true
     }
 
+    /**
+     * Return focus to the row for [streamId] after an overlay (menu / Channel info) closes.
+     * Resolved by stream id, not index, because toggling a favourite under the ★ Favourites
+     * filter adds/removes rows; if that row is gone (unfavourited while filtered) fall back to
+     * the previously focused row, then the first row. Retries a few frames so the restore lands
+     * after the filtered list recomposes, otherwise focus falls to the nav drawer and opens it.
+     */
+    fun restoreFocusToStreamId(streamId: String?) {
+        scope.launch {
+            repeat(40) {
+                val target = latestRows.indexOfFirst { it.channel.streamId == streamId }
+                    .takeIf { it >= 0 }
+                    ?: latestRows.indexOfFirst { it.channel.streamId == focusedStreamId }.takeIf { it >= 0 }
+                    ?: 0
+                if (target in latestRows.indices) {
+                    val row = latestRows[target]
+                    val requester = rowRequesters[row.channel.streamId]
+                    if (requester != null) {
+                        val visible = listState.layoutInfo.visibleItemsInfo.any { it.index == target }
+                        if (!visible) { listState.scrollToItem(target); withFrameNanos { } }
+                        programmaticMove = true
+                        if (runCatching { requester.requestFocus() }.isSuccess) return@launch
+                        programmaticMove = false
+                    }
+                }
+                delay(50)
+            }
+        }
+    }
+
     // The details band follows the focused cell; before anything is focused it shows the
     // restored (or first) row's programme at the anchor.
     val restoreIndex = rows.indexOfFirst { it.channel.streamId == focusedStreamId }.coerceAtLeast(0)
@@ -240,6 +279,7 @@ private fun GuideContent(
         filterSeen = true
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         Modifier
             .fillMaxSize()
@@ -255,7 +295,7 @@ private fun GuideContent(
 
         Row(Modifier.fillMaxSize()) {
             GuideCategoryColumn(
-                categories = state.categories,
+                categories = state.columnCategories,
                 totalChannels = state.totalChannels,
                 selectedId = state.categoryId,
                 query = state.query,
@@ -295,7 +335,7 @@ private fun GuideContent(
                     NowLane(nowMin, { hScroll.value }, now)
                     AxisRow(state.windowStartMs, spanMinutes) { hScroll.value }
                     if (rows.isEmpty()) {
-                        NoMatches(state.query, state.categoryName)
+                        if (state.favoritesEmpty) FavoritesGuideEmpty() else NoMatches(state.query, state.categoryName)
                     } else {
                         LazyColumn(
                             state = listState,
@@ -350,8 +390,12 @@ private fun GuideContent(
                                         // allow one connection, and the player needs it.
                                         preview.player.stop()
                                         savePosition()
-                                        targetFor(row.channel)?.let { onPlayChannel(it, row.channel.name) }
+                                        targetFor(row.channel)?.let {
+                                            onPlayChannel(it, row.channel.name, row.channel.streamId in state.favoriteIds)
+                                        }
                                     },
+                                    isFavorite = row.channel.streamId in state.favoriteIds,
+                                    onLongClick = { menuChannel = row.channel },
                                 )
                             }
                         }
@@ -364,6 +408,65 @@ private fun GuideContent(
                     NowLine(nowMin, { hScroll.value }, topInset = NOW_LANE + AXIS_HEIGHT)
                 }
             }
+        }
+    }
+
+        // Hold-OK channel menu (mockup option2): dims the screen, Favourite focused by default.
+        menuChannel?.let { channel ->
+            com.livewire.tv.feature.favorites.ui.ChannelMenuOverlay(
+                channel = channel,
+                isFavourite = channel.streamId in state.favoriteIds,
+                onToggleFavourite = { onToggleFavorite(channel) },
+                onPlay = {
+                    targetFor(channel)?.let { onPlayChannel(it, channel.name, channel.streamId in state.favoriteIds) }
+                },
+                // The Channel info panel (Option A) opens from here. Close the menu as the panel
+                // takes over; no row-focus restore (the panel owns focus).
+                onChannelInfo = { infoChannel = channel; menuChannel = null },
+                onDismiss = { menuChannel = null; restoreFocusToStreamId(channel.streamId) },
+            )
+        }
+
+        // Channel info panel (Option A) over a strongly dimmed Guide.
+        infoChannel?.let { channel ->
+            com.livewire.tv.feature.favorites.ui.ChannelInfoPanel(
+                model = channelInfoFor(channel),
+                now = System.currentTimeMillis(),
+                onPlay = {
+                    targetFor(channel)?.let { onPlayChannel(it, channel.name, channel.streamId in state.favoriteIds) }
+                    infoChannel = null
+                },
+                onToggleFavourite = { onToggleFavorite(channel) },
+                onDismiss = { infoChannel = null; restoreFocusToStreamId(channel.streamId) },
+            )
+        }
+
+        com.livewire.tv.feature.favorites.ui.FavoriteToastHost(
+            token = state.confirmation.token,
+            message = state.confirmation.message,
+            suppressed = infoChannel != null,
+        )
+    }
+}
+
+/** The ★ Favourites filter with no favourites yet (mockup guide-empty): a big outline star. */
+@Composable
+private fun FavoritesGuideEmpty() {
+    Box(Modifier.fillMaxSize().padding(LiveWireDimens.SpaceL), Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 56.dp, tint = LiveWireColors.OnSurfaceMuted)
+            Spacer(Modifier.height(LiveWireDimens.SpaceM))
+            Text(
+                "No favourites yet",
+                style = MaterialTheme.typography.headlineSmall,
+                color = LiveWireColors.OnSurface,
+            )
+            Spacer(Modifier.height(LiveWireDimens.SpaceS))
+            Text(
+                "Long-press OK on any channel to add it to Favourites",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LiveWireColors.OnSurfaceMuted,
+            )
         }
     }
 }
@@ -559,13 +662,19 @@ private fun GuideRowView(
     anchorRequester: FocusRequester,
     onFocus: (EpgProgramme?) -> Unit,
     onClick: () -> Unit,
+    isFavorite: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Row(Modifier.height(ROW_HEIGHT)) {
         // Fixed channel column.
-        Box(
+        Row(
             Modifier.width(CHANNEL_COL).fillMaxHeight().background(LiveWireColors.Surface).padding(horizontal = LiveWireDimens.SpaceM),
-            contentAlignment = Alignment.CenterStart,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (isFavorite) {
+                com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 11.dp)
+                Spacer(Modifier.width(4.dp))
+            }
             Text(
                 row.channel.name,
                 style = MaterialTheme.typography.bodyMedium,
@@ -586,6 +695,7 @@ private fun GuideRowView(
                     focusRequester = anchorRequester,
                     onFocus = { onFocus(null) },
                     onClick = onClick,
+                    onLongClick = onLongClick,
                 )
             } else {
                 cells.forEachIndexed { cellIndex, cell ->
@@ -597,6 +707,7 @@ private fun GuideRowView(
                         focusRequester = anchorRequester.takeIf { cellIndex == anchorIndex },
                         onFocus = { onFocus(cell.programme) },
                         onClick = onClick,
+                        onLongClick = onLongClick,
                     )
                 }
             }
@@ -612,10 +723,12 @@ private fun ProgrammeCell(
     focusRequester: FocusRequester?,
     onFocus: () -> Unit,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val onNow = programme.airsAt(now)
     LiveWireSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         restingColor = LiveWireColors.SurfaceRaised,
         shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
         focusedScale = LiveWireDimens.FocusScaleWide,
@@ -657,9 +770,10 @@ private fun ProgrammeCell(
 
 /** Full-width no-programme-information cell for a channel with no guide data (§9.4). Focusable. */
 @Composable
-private fun EmptyCell(widthDp: Dp, focusRequester: FocusRequester?, onFocus: () -> Unit, onClick: () -> Unit) {
+private fun EmptyCell(widthDp: Dp, focusRequester: FocusRequester?, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     LiveWireSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         restingColor = LiveWireColors.SurfaceRaised,
         shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
         focusedScale = LiveWireDimens.FocusScaleWide,
