@@ -1,6 +1,9 @@
 package com.livewire.tv.feature.providers.data
 
+import com.livewire.tv.feature.catchup.domain.ArchiveUrlBuilder
 import com.livewire.tv.feature.providers.domain.ChannelNames
+import com.livewire.tv.feature.providers.domain.CatchupSpec
+import com.livewire.tv.feature.providers.domain.CatchupType
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.ProviderAuthResult
@@ -57,12 +60,15 @@ class ProviderRepository @Inject constructor(
             ProviderType.M3U -> m3u.load(cfg).entriesById
                 .filterValues { categoryId == null || it.groupName() == categoryId }
                 .map { (id, entry) ->
+                    val spec = entry.toCatchupSpec()
                     LiveChannel(
                         streamId = id,
                         name = entry.name,
                         logoUrl = entry.logoUrl,
                         epgChannelId = entry.tvgId,
                         categoryId = entry.groupName(),
+                        archiveDays = spec?.days ?: 0,
+                        catchup = spec,
                     )
                 }
         }.filterNot { ChannelNames.isPlaceholder(it.name) }
@@ -76,6 +82,72 @@ class ProviderRepository @Inject constructor(
             }
         }
 
+    /**
+     * Resolve an ARCHIVE (catch-up) source for [channel] starting at [startMs] (UTC) for
+     * [durationMin] minutes, or null when the channel has no archive, the window is out of
+     * range, or the recipe can't be resolved. The URL is security-sensitive; keep it out of
+     * routes/logs/errors. For Xtream this uses the in-memory `server_info` for the zone; for
+     * M3U it passes the channel's resolved live URL + headers to the builder.
+     */
+    suspend fun archiveSource(
+        cfg: ProviderConfig,
+        channel: LiveChannel,
+        startMs: Long,
+        durationMin: Int,
+        nowMs: Long = System.currentTimeMillis(),
+    ): PlaybackSource? = when (cfg.type) {
+        ProviderType.XTREAM -> ArchiveUrlBuilder.archiveUrl(
+            cfg = cfg,
+            channel = channel,
+            startMs = startMs,
+            durationMin = durationMin,
+            // authenticate() only runs when a provider is saved, so after an app restart the
+            // server's timezone is unknown. Fetch it once on first archive use; guessing UTC
+            // would shift every archive start by the server's offset.
+            serverInfo = xtream.serverInfo(cfg.id)
+                ?: runCatching { xtream.authenticate(cfg) }.getOrNull()?.let { xtream.serverInfo(cfg.id) },
+            nowMs = nowMs,
+        )
+        ProviderType.M3U -> {
+            val entry = m3u.load(cfg).entriesById[channel.streamId]
+            ArchiveUrlBuilder.archiveUrl(
+                cfg = cfg,
+                channel = channel,
+                startMs = startMs,
+                durationMin = durationMin,
+                nowMs = nowMs,
+                m3uLiveUrl = entry?.url,
+                m3uHeaders = entry?.headers ?: emptyMap(),
+            )
+        }
+    }
+
+    /** Fallback Xtream archive URL (timeshift.php) for a 404 on the primary path form. */
+    fun archiveFallbackUrl(cfg: ProviderConfig, channel: LiveChannel, startMs: Long, durationMin: Int): String? =
+        ArchiveUrlBuilder.xtreamFallbackUrl(cfg, channel, startMs, durationMin, xtream.serverInfo(cfg.id))
+
+    /**
+     * The provider's `server_info` (timezone + clock) for building Xtream archive start times.
+     * Cached from the last authenticate; fetched once here when missing (after a restart the
+     * zone is unknown and guessing UTC would shift every archive start). Null for M3U.
+     */
+    suspend fun serverInfo(cfg: ProviderConfig): com.livewire.tv.feature.providers.domain.ServerInfo? {
+        if (cfg.type != ProviderType.XTREAM) return null
+        return xtream.serverInfo(cfg.id)
+            ?: runCatching { xtream.authenticate(cfg) }.getOrNull()?.let { xtream.serverInfo(cfg.id) }
+    }
+
+    /**
+     * The resolved live URL + per-channel HTTP headers for an M3U [streamId], as the pair the
+     * archive URL builder needs ([com.livewire.tv.feature.catchup.domain.ArchiveUrlBuilder]).
+     * Security-sensitive (the URL embeds credentials). Null for Xtream or an unknown id.
+     */
+    suspend fun m3uEntry(cfg: ProviderConfig, streamId: String): Pair<String, Map<String, String>>? {
+        if (cfg.type != ProviderType.M3U) return null
+        val entry = m3u.load(cfg).entriesById[streamId] ?: return null
+        return entry.url to entry.headers
+    }
+
     /** XMLTV guide URL, or null when this provider has no guide configured. */
     suspend fun guideUrl(cfg: ProviderConfig): String? = when (cfg.type) {
         ProviderType.XTREAM ->
@@ -87,6 +159,26 @@ class ProviderRepository @Inject constructor(
     suspend fun forget() = m3u.clear()
 
     private fun M3uEntry.groupName(): String = group ?: UNCATEGORIZED
+
+    /**
+     * Translate an M3U entry's raw catch-up attributes into a [CatchupSpec], or null when
+     * the channel advertises no catch-up. An unrecognised type token yields null (fail soft:
+     * a channel we can't build an archive URL for is treated as having none). When a type is
+     * present but `catchup-days` is missing/zero, default to 7 days so the window is usable.
+     */
+    private fun M3uEntry.toCatchupSpec(): CatchupSpec? {
+        val type = when (catchupType?.trim()?.lowercase()) {
+            "default", "" -> CatchupType.DEFAULT
+            "append" -> CatchupType.APPEND
+            "shift", "timeshift" -> CatchupType.SHIFT
+            "flussonic", "fs" -> CatchupType.FLUSSONIC
+            "xc" -> CatchupType.XC
+            null -> return null
+            else -> return null
+        }
+        val days = if (catchupDays > 0) catchupDays else 7
+        return CatchupSpec(type = type, source = catchupSource, days = days)
+    }
 
     private fun enc(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")

@@ -101,6 +101,33 @@ class PlayerFormatsTest {
         assertEquals("ends soon", PlayerFormats.minutesLeft(now + 30_000L, now))
         assertEquals("", PlayerFormats.minutesLeft(0L, now))
     }
+
+    @Test fun `duration prints mm colon ss and h colon mm colon ss past an hour`() {
+        assertEquals("0:00", PlayerFormats.duration(0L))
+        assertEquals("25:12", PlayerFormats.duration(25L * 60_000 + 12_000))
+        assertEquals("1:30:00", PlayerFormats.duration(90L * 60_000))
+        // Negative clamps to zero rather than printing a minus.
+        assertEquals("0:00", PlayerFormats.duration(-5_000L))
+    }
+
+    @Test fun `remaining is negative and clamps to zero at the end`() {
+        val sixty = 60L * 60_000
+        assertEquals("-34:48", PlayerFormats.remaining(25L * 60_000 + 12_000, sixty))
+        assertEquals("-0:00", PlayerFormats.remaining(sixty, sixty))
+        assertEquals("-0:00", PlayerFormats.remaining(sixty + 5_000, sixty)) // past the end clamps
+    }
+
+    @Test fun `watchingOf shows elapsed of total, clamped`() {
+        val sixty = 60L * 60_000
+        assertEquals("watching 25:12 of 1:00:00", PlayerFormats.watchingOf(25L * 60_000 + 12_000, sixty))
+        assertEquals("watching 1:00:00 of 1:00:00", PlayerFormats.watchingOf(sixty + 9_000, sixty))
+    }
+
+    @Test fun `behindLive reads live when caught up else mm colon ss behind live`() {
+        assertEquals("live", PlayerFormats.behindLive(0L))
+        assertEquals("live", PlayerFormats.behindLive(500L))
+        assertEquals("2:14 behind live", PlayerFormats.behindLive(2L * 60_000 + 14_000))
+    }
 }
 
 class TrackIdsTest {

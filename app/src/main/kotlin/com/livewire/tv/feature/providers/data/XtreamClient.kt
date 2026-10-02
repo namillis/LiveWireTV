@@ -4,6 +4,7 @@ import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.ProviderAuthResult
 import com.livewire.tv.feature.providers.domain.ProviderCategory
 import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.providers.domain.ServerInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -14,6 +15,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +31,12 @@ class XtreamClient @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+    /** Latest `server_info` per provider id, refreshed on each [authenticate]. In-memory only. */
+    private val serverInfoByProvider = ConcurrentHashMap<String, ServerInfo>()
+
+    /** The last-seen server info for a provider, or null if it hasn't authenticated this session. */
+    fun serverInfo(providerId: String): ServerInfo? = serverInfoByProvider[providerId]
+
     /** Validate credentials via user_info. */
     suspend fun authenticate(cfg: ProviderConfig): ProviderAuthResult = withContext(Dispatchers.IO) {
         try {
@@ -38,6 +46,14 @@ class XtreamClient @Inject constructor(
             val root = json.parseToJsonElement(body).jsonObject
             val info = root["user_info"]?.jsonObject
                 ?: return@withContext ProviderAuthResult(ok = false, message = "No user_info in response")
+            val serverInfo = root["server_info"]?.jsonObject?.let { s ->
+                ServerInfo(
+                    timezone = s["timezone"].str()?.ifBlank { null },
+                    timeNow = s["time_now"].str()?.ifBlank { null },
+                    timestampNow = s["timestamp_now"].str()?.toLongOrNull(),
+                )
+            }
+            if (serverInfo != null) serverInfoByProvider[cfg.id] = serverInfo
             val auth = info["auth"]?.jsonPrimitive?.contentOrNull
             val ok = auth == "1" || auth == "1.0"
             ProviderAuthResult(
@@ -46,6 +62,7 @@ class XtreamClient @Inject constructor(
                 expiry = info["exp_date"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
                 maxConnections = info["max_connections"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
                 message = if (ok) null else "Authentication failed (check URL / credentials)",
+                serverInfo = serverInfo,
             )
         } catch (_: Exception) {
             ProviderAuthResult(
@@ -75,12 +92,41 @@ class XtreamClient @Inject constructor(
             val arr = json.parseToJsonElement(body) as? JsonArray ?: return@withContext emptyList()
             arr.mapNotNull { el ->
                 val o = el as? JsonObject ?: return@mapNotNull null
+                val archived = o["tv_archive"].str()?.let { it == "1" || it == "1.0" || it.toIntOrNull() == 1 } ?: false
+                val archiveDays = if (archived) o["tv_archive_duration"].str()?.toIntOrNull() ?: 0 else 0
                 LiveChannel(
                     streamId = o["stream_id"].str().orEmpty(),
                     name = o["name"].str().orEmpty(),
                     logoUrl = o["stream_icon"].str()?.ifBlank { null },
                     epgChannelId = o["epg_channel_id"].str()?.ifBlank { null },
                     categoryId = o["category_id"].str().orEmpty(),
+                    archiveDays = archiveDays,
+                )
+            }
+        }
+
+    /**
+     * Per-channel past programme listing from `get_simple_data_table`, used to know which
+     * past programmes are actually archived (`has_archive`) and their exact bounds.
+     * Times come back as epoch-second strings, so they are zone-independent here.
+     * Titles/descriptions are base64. Returns empty on any error (fail soft).
+     */
+    suspend fun simpleDataTable(cfg: ProviderConfig, streamId: String): List<ArchiveListing> =
+        withContext(Dispatchers.IO) {
+            val body = get(cfg.playerApiUrl(action = "get_simple_data_table", extra = mapOf("stream_id" to streamId)))
+                ?: return@withContext emptyList()
+            val listings = (json.parseToJsonElement(body) as? JsonObject)?.get("epg_listings") as? JsonArray
+                ?: return@withContext emptyList()
+            listings.mapNotNull { el ->
+                val o = el as? JsonObject ?: return@mapNotNull null
+                val start = o["start_timestamp"].str()?.toLongOrNull() ?: return@mapNotNull null
+                val stop = o["stop_timestamp"].str()?.toLongOrNull() ?: return@mapNotNull null
+                ArchiveListing(
+                    startMs = start * 1000,
+                    stopMs = stop * 1000,
+                    title = o["title"].str().decodeBase64(),
+                    description = o["description"].str().decodeBase64().ifBlank { null },
+                    hasArchive = o["has_archive"].str()?.let { it == "1" || it.toIntOrNull() == 1 } ?: false,
                 )
             }
         }
@@ -97,3 +143,21 @@ class XtreamClient @Inject constructor(
 /** Xtream fields arrive as strings or numbers depending on the provider — read either. */
 private fun kotlinx.serialization.json.JsonElement?.str(): String? =
     (this as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+
+/** A past programme from `get_simple_data_table`, with its archive availability. Times are UTC epoch millis. */
+data class ArchiveListing(
+    val startMs: Long,
+    val stopMs: Long,
+    val title: String,
+    val description: String? = null,
+    val hasArchive: Boolean,
+)
+
+/** Xtream base64-encodes title/description; decode leniently, falling back to the raw text. */
+private fun String?.decodeBase64(): String {
+    val raw = this?.trim().orEmpty()
+    if (raw.isEmpty()) return ""
+    return runCatching {
+        String(java.util.Base64.getMimeDecoder().decode(raw), Charsets.UTF_8)
+    }.getOrDefault(raw)
+}

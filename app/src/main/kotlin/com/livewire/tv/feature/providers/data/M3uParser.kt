@@ -11,6 +11,12 @@ data class M3uEntry(
     val logoUrl: String? = null,
     val group: String? = null,
     val headers: Map<String, String> = emptyMap(),
+    /** Raw catch-up type token (`default`/`append`/`shift`/`flussonic`/`xc`), or null. */
+    val catchupType: String? = null,
+    /** Catch-up URL template (`catchup-source`), may embed credentials. Secret. */
+    val catchupSource: String? = null,
+    /** Days of catch-up the channel advertises (`catchup-days`), 0 when absent. */
+    val catchupDays: Int = 0,
 )
 
 data class M3uPlaylist(
@@ -44,6 +50,12 @@ object M3uParser {
         val entries = ArrayList<M3uEntry>()
         var truncated = false
 
+        // Header-level catch-up defaults (`#EXTM3U catchup="..." catchup-days="..."`),
+        // applied to entries that don't declare their own.
+        var headerCatchupType: String? = null
+        var headerCatchupSource: String? = null
+        var headerCatchupDays = 0
+
         var pendingInfo: String? = null
         var pendingGroup: String? = null
         val pendingHeaders = LinkedHashMap<String, String>()
@@ -64,6 +76,10 @@ object M3uParser {
             when {
                 line.startsWith("#EXTM3U", ignoreCase = true) -> {
                     if (epgUrl == null) epgUrl = headerGuideUrl(line)
+                    val attrs = attributes(line)
+                    headerCatchupType = (attrs["catchup"] ?: attrs["catchup-type"])?.trim()?.ifEmpty { null }
+                    headerCatchupSource = attrs["catchup-source"]?.trim()?.ifEmpty { null }
+                    headerCatchupDays = attrs["catchup-days"]?.trim()?.toIntOrNull() ?: 0
                 }
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
                     resetPending()
@@ -91,7 +107,10 @@ object M3uParser {
                             truncated = true
                             break
                         }
-                        entries += toEntry(info, line, pendingGroup, pendingHeaders.toMap())
+                        entries += toEntry(
+                            info, line, pendingGroup, pendingHeaders.toMap(),
+                            headerCatchupType, headerCatchupSource, headerCatchupDays,
+                        )
                     }
                     resetPending()
                 }
@@ -112,10 +131,16 @@ object M3uParser {
         url: String,
         extGroup: String?,
         headers: Map<String, String>,
+        headerCatchupType: String?,
+        headerCatchupSource: String?,
+        headerCatchupDays: Int,
     ): M3uEntry {
         val attrs = attributes(info)
         val displayName = displayName(info)
         val name = displayName.ifEmpty { attrs["tvg-name"].orEmpty() }.ifEmpty { "Unnamed channel" }
+        val catchupType = (attrs["catchup"] ?: attrs["catchup-type"])?.trim()?.ifEmpty { null } ?: headerCatchupType
+        val catchupSource = attrs["catchup-source"]?.trim()?.ifEmpty { null } ?: headerCatchupSource
+        val catchupDays = attrs["catchup-days"]?.trim()?.toIntOrNull() ?: headerCatchupDays
         return M3uEntry(
             name = name,
             url = url,
@@ -123,6 +148,10 @@ object M3uParser {
             logoUrl = attrs["tvg-logo"]?.trim()?.ifEmpty { null },
             group = attrs["group-title"]?.primaryGroup() ?: extGroup?.primaryGroup(),
             headers = headers,
+            catchupType = catchupType,
+            catchupSource = catchupSource,
+            // Only carry days when this channel actually has catch-up.
+            catchupDays = if (catchupType != null) catchupDays else 0,
         )
     }
 

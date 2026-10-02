@@ -51,6 +51,33 @@ data class ProviderConfig(
     fun liveStreamUrl(streamId: String, ext: String = "ts"): String =
         "$baseUrl/live/${username.pathSegmentEncode()}/${password.pathSegmentEncode()}/${streamId.pathSegmentEncode()}.${ext.pathSegmentEncode()}"
 
+    /**
+     * Xtream catch-up (TV archive) URL, primary path form:
+     * `{base}/timeshift/{user}/{pass}/{durationMin}/{YYYY-MM-DD:HH-MM}/{streamId}.ts`.
+     * [startFormatted] is the archive start in the PROVIDER's local time, already
+     * formatted as `YYYY-MM-DD:HH-MM`. Security-sensitive like [liveStreamUrl].
+     */
+    fun timeshiftStreamUrl(streamId: String, durationMin: Int, startFormatted: String, ext: String = "ts"): String =
+        "$baseUrl/timeshift/${username.pathSegmentEncode()}/${password.pathSegmentEncode()}/" +
+            "$durationMin/$startFormatted/${streamId.pathSegmentEncode()}.${ext.pathSegmentEncode()}"
+
+    /**
+     * Xtream catch-up fallback form:
+     * `{base}/streaming/timeshift.php?username=..&password=..&stream=..&start=..&duration=..`.
+     * Used when the primary path form 404s. Security-sensitive like [liveStreamUrl].
+     */
+    fun timeshiftPhpUrl(streamId: String, durationMin: Int, startFormatted: String): String {
+        val params = buildMap {
+            put("username", username)
+            put("password", password)
+            put("stream", streamId)
+            put("start", startFormatted)
+            put("duration", durationMin.toString())
+        }
+        val query = params.entries.joinToString("&") { (k, v) -> "${k.urlEncode()}=${v.urlEncode()}" }
+        return "$baseUrl/streaming/timeshift.php?$query"
+    }
+
     fun usesCleartextTransport(): Boolean =
         baseUrl.isCleartext() || epgUrl?.isCleartext() == true
 
@@ -82,7 +109,18 @@ private fun String.urlEncode(): String =
 
 private fun String.pathSegmentEncode(): String = urlEncode()
 
-/** A live channel from the provider. */
+/**
+ * A live channel from the provider.
+ *
+ * [archiveDays] is how many days of catch-up (TV archive / time shift) the provider
+ * offers for this channel; 0 means none. For Xtream it comes from
+ * `tv_archive_duration`; for M3U it is [CatchupSpec.days] when a `catchup` attribute
+ * is present.
+ *
+ * [catchup] is the M3U-only recipe for building an archive URL (Xtream builds its
+ * archive URL from the panel path, so it needs no per-channel spec). New fields carry
+ * defaults so channel data cached by older builds still decodes.
+ */
 @Serializable
 data class LiveChannel(
     val streamId: String,
@@ -90,6 +128,27 @@ data class LiveChannel(
     val logoUrl: String? = null,
     val epgChannelId: String? = null,
     val categoryId: String,
+    val archiveDays: Int = 0,
+    val catchup: CatchupSpec? = null,
+) {
+    /** True when this channel offers any catch-up window. */
+    val hasArchive: Boolean get() = archiveDays > 0
+}
+
+/** How an M3U channel exposes catch-up, from its `catchup*` attributes. */
+@Serializable
+enum class CatchupType { DEFAULT, APPEND, SHIFT, FLUSSONIC, XC }
+
+/**
+ * M3U catch-up recipe parsed from `#EXTINF` (`catchup` / `catchup-type`,
+ * `catchup-source`, `catchup-days`) with header-level defaults from `#EXTM3U`.
+ * [source] is a URL template and may embed credentials, so treat it as secret.
+ */
+@Serializable
+data class CatchupSpec(
+    val type: CatchupType,
+    val source: String? = null,
+    val days: Int = 0,
 )
 
 /** A live-stream category from the provider. */
@@ -106,4 +165,51 @@ data class ProviderAuthResult(
     val expiry: Long? = null,          // epoch seconds
     val maxConnections: Int? = null,
     val message: String? = null,
+    /** Xtream `server_info` (timezone + clock), needed to build archive start times. Null for M3U. */
+    val serverInfo: ServerInfo? = null,
 )
+
+/**
+ * Xtream `server_info` from the `player_api.php` root response. Used to translate a
+ * UTC archive instant into the provider's LOCAL wall time, which is what the timeshift
+ * URL expects.
+ *
+ * - [timezone] is the IANA zone the provider reports (for example "UTC").
+ * - [timeNow] is the provider's local wall time as a string ("2026-09-30 19:32:35"),
+ *   with no zone.
+ * - [timestampNow] is the matching epoch-second instant.
+ *
+ * Prefer [timezone] as a [java.time.ZoneId]. When it is missing or invalid, derive a
+ * fixed offset from [timeNow] versus [timestampNow], rounded to the nearest 15 minutes.
+ */
+data class ServerInfo(
+    val timezone: String? = null,
+    val timeNow: String? = null,
+    val timestampNow: Long? = null,
+) {
+    /** The provider's zone: [timezone] if valid, else a fixed offset derived from the clock, else UTC. */
+    fun resolveZone(): java.time.ZoneId {
+        timezone?.trim()?.takeIf { it.isNotEmpty() }?.let { tz ->
+            runCatching { java.time.ZoneId.of(tz) }.getOrNull()?.let { return it }
+        }
+        derivedOffset()?.let { return it }
+        return java.time.ZoneOffset.UTC
+    }
+
+    /**
+     * Offset implied by comparing the reported local wall time to the epoch instant,
+     * rounded to the nearest 15 minutes. Null when either field is missing/unparseable.
+     */
+    private fun derivedOffset(): java.time.ZoneOffset? {
+        val local = timeNow?.trim() ?: return null
+        val epoch = timestampNow ?: return null
+        val parsed = runCatching {
+            java.time.LocalDateTime.parse(local.replace(' ', 'T'))
+        }.getOrNull() ?: return null
+        val localAsUtc = parsed.toEpochSecond(java.time.ZoneOffset.UTC)
+        val rawOffsetSec = localAsUtc - epoch
+        val rounded = Math.round(rawOffsetSec / 900.0).toInt() * 900
+        val clamped = rounded.coerceIn(-18 * 3600, 18 * 3600)
+        return runCatching { java.time.ZoneOffset.ofTotalSeconds(clamped) }.getOrNull()
+    }
+}

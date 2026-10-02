@@ -107,6 +107,12 @@ object PlayerFormats {
     fun clockMeridiem(ms: Long, zone: ZoneId = ZoneId.systemDefault()): String =
         format(ms, hourMinuteMeridiem, zone)
 
+    private val dayWithTime = DateTimeFormatter.ofPattern("EEE h:mm a", Locale.US)
+
+    /** "Thu 7:00 PM" — the archive overlay's "Aired <day> <time>" label. */
+    fun dayAndTime(ms: Long, zone: ZoneId = ZoneId.systemDefault()): String =
+        format(ms, dayWithTime, zone)
+
     /**
      * A start–end pair sharing ONE meridiem when both endpoints fall in the same half of the
      * day ("8:00–9:00 PM"), and carrying a meridiem on BOTH ends when they differ across the
@@ -142,4 +148,45 @@ object PlayerFormats {
             else -> "$mins min left"
         }
     }
+
+    // --- Archive / time-shift timing -----------------------------------------------------
+
+    /**
+     * A duration as "mm:ss", or "h:mm:ss" past an hour (so a 25-minute catch-up position reads
+     * "25:12" and a 90-minute film "1:30:00"). Negative inputs clamp to 0. Used for the archive
+     * scrub bar's elapsed label and the "watching mm:ss of mm:ss" line.
+     */
+    fun duration(ms: Long): String {
+        val totalSec = (ms.coerceAtLeast(0L)) / 1000
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return if (h > 0) {
+            String.format(Locale.ROOT, "%d:%02d:%02d", h, m, s)
+        } else {
+            String.format(Locale.ROOT, "%d:%02d", m, s)
+        }
+    }
+
+    /** The scrub bar's right-hand remaining label: "-34:48" (always negative, 0 at the end). */
+    fun remaining(positionMs: Long, durationMs: Long): String {
+        val left = (durationMs - positionMs).coerceAtLeast(0L)
+        return "-${duration(left)}"
+    }
+
+    /**
+     * "watching 25:12 of 60:00" — elapsed into the window of the total window length. Both
+     * clamped so a position past the end never prints more than the total.
+     */
+    fun watchingOf(positionMs: Long, durationMs: Long): String {
+        val pos = positionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
+        return "watching ${duration(pos)} of ${duration(durationMs)}"
+    }
+
+    /**
+     * "2:14 behind live" for the paused/time-shifted state, or "live" when caught up. [behindMs]
+     * is how far the current position trails the live edge.
+     */
+    fun behindLive(behindMs: Long): String =
+        if (behindMs < 1000L) "live" else "${duration(behindMs)} behind live"
 }

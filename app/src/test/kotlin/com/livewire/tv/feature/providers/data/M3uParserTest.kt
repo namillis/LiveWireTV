@@ -107,4 +107,63 @@ class M3uParserTest {
         assertEquals(3, playlist.entries.size)
         assertTrue(playlist.truncated)
     }
+
+    @Test
+    fun parsesPerEntryCatchupAttributes() {
+        val entry = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1 catchup="shift" catchup-days="5",Ch
+            http://s/live/1.ts
+            """.trimIndent(),
+        ).entries.single()
+        assertEquals("shift", entry.catchupType)
+        assertEquals(5, entry.catchupDays)
+        assertNull(entry.catchupSource)
+    }
+
+    @Test
+    fun catchupTypeAliasAndSource() {
+        val entry = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1 catchup-type="default" catchup-source="http://s/ts/{utc}.m3u8" catchup-days="7",Ch
+            http://s/live/1.ts
+            """.trimIndent(),
+        ).entries.single()
+        assertEquals("default", entry.catchupType)
+        assertEquals("http://s/ts/{utc}.m3u8", entry.catchupSource)
+        assertEquals(7, entry.catchupDays)
+    }
+
+    @Test
+    fun headerCatchupDefaultsApplyWhenEntryOmitsThem() {
+        val playlist = parse(
+            """
+            #EXTM3U catchup="append" catchup-days="3"
+            #EXTINF:-1,WithDefault
+            http://s/live/1.ts
+            #EXTINF:-1 catchup="shift" catchup-days="9",Overrides
+            http://s/live/2.ts
+            """.trimIndent(),
+        )
+        val (a, b) = playlist.entries
+        assertEquals("append", a.catchupType)
+        assertEquals(3, a.catchupDays)
+        assertEquals("shift", b.catchupType)
+        assertEquals(9, b.catchupDays)
+    }
+
+    @Test
+    fun noCatchupLeavesFieldsEmpty() {
+        val entry = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1,Plain
+            http://s/live/1.ts
+            """.trimIndent(),
+        ).entries.single()
+        assertNull(entry.catchupType)
+        assertEquals(0, entry.catchupDays)
+    }
 }
