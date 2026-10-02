@@ -30,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -872,6 +873,10 @@ private fun GuideRowView(
                 )
             } else {
                 cells.forEachIndexed { cellIndex, cell ->
+                  // Keyed by start time: past listings arrive later and are inserted at the front
+                  // of the row, and without a key the focused slot would start drawing an
+                  // earlier programme, so focus would drift into the past on its own.
+                  key(cell.programme.startMs) {
                     if (cell.gapMinutes > 0) Spacer(Modifier.width(minutesToDp(cell.gapMinutes)))
                     val style = CatchupGuide.cellStyle(cell.programme.stopMs, row.channel.hasArchive, now)
                     ProgrammeCell(
@@ -885,6 +890,7 @@ private fun GuideRowView(
                         onClick = { onClick(cell.programme) },
                         onLongClick = onLongClick,
                     )
+                  }
                 }
             }
         }
