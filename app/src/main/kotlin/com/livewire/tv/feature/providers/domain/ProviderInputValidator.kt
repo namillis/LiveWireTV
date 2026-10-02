@@ -46,6 +46,62 @@ object ProviderInputValidator {
         if (parsed.host.isBlank()) return "Enter a valid $noun."
         return null
     }
+
+    /**
+     * Tidy a server/playlist URL the way a remote user is likely to want:
+     * trim surrounding whitespace, add a default `http://` scheme when none was
+     * typed, and drop a single trailing `/`. Pure and side-effect free.
+     *
+     * A blank input is returned unchanged so an empty field is not turned into a
+     * bare scheme. The scheme test only looks for `<letters>://` so a value like
+     * `provider.example:8080` (a host:port, not a scheme) gets `http://` added.
+     */
+    fun normalizeUrl(raw: String): String {
+        var s = raw.trim()
+        if (s.isEmpty()) return s
+        if (!SCHEME_PREFIX.containsMatchIn(s)) s = "http://$s"
+        // Strip one trailing slash, but never the "//" of the scheme itself.
+        if (s.endsWith("/") && !s.endsWith("://")) s = s.dropLast(1)
+        return s
+    }
+
+    /** A server address plus the username and password pulled out of a pasted link. */
+    data class XtreamCredentials(
+        val server: String,
+        val username: String,
+        val password: String,
+    )
+
+    /**
+     * Split a full Xtream link a provider commonly sends
+     * (`http://host:port/get.php?username=U&password=P&type=m3u_plus…` or
+     * `.../player_api.php?username=U&password=P`) into the panel server URL plus
+     * the username and password, so the user can paste one link instead of typing
+     * three fields.
+     *
+     * Returns null unless the URL is a valid http(s) link whose path ends in
+     * `get.php` or `player_api.php` AND carries both a non-blank `username` and
+     * `password` query parameter. The returned [server] is the scheme, host and
+     * port only (path and query dropped), normalised with [normalizeUrl]. Pure.
+     */
+    fun parseXtreamLink(raw: String): XtreamCredentials? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        val url = normalizeUrl(trimmed).toHttpUrlOrNull() ?: return null
+        val lastSegment = url.pathSegments.lastOrNull()?.lowercase()
+        if (lastSegment != "get.php" && lastSegment != "player_api.php") return null
+        val user = url.queryParameter("username")?.takeIf { it.isNotBlank() } ?: return null
+        val pass = url.queryParameter("password")?.takeIf { it.isNotBlank() } ?: return null
+        // Rebuild the server root as scheme://host[:port], keeping a non-default port.
+        val defaultPort = if (url.scheme == "https") 443 else 80
+        val server = buildString {
+            append(url.scheme).append("://").append(url.host)
+            if (url.port != defaultPort) append(":").append(url.port)
+        }
+        return XtreamCredentials(server = server, username = user, password = pass)
+    }
+
+    private val SCHEME_PREFIX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
 }
 
 /** Raw form input for either provider type. */
