@@ -30,11 +30,13 @@ object Routes {
     const val SEARCH = "search"
     const val PROVIDERS = "providers"
     const val SETTINGS = "settings"
+    const val FAVORITES = "favorites"
     const val PLAYER = "player"
 
     /** Build a player route without embedding credentials or a complete stream URL. */
-    fun player(target: PlaybackTarget, title: String): String =
-        "$PLAYER?providerId=${Uri.encode(target.providerId)}&streamId=${Uri.encode(target.streamId)}&title=${Uri.encode(title)}"
+    fun player(target: PlaybackTarget, title: String, fromFavorites: Boolean = false): String =
+        "$PLAYER?providerId=${Uri.encode(target.providerId)}&streamId=${Uri.encode(target.streamId)}" +
+            "&title=${Uri.encode(title)}&fromFavorites=$fromFavorites"
 }
 
 /** Root navigation. Provider configuration chooses onboarding versus Home at startup. */
@@ -88,7 +90,9 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
         }
         composable(Routes.HOME) {
             HomeScreen(
-                onPlayChannel = { target, title -> navController.navigate(Routes.player(target, title)) },
+                onPlayChannel = { target, title, fromFavorites ->
+                    navController.navigate(Routes.player(target, title, fromFavorites))
+                },
             )
         }
         composable(Routes.SEARCH) {
@@ -98,12 +102,18 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
             )
         }
         composable(Routes.PROVIDERS) { ProvidersScreen() }
+        composable(Routes.FAVORITES) { com.livewire.tv.feature.favorites.ui.FavoritesManageScreen() }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onOpenProviders = { navController.navigate(Routes.PROVIDERS) })
+            SettingsScreen(
+                onOpenProviders = { navController.navigate(Routes.PROVIDERS) },
+                onOpenFavorites = { navController.navigate(Routes.FAVORITES) },
+            )
         }
         composable(Routes.GUIDE) {
             GuideScreen(
-                onPlayChannel = { target, title -> navController.navigate(Routes.player(target, title)) },
+                onPlayChannel = { target, title, fromFavorites ->
+                    navController.navigate(Routes.player(target, title, fromFavorites))
+                },
             )
         }
         composable(Routes.SPORTS) {
@@ -112,11 +122,12 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
             )
         }
         composable(
-            route = "${Routes.PLAYER}?providerId={providerId}&streamId={streamId}&title={title}",
+            route = "${Routes.PLAYER}?providerId={providerId}&streamId={streamId}&title={title}&fromFavorites={fromFavorites}",
             arguments = listOf(
                 navArgument("providerId") { type = NavType.StringType; defaultValue = "" },
                 navArgument("streamId") { type = NavType.StringType; defaultValue = "" },
                 navArgument("title") { type = NavType.StringType; defaultValue = "" },
+                navArgument("fromFavorites") { type = NavType.BoolType; defaultValue = false },
             ),
         ) { entry ->
             PlayerScreen(
@@ -125,6 +136,7 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
                     streamId = entry.arguments?.getString("streamId").orEmpty(),
                 ),
                 title = entry.arguments?.getString("title").orEmpty(),
+                fromFavorites = entry.arguments?.getBoolean("fromFavorites") ?: false,
                 onExit = { navController.popBackStack() },
             )
         }

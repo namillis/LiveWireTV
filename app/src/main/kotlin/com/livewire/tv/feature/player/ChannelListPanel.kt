@@ -20,7 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,10 +58,28 @@ fun ChannelListPanel(
     now: Long,
     onPlay: (ChannelListItem) -> Unit,
     modifier: Modifier = Modifier,
+    favoriteIds: Set<String> = emptySet(),
 ) {
     Box(modifier.fillMaxSize()) {
-        val playingIndex = state.playingIndex.coerceAtLeast(0)
-        var focusedIndex by remember(state.items) { mutableIntStateOf(playingIndex) }
+        // Display order: a "Favourites" group (the favourite channels in this category list,
+        // in list order) first, then the full category. The playing/focused channel is tracked
+        // by stream id, not list index, so the Favourites group's duplicates don't confuse the
+        // preview. Favourite rows carry the outline-star marker (mockup option2-player-channels).
+        val favItems = remember(state.items, favoriteIds) {
+            state.items.filter { it.channel.streamId in favoriteIds }
+        }
+        val displayRows = remember(state.items, favItems) {
+            buildList {
+                if (favItems.isNotEmpty()) {
+                    add(ChannelPanelRow.Header("Favourites"))
+                    favItems.forEach { add(ChannelPanelRow.Channel(it, favouriteGroup = true)) }
+                    add(ChannelPanelRow.Header(state.categoryName))
+                }
+                state.items.forEach { add(ChannelPanelRow.Channel(it, favouriteGroup = false)) }
+            }
+        }
+        val playingStreamId = state.items.getOrNull(state.playingIndex)?.channel?.streamId
+        var focusedStreamId by remember(state.items) { mutableStateOf(playingStreamId) }
         val listState = rememberLazyListState()
         val initialFocus = remember(state.items) { FocusRequester() }
 
@@ -85,22 +103,40 @@ fun ChannelListPanel(
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                itemsIndexed(state.items, key = { _, it -> it.channel.streamId }) { index, item ->
-                    ChannelRow(
-                        item = item,
-                        watching = index == state.playingIndex,
-                        now = now,
-                        focusRequester = if (index == playingIndex) initialFocus else null,
-                        onFocused = { focusedIndex = index },
-                        onClick = { onPlay(item) },
-                    )
+                itemsIndexed(
+                    displayRows,
+                    key = { index, row ->
+                        when (row) {
+                            is ChannelPanelRow.Header -> "h:${row.title}:$index"
+                            is ChannelPanelRow.Channel -> "c:${if (row.favouriteGroup) "fav" else "cat"}:${row.item.channel.streamId}"
+                        }
+                    },
+                ) { _, row ->
+                    when (row) {
+                        is ChannelPanelRow.Header -> GroupHeader(row.title)
+                        is ChannelPanelRow.Channel -> {
+                            val item = row.item
+                            // Initial focus goes to the playing channel's row in the category
+                            // group (not its favourites duplicate), so focus restore is stable.
+                            val isInitial = !row.favouriteGroup && item.channel.streamId == playingStreamId
+                            ChannelRow(
+                                item = item,
+                                watching = item.channel.streamId == playingStreamId,
+                                favourite = item.channel.streamId in favoriteIds,
+                                now = now,
+                                focusRequester = if (isInitial) initialFocus else null,
+                                onFocused = { focusedStreamId = item.channel.streamId },
+                                onClick = { onPlay(item) },
+                            )
+                        }
+                    }
                 }
             }
             HintRow()
         }
 
         // Right-side preview, anchored to the right safe edge (never over the left panel).
-        state.items.getOrNull(focusedIndex)?.let { focused ->
+        state.items.firstOrNull { it.channel.streamId == focusedStreamId }?.let { focused ->
             Preview(
                 item = focused,
                 now = now,
@@ -113,12 +149,33 @@ fun ChannelListPanel(
         androidx.compose.runtime.LaunchedEffect(state.items) {
             if (state.items.isNotEmpty()) {
                 runCatching {
-                    listState.scrollToItem(playingIndex)
+                    val target = displayRows.indexOfFirst {
+                        it is ChannelPanelRow.Channel && !it.favouriteGroup &&
+                            it.item.channel.streamId == playingStreamId
+                    }.coerceAtLeast(0)
+                    listState.scrollToItem(target)
                     initialFocus.requestFocus()
                 }
             }
         }
     }
+}
+
+/** One row of the channel-list panel's display list: a group header or a channel. */
+private sealed interface ChannelPanelRow {
+    data class Header(val title: String) : ChannelPanelRow
+    data class Channel(val item: ChannelListItem, val favouriteGroup: Boolean) : ChannelPanelRow
+}
+
+/** A group header inside the channel list (e.g. "FAVOURITES", the category name). Not focusable. */
+@Composable
+private fun GroupHeader(title: String) {
+    Text(
+        title.uppercase(),
+        style = LiveWireTheme.tokens.overline,
+        color = LiveWireColors.OnSurfaceMuted,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+    )
 }
 
 @Composable
@@ -129,6 +186,7 @@ private fun ChannelRow(
     focusRequester: FocusRequester?,
     onFocused: () -> Unit,
     onClick: () -> Unit,
+    favourite: Boolean = false,
 ) {
     PlayerFlatRow(
         onClick = onClick,
@@ -157,6 +215,7 @@ private fun ChannelRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
+                    if (favourite) com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 11.dp)
                     if (watching) WatchingTag()
                 }
                 Spacer(Modifier.height(3.dp))

@@ -68,6 +68,7 @@ enum class TopLevel(val route: String, val label: String, @DrawableRes val icon:
          */
         fun railSectionOf(route: String?): TopLevel? = of(route) ?: when (route) {
             Routes.PROVIDERS -> SETTINGS
+            Routes.FAVORITES -> SETTINGS
             else -> null
         }
     }
