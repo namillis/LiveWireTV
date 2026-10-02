@@ -20,10 +20,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,7 +38,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -57,6 +52,8 @@ import com.livewire.tv.R
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.providers.domain.ProviderDraft
 import com.livewire.tv.feature.providers.domain.ProviderType
+import com.livewire.tv.ui.provider.ProviderFieldLabelStyle
+import com.livewire.tv.ui.provider.ProviderFilledField
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
@@ -893,8 +890,9 @@ private fun LockedSegment(label: String, selected: Boolean, leading: Boolean) {
 
 /**
  * A FILLED field (mockup): a small uppercase mono overline label, then a
- * [LiveWireColors.Surface]-filled input. The input keeps the D-pad focus chaining
- * (up/down focusProperties + dpadVerticalExit) so the whole form is one focus column.
+ * filled input. Delegates to the shared [ProviderFilledField] so the Providers form
+ * and onboarding stay identical; the input keeps the D-pad focus chaining (up/down
+ * focusProperties + dpadVerticalExit) so the whole form is one focus column.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -911,40 +909,20 @@ private fun FilledField(
     imeAction: ImeAction = ImeAction.Next,
     onImeAction: () -> Unit = {},
 ) {
-    Column(modifier = modifier.padding(bottom = LiveWireDimens.SpaceM)) {
-        Text(
-            label.uppercase(),
-            style = LiveWireTheme.tokens.overline,
-            color = LiveWireColors.OnSurfaceMuted,
-            modifier = Modifier.padding(bottom = LiveWireDimens.SpaceXs),
-        )
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValue,
-            singleLine = true,
-            visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-            keyboardActions = KeyboardActions(
-                onNext = { onImeAction() },
-                onDone = { onImeAction() },
-            ),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = LiveWireColors.OnSurface,
-                unfocusedTextColor = LiveWireColors.OnSurface,
-                focusedContainerColor = LiveWireColors.SurfaceFocused,
-                unfocusedContainerColor = LiveWireColors.SurfaceRaised,
-                cursorColor = LiveWireColors.OnSurface,
-                focusedBorderColor = LiveWireColors.Accent,
-                unfocusedBorderColor = LiveWireColors.Border,
-            ),
-            shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .focusProperties { up = upFocus; down = downFocus }
-                .dpadVerticalExit(up = upFocus, down = downFocus),
-        )
-    }
+    ProviderFilledField(
+        label = label,
+        value = value,
+        onValue = onValue,
+        focusRequester = focusRequester,
+        upFocus = upFocus,
+        downFocus = downFocus,
+        modifier = modifier,
+        password = password,
+        labelStyle = ProviderFieldLabelStyle.OVERLINE,
+        keyboardType = keyboardType,
+        imeAction = imeAction,
+        onImeAction = onImeAction,
+    )
 }
 
 /** A compact form button. [ghost] is the muted Cancel variant. */
