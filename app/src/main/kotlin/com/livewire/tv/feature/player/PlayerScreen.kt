@@ -78,6 +78,7 @@ fun PlayerScreen(
     target: PlaybackTarget,
     title: String,
     onExit: () -> Unit,
+    fromFavorites: Boolean = false,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -86,6 +87,7 @@ fun PlayerScreen(
     val mediaInfo by engine.mediaInfo.collectAsStateWithLifecycle()
     val source by viewModel.source.collectAsStateWithLifecycle()
     val channels by viewModel.channels.collectAsStateWithLifecycle()
+    val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
     val optionsState = rememberOptionsPanelState()
 
@@ -100,7 +102,7 @@ fun PlayerScreen(
         revealTick++
     }
 
-    LaunchedEffect(target) { viewModel.resolve(target, title) }
+    LaunchedEffect(target) { viewModel.resolve(target, title, fromFavorites) }
     // Re-open the engine whenever the resolved source changes (initial load AND channel switch).
     LaunchedEffect(source.source) { source.source?.let { engine.open(it.url, headers = it.headers) } }
     DisposableEffect(Unit) { onDispose { engine.release() } }
@@ -169,7 +171,7 @@ fun PlayerScreen(
                         PlayerAction.TogglePlayPause -> {
                             // The Retry button can't take focus while the root owns the D-pad, so OK retries.
                             when {
-                                source.error != null -> viewModel.resolve(target, title)
+                                source.error != null -> viewModel.resolve(target, title, fromFavorites)
                                 status.state == PlaybackState.ERROR -> engine.retry()
                                 else -> engine.togglePlayPause()
                             }
@@ -201,7 +203,7 @@ fun PlayerScreen(
 
             when {
                 source.loading -> CircularProgressIndicator()
-                source.error != null -> SafeErrorOverlay(source.error!!, onRetry = { viewModel.resolve(target, title) })
+                source.error != null -> SafeErrorOverlay(source.error!!, onRetry = { viewModel.resolve(target, title, fromFavorites) })
                 status.state == PlaybackState.BUFFERING -> CircularProgressIndicator()
                 status.state == PlaybackState.ERROR -> SafeErrorOverlay(
                     message = status.errorMessage ?: "Playback failed. Try again.",
@@ -273,6 +275,8 @@ fun PlayerScreen(
                     onSelectText = engine::selectTextTrack,
                     onSelectPicture = { pictureMode = it },
                     onReload = engine::retry,
+                    isFavorite = source.currentStreamId?.let { it in favoriteIds } ?: false,
+                    onToggleFavorite = viewModel::toggleCurrentFavorite,
                 )
             }
 
@@ -286,6 +290,7 @@ fun PlayerScreen(
                 ChannelListPanel(
                     state = channels,
                     now = now,
+                    favoriteIds = favoriteIds,
                     onPlay = { item ->
                         viewModel.switchTo(item)
                         panel = PlayerPanel.NONE

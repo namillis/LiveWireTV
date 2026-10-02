@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -38,6 +39,9 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
+import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.feature.favorites.ui.ChannelMenuOverlay
+import com.livewire.tv.feature.favorites.ui.FavoriteToastHost
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireTheme
@@ -56,7 +60,7 @@ private const val HERO_SETTLE_MS = 150L
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
+    onPlayChannel: (target: PlaybackTarget, title: String, fromFavorites: Boolean) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -85,6 +89,14 @@ fun HomeScreen(
     val cardFocus = remember { FocusRequester() }
     var lastFocusedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var cardHasFocus by remember { mutableStateOf(false) }
+    // The channel whose hold-OK menu is open, or null when closed.
+    var menuChannel by remember { mutableStateOf<LiveChannel?>(null) }
+    // The channel whose Channel info panel is open, or null when closed.
+    var infoChannel by remember { mutableStateOf<LiveChannel?>(null) }
+    // When an overlay closes (not via Play), restore focus to the opener by stream id. The
+    // token bumps on each close so the restore effect re-runs even for the same channel.
+    var restoreStreamId by remember { mutableStateOf<String?>(null) }
+    var restoreToken by remember { mutableIntStateOf(0) }
     val hasChannels = state.rails.any { it.channels.isNotEmpty() }
     val firstRailIndexForFocus = state.rails.indexOfFirst { it.channels.isNotEmpty() }
     val targetKey = lastFocusedKey ?: "$firstRailIndexForFocus:0"
@@ -126,6 +138,29 @@ fun HomeScreen(
                 if (held >= 3) return@LaunchedEffect
                 delay(50)
             }
+        }
+    }
+
+    // Restore focus to the opener card when an overlay (menu / Channel info) closes for any
+    // reason but Play. Resolve the opener's stream id to its current position (a favourite
+    // toggle may have added/removed the Favourites rail, shifting indices), point cardFocus at
+    // it via lastFocusedKey, then hold focus until it sticks — otherwise focus falls to the nav
+    // drawer and opens it. Reuses the same held-focus pattern as LaunchedEffect(hasChannels).
+    LaunchedEffect(restoreToken) {
+        if (restoreToken == 0) return@LaunchedEffect
+        val railIds = state.rails.map { rail -> rail.channels.map { it.streamId } }
+        val favRailIndex = state.rails.indexOfFirst { it.isFavorites }
+        val target = com.livewire.tv.feature.favorites.ui.FavoritesFocus
+            .restoreTarget(railIds, favRailIndex, restoreStreamId) ?: return@LaunchedEffect
+        lastFocusedKey = "${target.railIndex}:${target.cardIndex}"
+        var held = 0
+        repeat(40) {
+            if (cardHasFocus) held++ else {
+                held = 0
+                runCatching { cardFocus.requestFocus() }
+            }
+            if (held >= 3) return@LaunchedEffect
+            delay(50)
         }
     }
 
@@ -177,11 +212,13 @@ fun HomeScreen(
                                     ChannelCard(
                                         channel = channel,
                                         nowPlaying = viewModel.nowPlaying(channel),
+                                        isFavorite = channel.streamId in state.favoriteIds,
                                         onClick = {
                                             viewModel.playbackTarget(channel)?.let { target ->
-                                                onPlayChannel(target, channel.name)
+                                                onPlayChannel(target, channel.name, rail.isFavorites)
                                             }
                                         },
+                                        onLongClick = { menuChannel = channel },
                                         modifier = Modifier
                                             .onFocusChanged {
                                                 if (it.isFocused) {
@@ -204,6 +241,55 @@ fun HomeScreen(
                 }
             }
         }
+
+
+        // Hold-OK channel menu (mockup option2-home): dims the screen, Favourite focused.
+        menuChannel?.let { channel ->
+            ChannelMenuOverlay(
+                channel = channel,
+                isFavourite = channel.streamId in state.favoriteIds,
+                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                onPlay = {
+                    viewModel.playbackTarget(channel)?.let { target ->
+                        onPlayChannel(target, channel.name, channel.streamId in state.favoriteIds)
+                    }
+                },
+                // The Channel info panel (Option A) opens from here (mockup channel-info/optionA).
+                // Close the menu as the panel takes over; no grid-focus restore (panel has focus).
+                onChannelInfo = { infoChannel = channel; menuChannel = null },
+                onDismiss = {
+                    menuChannel = null
+                    restoreStreamId = channel.streamId
+                    restoreToken++
+                },
+            )
+        }
+
+        // Channel info panel (Option A): a right-side sheet over a strongly dimmed Home.
+        infoChannel?.let { channel ->
+            com.livewire.tv.feature.favorites.ui.ChannelInfoPanel(
+                model = viewModel.channelInfoFor(channel),
+                now = System.currentTimeMillis(),
+                onPlay = {
+                    viewModel.playbackTarget(channel)?.let { target ->
+                        onPlayChannel(target, channel.name, channel.streamId in state.favoriteIds)
+                    }
+                    infoChannel = null
+                },
+                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                onDismiss = {
+                    infoChannel = null
+                    restoreStreamId = channel.streamId
+                    restoreToken++
+                },
+            )
+        }
+
+        FavoriteToastHost(
+            token = state.confirmation.token,
+            message = state.confirmation.message,
+            suppressed = infoChannel != null,
+        )
 
         // A small neutral "Updated to X" note after a successful self-update, shown once for a
         // few seconds then cleared (brief step 6). Sits over Home; does not trap focus.

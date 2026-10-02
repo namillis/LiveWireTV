@@ -21,6 +21,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.favorites.ui.FavoriteStar
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
@@ -38,9 +39,12 @@ fun ChannelCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     nowPlaying: EpgProgramme? = null,
+    isFavorite: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     LiveWireSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         restingColor = LiveWireColors.Surface,
         modifier = modifier.width(148.dp),
     ) {
@@ -70,12 +74,19 @@ fun ChannelCard(
                 }
             }
             Column(Modifier.padding(horizontal = 9.dp, vertical = 7.dp)) {
-                Text(
-                    channel.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        channel.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (isFavorite) {
+                        Spacer(Modifier.width(4.dp))
+                        FavoriteStar(size = 11.dp)
+                    }
+                }
                 Text(
                     nowPlaying?.title ?: " ",
                     style = MaterialTheme.typography.bodyMedium,

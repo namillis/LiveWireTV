@@ -86,6 +86,7 @@ import java.util.Locale
 @Composable
 fun SettingsScreen(
     onOpenProviders: () -> Unit,
+    onOpenFavorites: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val s by viewModel.settings.collectAsStateWithLifecycle()
@@ -138,6 +139,7 @@ fun SettingsScreen(
                     updateViewModel = updateViewModel,
                     updateState = updateState,
                     onOpenProviders = onOpenProviders,
+                    onOpenFavorites = onOpenFavorites,
                     firstRowFocus = firstRowFocus,
                     onFirstRowFocusChanged = { firstRowHasFocus = it },
                     modifier = Modifier.weight(1f),
@@ -197,6 +199,7 @@ private fun SettingsList(
     updateViewModel: com.livewire.tv.feature.update.UpdateViewModel,
     updateState: com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState,
     onOpenProviders: () -> Unit,
+    onOpenFavorites: () -> Unit,
     firstRowFocus: FocusRequester,
     onFirstRowFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -238,6 +241,11 @@ private fun SettingsList(
         item("home") {
             SettingsGroup("Home") {
                 NowPlayingRow(on = s.showNowPlayingOnCards) { viewModel.setShowNowPlaying(!s.showNowPlayingOnCards) }
+            }
+        }
+        item("favorites") {
+            SettingsGroup("Favourites") {
+                FavoritesRow(onOpen = onOpenFavorites)
             }
         }
         item("providers") {
@@ -570,10 +578,40 @@ private fun NeutralSwitch(on: Boolean) {
     }
 }
 
+/** Favourites: a "Manage ›" affordance. OK opens the Settings → Favourites screen. */
+@Composable
+private fun FavoritesRow(onOpen: () -> Unit) {
+    val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
+    SettingRow(
+        title = "Manage favourites",
+        description = "Reorder or remove your favourite channels",
+        onClick = onOpen,
+    ) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = ControlHeight)
+                .clip(shape)
+                .background(LiveWireColors.SurfaceRaised)
+                .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+                .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Manage",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = LiveWireColors.OnSurface,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+            Text("›", style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurfaceMuted)
+        }
+    }
+}
+
 /** Providers: a "Manage ›" affordance. OK opens the provider manager screen. */
 @Composable
-private fun ProvidersRow(summary: String, onOpen: () -> Unit) {
-    val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
+private fun ProvidersRow(summary: String, onOpen: () -> Unit) {    val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
     SettingRow(
         title = "Manage providers",
         description = summary,

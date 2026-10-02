@@ -27,6 +27,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +98,25 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
+    val confirmation by viewModel.confirmation.collectAsStateWithLifecycle()
+    // The channel whose hold-OK menu is open, or null when closed.
+    var menuChannel by remember { mutableStateOf<LiveChannel?>(null) }
+    // The channel whose Channel info panel is open, or null when closed.
+    var infoChannel by remember { mutableStateOf<LiveChannel?>(null) }
+    // Per-result focus requesters, keyed by channel stream id, so focus returns to the exact
+    // card that opened an overlay once it closes (otherwise focus falls to the nav drawer).
+    val resultCardFocus = remember { mutableMapOf<String, FocusRequester>() }
+    val restoreScope = rememberCoroutineScope()
+    fun restoreFocusToStreamId(streamId: String?) {
+        val requester = streamId?.let { resultCardFocus[it] } ?: return
+        restoreScope.launch {
+            repeat(40) {
+                if (runCatching { requester.requestFocus() }.isSuccess) return@launch
+                kotlinx.coroutines.delay(50)
+            }
+        }
+    }
     // Seed from the ViewModel: the nav graph keeps Search's ViewModel (and its query and
     // results) alive when you switch sections, but plain remember{} state is rebuilt empty
     // on return. Starting blank left the field empty over the old query's results, and the
@@ -145,6 +166,7 @@ fun SearchScreen(
         returnTo?.let { runCatching { it.requestFocus() } }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         colors = SurfaceDefaults.colors(containerColor = LiveWireColors.Canvas),
@@ -243,6 +265,9 @@ fun SearchScreen(
                         pickerReturnFocus = rowFocus
                         pickerGame = game
                     },
+                    favoriteIds = favoriteIds,
+                    onLongPress = { menuChannel = it },
+                    onRegisterFocus = { id, fr -> resultCardFocus[id] = fr },
                 )
             }
         }
@@ -261,6 +286,38 @@ fun SearchScreen(
                 onDismiss = ::dismissPicker,
             )
         }
+    }
+
+        // Hold-OK channel menu on a channel result (mockup option2): dims the screen.
+        menuChannel?.let { channel ->
+            com.livewire.tv.feature.favorites.ui.ChannelMenuOverlay(
+                channel = channel,
+                isFavourite = channel.streamId in favoriteIds,
+                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                onPlay = { playChannel(channel) },
+                // The Channel info panel (Option A) opens from here. Close the menu as the panel
+                // takes over; no card-focus restore (the panel owns focus).
+                onChannelInfo = { infoChannel = channel; menuChannel = null },
+                onDismiss = { menuChannel = null; restoreFocusToStreamId(channel.streamId) },
+            )
+        }
+
+        // Channel info panel (Option A) over a strongly dimmed Search.
+        infoChannel?.let { channel ->
+            com.livewire.tv.feature.favorites.ui.ChannelInfoPanel(
+                model = viewModel.channelInfoFor(channel),
+                now = System.currentTimeMillis(),
+                onPlay = { playChannel(channel); infoChannel = null },
+                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                onDismiss = { infoChannel = null; restoreFocusToStreamId(channel.streamId) },
+            )
+        }
+
+        com.livewire.tv.feature.favorites.ui.FavoriteToastHost(
+            token = confirmation.token,
+            message = confirmation.message,
+            suppressed = infoChannel != null,
+        )
     }
 }
 
@@ -342,6 +399,9 @@ private fun Results(
     firstResultFocus: FocusRequester,
     onPlayChannel: (LiveChannel) -> Unit,
     onOpenPicker: (game: SportsGame, rowFocus: FocusRequester) -> Unit,
+    favoriteIds: Set<String>,
+    onLongPress: (LiveChannel) -> Unit,
+    onRegisterFocus: (String, FocusRequester) -> Unit,
 ) {
     val now = System.currentTimeMillis()
     val firstSection = grouped.nonEmptySections().firstOrNull()
@@ -373,6 +433,9 @@ private fun Results(
                         now = now,
                         firstFocus = firstResultFocus.takeIf { firstSection == SearchSection.CHANNELS },
                         onPlayChannel = onPlayChannel,
+                        favoriteIds = favoriteIds,
+                        onLongPress = onLongPress,
+                        onRegisterFocus = onRegisterFocus,
                     )
                 }
             }
@@ -462,6 +525,9 @@ private fun ChannelRail(
     now: Long,
     firstFocus: FocusRequester?,
     onPlayChannel: (LiveChannel) -> Unit,
+    favoriteIds: Set<String>,
+    onLongPress: (LiveChannel) -> Unit,
+    onRegisterFocus: (String, FocusRequester) -> Unit,
 ) {
     LazyRow(
         // Horizontal inset keeps the first/last card's 1.04 scale + ring off the column edge
@@ -471,11 +537,22 @@ private fun ChannelRail(
     ) {
         itemsIndexed(channels, key = { _, r -> "c:${r.channel?.streamId}" }) { index, r ->
             val channel = r.channel ?: return@itemsIndexed
+            // One requester per result card, registered by stream id, so an overlay close can
+            // return focus to this exact card.
+            val cardFocus = remember(channel.streamId) { FocusRequester() }
+            androidx.compose.runtime.DisposableEffect(channel.streamId) {
+                onRegisterFocus(channel.streamId, cardFocus)
+                onDispose { }
+            }
             ChannelCard(
                 channel = channel,
                 nowPlaying = viewModel.nowPlaying(channel, now),
+                isFavorite = channel.streamId in favoriteIds,
                 onClick = { onPlayChannel(channel) },
-                modifier = if (index == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
+                onLongClick = { onLongPress(channel) },
+                modifier = Modifier
+                    .focusRequester(cardFocus)
+                    .then(if (index == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier),
             )
         }
     }
