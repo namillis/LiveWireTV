@@ -76,14 +76,6 @@ fun ArchivePlayerOverlay(
         ArchiveTopBug(model.channelNumber, pill = "ARCHIVE", archive = true)
         Clock(now, Modifier.align(Alignment.TopEnd))
 
-        // Centre watermark, matching the live resting overlay's "▶ ARCHIVE PLAYBACK".
-        Text(
-            if (state == PlaybackState.PAUSED) "❚❚  ARCHIVE PLAYBACK" else "▶  ARCHIVE PLAYBACK",
-            style = LiveWireTheme.tokens.overline,
-            color = LiveWireColors.OnSurfaceMuted.copy(alpha = 0.5f),
-            modifier = Modifier.align(Alignment.Center),
-        )
-
         Column(
             Modifier
                 .align(Alignment.BottomStart)
@@ -126,7 +118,8 @@ fun ArchivePlayerOverlay(
                 color = LiveWireColors.OnSurfaceMuted,
             )
 
-            Spacer(Modifier.height(LiveWireDimens.SpaceM))
+            // Room for the position tooltip above the knob, so it never covers the line above.
+            Spacer(Modifier.height(SCRUB_TOOLTIP_GAP))
             ScrubBar(
                 fraction = fractionOf(model.positionMs - model.windowStartMs, model.durationMs),
                 leftLabel = PlayerFormats.duration(model.positionMs - model.windowStartMs),
@@ -206,7 +199,8 @@ fun PausedLiveOverlay(
                 channelNumber = model.channelNumber,
                 stateLabel = "Paused — time-shifted",
             )
-            Spacer(Modifier.height(LiveWireDimens.SpaceM))
+            // Room for the position tooltip above the knob, so it never covers the line above.
+            Spacer(Modifier.height(SCRUB_TOOLTIP_GAP))
             ScrubBar(
                 fraction = 1f, // behind-live fill runs to the live edge
                 leftLabel = "-${PlayerFormats.duration(behindMs)}",
@@ -424,13 +418,13 @@ private fun ScrubBar(
                     Text(leftLabel, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
                 }
             }
-            // Knob: white/grey normally, amber ring when focused.
+            // Knob: white, with an amber ring only when focused (mockup option2-player-bar).
             Box(
                 Modifier
                     .offset(x = knobX)
                     .size(knob)
                     .clip(CircleShape)
-                    .background(if (knobFocused) LiveWireColors.Accent else LiveWireColors.ProgressFill)
+                    .background(LiveWireColors.ProgressFill)
                     .then(
                         if (knobFocused) {
                             Modifier.border(LiveWireDimens.FocusBorder, LiveWireColors.Accent, CircleShape)
@@ -443,6 +437,9 @@ private fun ScrubBar(
         Text(rightLabel, style = MaterialTheme.typography.labelMedium, color = if (liveEdge) LiveWireColors.OnSurfaceMuted else LiveWireColors.OnSurface)
     }
 }
+
+/** Tooltip height plus its offset above the knob (see [ScrubBar]). */
+private val SCRUB_TOOLTIP_GAP = 30.dp
 
 private data class HintSpec(val key: String, val label: String)
 

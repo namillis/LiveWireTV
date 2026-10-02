@@ -105,6 +105,16 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // Single-connection providers refuse a new stream for a moment after the old one
+            // closes (a channel switch or a reopen-to-seek), answering 401/403/429. Retry
+            // quietly a couple of times before showing an error.
+            if (isConnectionRefusal(error) && connectionRetries < MAX_CONNECTION_RETRIES) {
+                connectionRetries++
+                val r = Runnable { retry() }
+                pendingRetry = r
+                mainHandler.postDelayed(r, CONNECTION_RETRY_DELAY_MS * connectionRetries)
+                return
+            }
             _status.value = _status.value.copy(
                 state = PlaybackState.ERROR,
                 errorMessage = "Playback failed. Check the stream format and try again.",
@@ -127,6 +137,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
 
     private fun update(state: PlaybackState) {
         if (videoUnsupported) return
+        if (state == PlaybackState.PLAYING) connectionRetries = 0
         val archive = seekController != null
         // Live streams report an unset/dynamic duration; treat unknown as live — but an
         // ARCHIVE stream is never "live" regardless of what ExoPlayer reports for its duration.
@@ -142,6 +153,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     override fun open(url: String, play: Boolean, headers: Map<String, String>) {
         // Leaving archive mode: drop the seek controller so status reverts to LIVE.
         clearArchive()
+        connectionRetries = 0
         openInternal(url, play, headers, PlaybackMode.Live)
     }
 
@@ -161,6 +173,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         reopenProvider = reopen
         _duration.value = (endMs - startMs).coerceAtLeast(0)
         _position.value = startMs
+        connectionRetries = 0
         openInternal(url, play, headers, PlaybackMode.Archive(startMs, endMs))
         mainHandler.removeCallbacks(positionPoll)
         mainHandler.postDelayed(positionPoll, POSITION_POLL_MS)
@@ -176,7 +189,23 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         _duration.value = C.TIME_UNSET
     }
 
+    private var connectionRetries = 0
+    private var pendingRetry: Runnable? = null
+
+    private fun isConnectionRefusal(error: PlaybackException): Boolean {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                return cause.responseCode in CONNECTION_REFUSAL_CODES
+            }
+            cause = cause.cause
+        }
+        return false
+    }
+
     private fun openInternal(url: String, play: Boolean, headers: Map<String, String>, mode: PlaybackMode) {
+        pendingRetry?.let { mainHandler.removeCallbacks(it) }
+        pendingRetry = null
         lastUrl = url
         lastHeaders = headers
         videoUnsupported = false
@@ -429,6 +458,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
 
     override fun release() {
         mainHandler.removeCallbacks(positionPoll)
+        pendingRetry?.let { mainHandler.removeCallbacks(it) }
         pendingSeekRunnable?.let { mainHandler.removeCallbacks(it) }
         player.removeListener(listener)
         player.release()
@@ -437,5 +467,9 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     private companion object {
         const val POSITION_POLL_MS = 500L
         const val SEEK_DEBOUNCE_MS = 600L
+        /** A refused connection is retried this many times, 1.5 s then 3 s apart. */
+        const val MAX_CONNECTION_RETRIES = 2
+        const val CONNECTION_RETRY_DELAY_MS = 1_500L
+        val CONNECTION_REFUSAL_CODES = setOf(401, 403, 429)
     }
 }
