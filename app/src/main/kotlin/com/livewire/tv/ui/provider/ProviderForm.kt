@@ -164,14 +164,16 @@ fun ProviderFilledField(
                         if (!it.isFocused) editing = false
                     }
                     .onPreviewKeyEvent { e ->
-                        // Not editing: Left/Right go to the field beside this one (two-column
-                        // grid). The text field would otherwise eat them as caret moves.
-                        if (!editing && e.type == KeyEventType.KeyDown) {
-                            val side = when (e.key) {
-                                Key.DirectionLeft -> leftFocus
-                                Key.DirectionRight -> rightFocus
-                                else -> null
-                            }
+                        // Left/Right go to the field beside this one (two-column grid). The
+                        // text field would otherwise eat them as caret moves. While the
+                        // on-screen keyboard is open it takes the D-pad itself, so a Left/Right
+                        // that reaches the field means the keyboard has closed, even if the IME
+                        // inset (which drives `editing` above) has not caught up yet. Without
+                        // this, Right pressed straight after Back stays in the field.
+                        val sideKey = e.key == Key.DirectionLeft || e.key == Key.DirectionRight
+                        if (sideKey && e.type == KeyEventType.KeyDown) {
+                            editing = false
+                            val side = if (e.key == Key.DirectionLeft) leftFocus else rightFocus
                             if (side != null) return@onPreviewKeyEvent runCatching { side.requestFocus() }.isSuccess
                         }
                         val ok = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
