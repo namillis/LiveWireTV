@@ -31,6 +31,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +69,7 @@ import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
+import androidx.compose.ui.platform.LocalDensity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -289,6 +291,17 @@ private fun GuideContent(
     // On open (and on return), land the ring on the restored row -- the first row on a fresh
     // open -- at the anchor time. Wait for programmes so it lands on a real cell, and never
     // move focus the user has already moved.
+    // A fresh open with a long past window would start at its far left (days ago). Scroll so
+    // the lane starts 30 min before now; Back-to-Guide keeps the saved scroll instead.
+    val density = LocalDensity.current
+    var initialScrollDone by remember { mutableStateOf(initialPosition.horizontalScroll != 0) }
+    LaunchedEffect(state.windowStartMs) {
+        if (!initialScrollDone && state.windowStartMs > 0L) {
+            val minutes = TimeUnit.MILLISECONDS.toMinutes(now - state.windowStartMs).toInt() - 30
+            if (minutes > 0) hScroll.scrollTo(with(density) { minutesToDp(minutes).roundToPx() })
+            initialScrollDone = true
+        }
+    }
     var focusPlaced by remember { mutableStateOf(false) }
     var userMovedFocus by remember { mutableStateOf(false) }
     val restoreHasCells = rows.getOrNull(restoreIndex)?.programmes?.isNotEmpty() == true
@@ -390,7 +403,7 @@ private fun GuideContent(
                     .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusCard)),
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    NowLane(nowMin, { hScroll.value }, now)
+                    NowLane(nowMin, { hScroll.value }, now, state.windowStartMs)
                     AxisRow(state.windowStartMs, spanMinutes) { hScroll.value }
                     if (rows.isEmpty()) {
                         if (state.favoritesEmpty) FavoritesGuideEmpty() else NoMatches(state.query, state.categoryName)
@@ -637,8 +650,14 @@ private fun GuideDetailsBand(
                         Spacer(Modifier.height(2.dp))
                         val range = "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
                         val synopsis = prog.description?.takeIf { it.isNotBlank() }
+                        // On an earlier day the clock alone is ambiguous: lead with the day.
+                        val day = dayLabel(prog.startMs, now)
                         Text(
-                            synopsis ?: (range + (prog.category?.let { " · $it" } ?: "")),
+                            if (day != null) {
+                                "$day $range" + ((synopsis ?: prog.category)?.let { " · $it" } ?: "")
+                            } else {
+                                synopsis ?: (range + (prog.category?.let { " · $it" } ?: ""))
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = LiveWireColors.OnSurfaceMuted,
                             maxLines = 1,
@@ -735,7 +754,8 @@ private fun BandHintChip(key: String, label: String) {
  * header. When now scrolls off the left, the pill pins to the viewport's left edge.
  */
 @Composable
-private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long) {
+private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long, windowStartMs: Long) {
+    val density = LocalDensity.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -744,6 +764,23 @@ private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long) {
     ) {
         Spacer(Modifier.width(CHANNEL_COL))
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp)), Alignment.CenterStart) {
+            // Scrolled back into an earlier day: name the day at the lane's left edge. Read
+            // from the scroll position, so it updates as the grid scrolls.
+            val leftDay by remember(windowStartMs, now) {
+                derivedStateOf {
+                    val minutes = with(density) { scrollPx().toDp().value } / PX_PER_MINUTE
+                    dayLabel(windowStartMs + TimeUnit.MINUTES.toMillis(minutes.toLong()), now, upper = true)
+                }
+            }
+            leftDay?.let { day ->
+                Text(
+                    day,
+                    style = LiveWireTheme.tokens.tag,
+                    color = LiveWireColors.OnSurfaceMuted,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
             if (nowMin != null) {
                 Box(
                     Modifier
@@ -1006,6 +1043,27 @@ private fun clockLabel(ms: Long): String {
     val fmt = timeFmt?.takeIf { it.first == locale }?.second
         ?: SimpleDateFormat("h:mm a", locale).also { timeFmt = locale to it }
     return fmt.format(Date(ms))
+}
+
+// Rebuilt with the locale, like [clockLabel].
+private var dayFmt: Pair<Locale, SimpleDateFormat>? = null
+
+/**
+ * The short weekday and date ("Thu 1 Oct") when [ms] falls on a different calendar day from
+ * [now], else null. Used where a clock time alone would be ambiguous after scrolling back.
+ */
+internal fun dayLabel(ms: Long, now: Long, upper: Boolean = false): String? {
+    val cal = java.util.Calendar.getInstance()
+    cal.timeInMillis = ms
+    val day = cal.get(java.util.Calendar.YEAR) * 1000 + cal.get(java.util.Calendar.DAY_OF_YEAR)
+    cal.timeInMillis = now
+    val today = cal.get(java.util.Calendar.YEAR) * 1000 + cal.get(java.util.Calendar.DAY_OF_YEAR)
+    if (day == today) return null
+    val locale = Locale.getDefault()
+    val fmt = dayFmt?.takeIf { it.first == locale }?.second
+        ?: SimpleDateFormat("EEE d MMM", locale).also { dayFmt = locale to it }
+    val label = fmt.format(Date(ms))
+    return if (upper) label.uppercase(locale) else label
 }
 
 /** onFocusChanged that fires our callback only when this cell gains focus. */

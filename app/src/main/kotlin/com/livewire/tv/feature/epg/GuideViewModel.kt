@@ -167,7 +167,12 @@ class GuideViewModel @Inject constructor(
                 // past so archived programmes are visible and the user can scroll left into them.
                 // Otherwise keep the shipped near-now start (design system §9.4).
                 val hasAnyArchive = channels.any { it.hasArchive }
-                val windowStart = if (hasAnyArchive) CatchupGuide.pastWindowStart(now) else guideWindowStart(now)
+                val windowStart = if (hasAnyArchive) {
+                    val maxDays = channels.maxOf { it.archiveDays }
+                    CatchupGuide.pastWindowStart(now, CatchupGuide.pastLeadMinutes(maxDays))
+                } else {
+                    guideWindowStart(now)
+                }
                 // The forward EPG window is unchanged (near-now start → +span): past programmes
                 // come from the on-demand archive fetch, NOT the shared EPG cache, so the cache
                 // never grows with past data (the plan's decision). The grid's visible span is

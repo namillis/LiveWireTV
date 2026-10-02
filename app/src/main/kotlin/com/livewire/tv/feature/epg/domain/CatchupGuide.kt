@@ -22,8 +22,20 @@ object CatchupGuide {
     /** Inline ⟲ badges are dropped on cells narrower than this, so they never crowd a title. */
     const val MIN_BADGE_MINUTES = 40
 
-    /** How far back the Guide lets you scroll by default when any channel has an archive. */
+    /** The shortest past lead when any channel has an archive. */
     val DEFAULT_PAST_LEAD_MINUTES = 120
+
+    /** The furthest back the Guide scrolls, however long a provider's archive is. */
+    const val MAX_PAST_DAYS = 2
+
+    /**
+     * How far back the Guide opens its window: the longest archive among the channels
+     * ([maxArchiveDays]), capped at [MAX_PAST_DAYS], and never less than
+     * [DEFAULT_PAST_LEAD_MINUTES]. Providers archive a programme only after it has finished
+     * (often ~1.5 h later), so a 2 h lead alone would show almost nothing playable.
+     */
+    fun pastLeadMinutes(maxArchiveDays: Int): Int =
+        maxOf(DEFAULT_PAST_LEAD_MINUTES, maxArchiveDays.coerceIn(0, MAX_PAST_DAYS) * 24 * 60)
 
     /**
      * The style for a cell showing [programmeStopMs] on a channel whose archive flag is

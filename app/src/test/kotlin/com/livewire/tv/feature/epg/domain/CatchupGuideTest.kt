@@ -61,6 +61,15 @@ class CatchupGuideTest {
         assertTrue(raggedStart <= ragged - TimeUnit.MINUTES.toMillis(120))
     }
 
+    @Test fun `the past lead follows the longest archive, capped at two days`() {
+        assertEquals(2 * 24 * 60, CatchupGuide.pastLeadMinutes(maxArchiveDays = 2))
+        assertEquals(24 * 60, CatchupGuide.pastLeadMinutes(maxArchiveDays = 1))
+        // A 7-day archive still opens only two days back.
+        assertEquals(2 * 24 * 60, CatchupGuide.pastLeadMinutes(maxArchiveDays = 7))
+        // No archive days: never shorter than the default lead.
+        assertEquals(CatchupGuide.DEFAULT_PAST_LEAD_MINUTES, CatchupGuide.pastLeadMinutes(maxArchiveDays = 0))
+    }
+
     @Test fun `the archive window start reaches archiveDays back and is now for no archive`() {
         assertEquals(now - 2L * 24 * hour, CatchupGuide.archiveWindowStart(now, archiveDays = 2))
         assertEquals(now, CatchupGuide.archiveWindowStart(now, archiveDays = 0))
