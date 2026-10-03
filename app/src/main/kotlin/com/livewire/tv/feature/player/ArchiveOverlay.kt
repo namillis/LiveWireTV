@@ -70,10 +70,18 @@ fun ArchivePlayerOverlay(
     barFocused: Boolean,
     now: Long,
     modifier: Modifier = Modifier,
+    /** Playing a paused-live stream behind live (not catch-up): TIME-SHIFTED pill and labels. */
+    timeShift: Boolean = false,
+    /** When live was first paused; the "paused at" label, fixed across reopens. */
+    pausedAtMs: Long = 0L,
 ) {
     Box(modifier.fillMaxSize()) {
         BottomScrim()
-        ArchiveTopBug(model.channelNumber, pill = "ARCHIVE", archive = true)
+        if (timeShift) {
+            ArchiveTopBug(model.channelNumber, pill = "TIME-SHIFTED", archive = false)
+        } else {
+            ArchiveTopBug(model.channelNumber, pill = "ARCHIVE", archive = true)
+        }
         Clock(now, Modifier.align(Alignment.TopEnd))
 
         Column(
@@ -87,7 +95,7 @@ fun ArchivePlayerOverlay(
                 ChannelIdentity(
                     channelName = model.channelName,
                     channelNumber = model.channelNumber,
-                    stateLabel = "Catch-up",
+                    stateLabel = if (timeShift) "Time-shifted" else "Catch-up",
                     modifier = Modifier.weight(1f),
                 )
                 QualityChips(model.video, model.audioChannelCount, model.hasSubtitles)
@@ -97,7 +105,7 @@ fun ArchivePlayerOverlay(
 
             // CATCH-UP <title> · <category>
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-                Text("CATCH-UP", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+                Text(if (timeShift) "TIME-SHIFTED" else "CATCH-UP", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
                 Text(
                     model.programmeTitle ?: model.channelName,
                     style = MaterialTheme.typography.headlineSmall,
@@ -113,7 +121,11 @@ fun ArchivePlayerOverlay(
 
             Spacer(Modifier.height(4.dp))
             Text(
-                "Aired ${PlayerFormats.dayAndTime(model.windowStartMs)} · ${PlayerFormats.watchingOf(model.positionMs - model.windowStartMs, model.durationMs)}",
+                if (timeShift) {
+                    "${PlayerFormats.behindLive((now - model.positionMs).coerceAtLeast(0L)).replaceFirstChar { it.uppercase() }} · paused at ${PlayerFormats.clockMeridiem(pausedAtMs.takeIf { it > 0L } ?: model.windowStartMs)}"
+                } else {
+                    "Aired ${PlayerFormats.dayAndTime(model.windowStartMs)} · ${PlayerFormats.watchingOf(model.positionMs - model.windowStartMs, model.durationMs)}"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = LiveWireColors.OnSurfaceMuted,
             )
@@ -212,7 +224,6 @@ fun PausedLiveOverlay(
             HintRow(
                 HintSpec("OK", "Resume"),
                 HintSpec("▲", "Go live (jump to now)"),
-                HintSpec("◀ ▶", "Seek"),
             )
         }
     }
@@ -265,6 +276,20 @@ fun NoRewindCard(channelName: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.BottomScrim() {
+    // Same top + bottom gradients as the live RestingOverlay, so the pill, clock and the
+    // bottom text stay legible over bright video in every player mode.
+    Box(
+        Modifier
+            .align(Alignment.TopStart)
+            .fillMaxWidth()
+            .height(150.dp)
+            .background(
+                Brush.verticalGradient(
+                    0f to LiveWireColors.Canvas.copy(alpha = 0.75f),
+                    1f to Color.Transparent,
+                ),
+            ),
+    )
     Box(
         Modifier
             .align(Alignment.BottomStart)
@@ -273,7 +298,8 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomScrim() {
             .background(
                 Brush.verticalGradient(
                     0f to Color.Transparent,
-                    0.3f to LiveWireColors.Canvas.copy(alpha = 0.80f),
+                    0.25f to LiveWireColors.Canvas.copy(alpha = 0.78f),
+                    0.5f to LiveWireColors.Canvas.copy(alpha = 0.94f),
                     1f to LiveWireColors.Canvas.copy(alpha = 0.98f),
                 ),
             ),

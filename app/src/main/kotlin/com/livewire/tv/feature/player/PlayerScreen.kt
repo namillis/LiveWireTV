@@ -154,12 +154,14 @@ fun PlayerScreen(
         if (src != null && archive.token != openedArchiveToken) {
             openedArchiveToken = archive.token
             val reopen = archive.reopen
+            val fallback = archive.fallback
             engine.openArchive(
                 url = src.url,
                 startMs = archive.startMs,
                 endMs = archive.endMs,
                 headers = src.headers,
                 reopen = { reopen(it) },
+                fallback = { fallback(it) },
             )
             barFocused = false
             reveal()
@@ -227,14 +229,61 @@ fun PlayerScreen(
         val streamId = source.currentStreamId
         val channel = viewModel.currentChannel()
         if (pausedAt > 0L && channel != null) {
-            // Archive window: from the pause point to now, so the user can also seek forward to live.
-            viewModel.playArchive(channel, pausedAt, System.currentTimeMillis(), timeShift = true)
+            // Archive window: from the pause point to now, so the user can also seek forward to
+            // live. The provider serves only what it has recorded at request time, so the stream
+            // ENDS when it catches up; the ENDED effect below reopens it to keep the delay.
+            viewModel.playArchive(
+                channel,
+                pausedAt,
+                System.currentTimeMillis(),
+                timeShift = true,
+                programmeTitle = viewModel.programmeAt(channel, pausedAt)?.title,
+                pausedAtMs = pausedAt,
+            )
             pausedLiveAtMs = 0L
         } else if (streamId != null) {
             engine.play()
             pausedLiveAtMs = 0L
         }
         reveal()
+    }
+
+    // A time-shifted stream only holds what the provider had recorded when it was requested, and
+    // the provider records ~15s behind real time, so near the end of the window the stream runs
+    // dry and the engine reports ERROR (or ENDED). Keep the delay by reopening from the current
+    // position up to the new "now" shortly BEFORE that point, and again if it fails anyway.
+    // Within TIME_SHIFT_LIVE_SNAP_MS of live there is too little to reopen, so go live instead.
+    fun continueTimeShift(allowLive: Boolean) {
+        val channel = viewModel.currentChannel()
+        if (channel == null) {
+            goLive()
+            return
+        }
+        val wallNow = System.currentTimeMillis()
+        val pos = position.takeIf { it > 0 } ?: archive.endMs
+        if (wallNow - pos <= TIME_SHIFT_LIVE_SNAP_MS) {
+            if (allowLive) goLive()
+            return
+        }
+        viewModel.playArchive(
+            channel,
+            pos,
+            wallNow,
+            timeShift = true,
+            programmeTitle = viewModel.programmeAt(channel, pos)?.title ?: archive.programmeTitle,
+            pausedAtMs = archive.pausedAtMs,
+        )
+    }
+    val timeShifting = mode == PlayerMode.ARCHIVE && archive.timeShift
+    val nearWindowEnd = timeShifting && status.state == PlaybackState.PLAYING &&
+        position > 0 && position >= archive.endMs - TIME_SHIFT_REOPEN_LEAD_MS
+    LaunchedEffect(nearWindowEnd, archive.token) {
+        if (nearWindowEnd) continueTimeShift(allowLive = false)
+    }
+    LaunchedEffect(status.state, archive.token) {
+        if (timeShifting && (status.state == PlaybackState.ENDED || status.state == PlaybackState.ERROR)) {
+            continueTimeShift(allowLive = true)
+        }
     }
 
     // Back inside an open panel: close a sub-list, else the panel, then hand focus back to
@@ -377,6 +426,8 @@ fun PlayerScreen(
                         state = status.state,
                         barFocused = barFocused,
                         now = now,
+                        timeShift = archive.timeShift,
+                        pausedAtMs = archive.pausedAtMs,
                     )
                     PlayerMode.LIVE -> RestingOverlay(
                         model = RestingOverlayModel(
@@ -573,3 +624,12 @@ private fun SafeErrorOverlay(message: String, onRetry: () -> Unit) {
         }
     }
 }
+
+/**
+ * A time-shifted stream within this much of live goes live instead of reopening: the provider
+ * records ~15s behind real time, so a tiny reopen would run dry again at once.
+ */
+private const val TIME_SHIFT_LIVE_SNAP_MS = 60_000L
+
+/** Reopen a time-shifted stream this long before its window ends, ahead of the provider's lag. */
+private const val TIME_SHIFT_REOPEN_LEAD_MS = 30_000L

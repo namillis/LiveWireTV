@@ -69,6 +69,16 @@ object CatchupGuide {
         programmeStopMs <= nowMs && hasArchiveFlag
 
     /**
+     * True when a programme has ended and started within the channel's [archiveDays] archive
+     * window, so the provider's timeshift endpoint can serve it. Used alongside the per-listing
+     * `has_archive` flag, which lags the real archive by hours. 0 archive days -> never.
+     */
+    fun inArchiveWindow(startMs: Long, stopMs: Long, archiveDays: Int, nowMs: Long): Boolean =
+        archiveDays > 0 && stopMs <= nowMs && startMs >= nowMs - archiveDays * DAY_MS
+
+    private const val DAY_MS = 24L * 60 * 60 * 1000
+
+    /**
      * The Guide window start when catch-up past-scroll is enabled: [leadMinutes] before now,
      * snapped down to the previous half-hour so axis ticks stay on :00/:30. Mirrors the shipped
      * [guideWindowStart] but with a larger lead so past programmes are visible on open.

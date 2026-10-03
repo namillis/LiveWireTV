@@ -74,4 +74,15 @@ class CatchupGuideTest {
         assertEquals(now - 2L * 24 * hour, CatchupGuide.archiveWindowStart(now, archiveDays = 2))
         assertEquals(now, CatchupGuide.archiveWindowStart(now, archiveDays = 0))
     }
+
+    @Test fun `an ended programme inside the archive days is archived even before the provider flags it`() {
+        // Ended 10 minutes ago on a 2-day archive channel: playable.
+        assertTrue(CatchupGuide.inArchiveWindow(now - hour - 600_000, now - 600_000, archiveDays = 2, nowMs = now))
+        // Still airing: not yet.
+        assertFalse(CatchupGuide.inArchiveWindow(now - hour, now + hour, archiveDays = 2, nowMs = now))
+        // Started before the archive window: gone.
+        assertFalse(CatchupGuide.inArchiveWindow(now - 3L * 24 * hour, now - 3L * 24 * hour + hour, archiveDays = 2, nowMs = now))
+        // No archive on the channel.
+        assertFalse(CatchupGuide.inArchiveWindow(now - 2 * hour, now - hour, archiveDays = 0, nowMs = now))
+    }
 }

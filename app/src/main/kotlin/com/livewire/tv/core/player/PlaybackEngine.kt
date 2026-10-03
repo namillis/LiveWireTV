@@ -74,6 +74,8 @@ interface PlaybackEngine {
         play: Boolean = true,
         headers: Map<String, String> = emptyMap(),
         reopen: (targetStartMs: Long) -> String?,
+        /** The provider's alternate archive URL form for a start, tried once when [url] 404s. */
+        fallback: (targetStartMs: Long) -> String? = { null },
     )
 
     fun play()

@@ -58,8 +58,12 @@ data class ArchiveState(
     val title: String = "",
     val programmeTitle: String? = null,
     val timeShift: Boolean = false,
+    /** Wall-clock ms when live was paused; stays fixed across time-shift reopens. */
+    val pausedAtMs: Long = 0,
     val token: Int = 0,
     val reopen: (targetStartMs: Long) -> String? = { null },
+    /** The provider's alternate archive URL for a start (Xtream `timeshift.php`), tried on a 404. */
+    val fallback: (targetStartMs: Long) -> String? = { null },
 )
 
 /** One row of the channel-list panel: a channel plus its now-playing programme (may be null). */
@@ -177,6 +181,7 @@ class PlayerViewModel @Inject constructor(
         endMs: Long,
         timeShift: Boolean = false,
         programmeTitle: String? = null,
+        pausedAtMs: Long = 0,
     ) {
         val token = archiveToken++
         _archive.update {
@@ -188,6 +193,7 @@ class PlayerViewModel @Inject constructor(
                 title = channel.name,
                 programmeTitle = programmeTitle,
                 timeShift = timeShift,
+                pausedAtMs = pausedAtMs,
                 token = token,
             )
         }
@@ -227,6 +233,10 @@ class PlayerViewModel @Inject constructor(
                 )
             }
             val reopen: (Long) -> String? = { target -> buildAt(target)?.url }
+            val fallback: (Long) -> String? = { target ->
+                val durMin = ((endMs - target) / 60_000L).toInt().coerceAtLeast(1)
+                ArchiveUrlBuilder.xtreamFallbackUrl(cfg, channel, target, durMin, serverInfo)
+            }
             val firstUrl = buildAt(startMs)
             _archive.update {
                 // Ignore a result from an older request the user has already moved past.
@@ -234,7 +244,7 @@ class PlayerViewModel @Inject constructor(
                 if (firstUrl == null) {
                     it.copy(loading = false, source = null, error = "This programme isn't in the archive.")
                 } else {
-                    it.copy(loading = false, source = firstUrl, error = null, reopen = reopen)
+                    it.copy(loading = false, source = firstUrl, error = null, reopen = reopen, fallback = fallback)
                 }
             }
         }
@@ -399,6 +409,10 @@ class PlayerViewModel @Inject constructor(
 
     fun nowPlaying(channel: LiveChannel): EpgProgramme? =
         channel.epgChannelId?.let { guide?.nowPlaying(it) }
+
+    /** The programme airing on [channel] at [atMs] — the title for a time-shifted stream. */
+    fun programmeAt(channel: LiveChannel, atMs: Long): EpgProgramme? =
+        channel.epgChannelId?.let { guide?.nowPlaying(it, atMs) }
 
     fun upNext(channel: LiveChannel): EpgProgramme? =
         channel.epgChannelId?.let { guide?.upNext(it) }

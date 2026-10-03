@@ -44,6 +44,12 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     // Archive (catch-up / time shift) state. Null seek controller ⇒ LIVE mode.
     private var seekController: ArchiveSeekController? = null
     private var reopenProvider: ((Long) -> String?)? = null
+    private var fallbackProvider: ((Long) -> String?)? = null
+
+    /** True once an archive 404 switched this archive to the fallback URL form; reopens follow. */
+    private var onFallback = false
+
+    private fun activeReopen(): ((Long) -> String?)? = if (onFallback) fallbackProvider else reopenProvider
     private var lastSeekAtMs: Long = 0
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingSeekRunnable: Runnable? = null
@@ -105,6 +111,17 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // An archive URL that 404s may be served by the provider's other archive path form
+            // (Xtream `timeshift.php`): switch to it once, at the same start.
+            val ctrl = seekController
+            if (ctrl != null && !onFallback && responseCode(error) == 404) {
+                val alt = fallbackProvider?.invoke(ctrl.openStartMs)
+                if (alt != null) {
+                    onFallback = true
+                    openInternal(alt, true, lastHeaders, _status.value.mode)
+                    return
+                }
+            }
             // Single-connection providers refuse a new stream for a moment after the old one
             // closes (a channel switch or a reopen-to-seek), answering 401/403/429. Retry
             // quietly a couple of times before showing an error.
@@ -164,7 +181,10 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         play: Boolean,
         headers: Map<String, String>,
         reopen: (targetStartMs: Long) -> String?,
+        fallback: (targetStartMs: Long) -> String?,
     ) {
+        fallbackProvider = fallback
+        onFallback = false
         seekController = ArchiveSeekController(
             windowStartMs = startMs,
             windowEndMs = endMs,
@@ -182,6 +202,8 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     private fun clearArchive() {
         seekController = null
         reopenProvider = null
+        fallbackProvider = null
+        onFallback = false
         pendingSeekRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingSeekRunnable = null
         mainHandler.removeCallbacks(positionPoll)
@@ -191,6 +213,15 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
 
     private var connectionRetries = 0
     private var pendingRetry: Runnable? = null
+
+    private fun responseCode(error: PlaybackException): Int? {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) return cause.responseCode
+            cause = cause.cause
+        }
+        return null
+    }
 
     private fun isConnectionRefusal(error: PlaybackException): Boolean {
         var cause: Throwable? = error.cause
@@ -262,7 +293,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
                 _position.value = decision.absoluteTargetMs
             }
             is ArchiveSeekController.SeekDecision.Reopen -> {
-                val url = reopenProvider?.invoke(decision.absoluteTargetMs) ?: return
+                val url = activeReopen()?.invoke(decision.absoluteTargetMs) ?: return
                 ctrl.onReopenedAt(decision.absoluteTargetMs)
                 _position.value = decision.absoluteTargetMs
                 // One connection: openInternal stops the current stream before opening the new one.
@@ -322,7 +353,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             // starts at the stream's open point, so reopening it would jump back after a
             // native seek; ask for a URL starting where playback actually is.
             val here = ctrl.absolutePosition(player.currentPosition.coerceAtLeast(0))
-            val resumeUrl = reopenProvider?.invoke(here)
+            val resumeUrl = activeReopen()?.invoke(here)
             if (resumeUrl != null) ctrl.onReopenedAt(here)
             openInternal(resumeUrl ?: url, play = true, headers = lastHeaders, mode = PlaybackMode.Archive(ctrl.windowStartMs, ctrl.windowEndMs))
         } else {

@@ -423,6 +423,22 @@ private fun GuideContent(
                                     when (event.key) {
                                         Key.DirectionDown -> { focusRow(current + 1); true }
                                         Key.DirectionUp -> { focusRow(current - 1); true }
+                                        // Rewind / fast-forward (or Page Up/Down) jump the browsed
+                                        // time 3 hours, so 2 days of archive is ~16 presses, not ~50
+                                        // Lefts. Left/Right keep their normal meaning.
+                                        Key.MediaRewind, Key.PageUp, Key.MediaFastForward, Key.PageDown -> {
+                                            val back = event.key == Key.MediaRewind || event.key == Key.PageUp
+                                            val target = (anchorMs + if (back) -GUIDE_JUMP_MS else GUIDE_JUMP_MS)
+                                                .coerceIn(state.windowStartMs, state.windowStartMs + state.windowSpanMs - 1)
+                                            anchorMs = target
+                                            scope.launch {
+                                                val minutes = ((target - state.windowStartMs) / 60_000L - 30L).coerceAtLeast(0L).toInt()
+                                                hScroll.scrollTo(with(density) { minutesToDp(minutes).roundToPx() })
+                                                withFrameNanos { }
+                                                focusRow(current)
+                                            }
+                                            true
+                                        }
                                         else -> false
                                     }
                                 },
@@ -618,7 +634,9 @@ private fun GuideDetailsBand(
                 modifier = Modifier.align(Alignment.TopEnd),
             )
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                // End padding keeps a long synopsis clear of the preview's bottom-right
+                // "PREVIEW · MUTED" tag.
+                Column(Modifier.weight(1f).padding(end = PREVIEW_TAG_CLEARANCE)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (onNow) {
                             LiveDot()
@@ -1069,3 +1087,9 @@ internal fun dayLabel(ms: Long, now: Long, upper: Boolean = false): String? {
 /** onFocusChanged that fires our callback only when this cell gains focus. */
 private fun Modifier.androidx_onFocus(onFocus: () -> Unit): Modifier =
     this.onFocusChanged { if (it.isFocused) onFocus() }
+
+/** Room kept at the band's right edge for the preview's "PREVIEW · MUTED" tag. */
+private val PREVIEW_TAG_CLEARANCE = 150.dp
+
+/** How far rewind / fast-forward jump the Guide's browsed time. */
+private const val GUIDE_JUMP_MS = 3L * 60 * 60 * 1000

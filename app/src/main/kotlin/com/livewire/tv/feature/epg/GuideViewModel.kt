@@ -37,8 +37,15 @@ data class GuideRow(
      */
     val pastArchivedStarts: Set<Long> = emptySet(),
 ) {
-    /** True when [programme] is an archived past programme on this channel (playable catch-up). */
-    fun isArchived(programme: EpgProgramme): Boolean = programme.startMs in pastArchivedStarts
+    /**
+     * True when [programme] is an archived past programme on this channel (playable catch-up).
+     * The provider's per-listing `has_archive` flag lags its real archive by hours (a programme
+     * that ended minutes ago already plays), so an ended programme inside the channel's archive
+     * window counts as archived too; the flag still counts on its own.
+     */
+    fun isArchived(programme: EpgProgramme, nowMs: Long = System.currentTimeMillis()): Boolean =
+        programme.startMs in pastArchivedStarts ||
+            CatchupGuide.inArchiveWindow(programme.startMs, programme.stopMs, channel.archiveDays, nowMs)
 }
 
 data class GuideUiState(
