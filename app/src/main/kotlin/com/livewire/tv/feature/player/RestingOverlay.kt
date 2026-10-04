@@ -224,12 +224,12 @@ private fun BottomBlock(model: RestingOverlayModel, status: PlaybackStatus, now:
         }
 
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
-        NowNext(model, now, failed = status.state == PlaybackState.ERROR)
+        NowNext(model, now, failed = status.state == PlaybackState.ERROR, paused = status.state == PlaybackState.PAUSED)
     }
 }
 
 @Composable
-private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean) {
+private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paused: Boolean = false) {
     val nowPlaying = model.nowPlaying
     if (nowPlaying == null) {
         // No EPG: show the "on now" label with a clear no-info line, no empty gaps (requirement 1).
@@ -238,7 +238,7 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean) {
             Text("No programme information", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
         }
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
-        HintRow(failed)
+        HintRow(failed, paused)
         return
     }
 
@@ -293,14 +293,14 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean) {
             }
         }
         Spacer(Modifier.weight(1f))
-        HintRow(failed)
+        HintRow(failed, paused)
     }
 }
 
 @Composable
-private fun HintRow(failed: Boolean) {
+private fun HintRow(failed: Boolean, paused: Boolean = false) {
     Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-        HintChip("OK", if (failed) "Retry" else "Pause")
+        HintChip("OK", when { failed -> "Retry"; paused -> "Play"; else -> "Pause" })
         HintChip("▲▼", "Channel")
     }
 }

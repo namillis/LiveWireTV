@@ -41,11 +41,43 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     private var lastHeaders: Map<String, String> = emptyMap()
     private var videoUnsupported = false
 
+    // Archive (catch-up / time shift) state. Null seek controller ⇒ LIVE mode.
+    private var seekController: ArchiveSeekController? = null
+    private var reopenProvider: ((Long) -> String?)? = null
+    private var fallbackProvider: ((Long) -> String?)? = null
+
+    /** True once an archive 404 switched this archive to the fallback URL form; reopens follow. */
+    private var onFallback = false
+
+    private fun activeReopen(): ((Long) -> String?)? = if (onFallback) fallbackProvider else reopenProvider
+    private var lastSeekAtMs: Long = 0
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingSeekRunnable: Runnable? = null
+
     private val _status = MutableStateFlow(PlaybackStatus())
     override val status: StateFlow<PlaybackStatus> = _status.asStateFlow()
 
     private val _mediaInfo = MutableStateFlow(MediaInfo())
     override val mediaInfo: StateFlow<MediaInfo> = _mediaInfo.asStateFlow()
+
+    private val _position = MutableStateFlow(C.TIME_UNSET)
+    override val position: StateFlow<Long> = _position.asStateFlow()
+
+    private val _duration = MutableStateFlow(C.TIME_UNSET)
+    override val duration: StateFlow<Long> = _duration.asStateFlow()
+
+    override val canSeek: Boolean get() = seekController != null
+
+    /** Lightweight position poll (~500 ms) so the archive scrub bar advances without per-frame churn. */
+    private val positionPoll = object : Runnable {
+        override fun run() {
+            val ctrl = seekController
+            if (ctrl != null) {
+                _position.value = ctrl.absolutePosition(player.currentPosition.coerceAtLeast(0))
+            }
+            mainHandler.postDelayed(this, POSITION_POLL_MS)
+        }
+    }
 
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -79,6 +111,27 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // An archive URL that 404s may be served by the provider's other archive path form
+            // (Xtream `timeshift.php`): switch to it once, at the same start.
+            val ctrl = seekController
+            if (ctrl != null && !onFallback && responseCode(error) == 404) {
+                val alt = fallbackProvider?.invoke(ctrl.openStartMs)
+                if (alt != null) {
+                    onFallback = true
+                    openInternal(alt, true, lastHeaders, _status.value.mode)
+                    return
+                }
+            }
+            // Single-connection providers refuse a new stream for a moment after the old one
+            // closes (a channel switch or a reopen-to-seek), answering 401/403/429. Retry
+            // quietly a couple of times before showing an error.
+            if (isConnectionRefusal(error) && connectionRetries < MAX_CONNECTION_RETRIES) {
+                connectionRetries++
+                val r = Runnable { retry() }
+                pendingRetry = r
+                mainHandler.postDelayed(r, CONNECTION_RETRY_DELAY_MS * connectionRetries)
+                return
+            }
             _status.value = _status.value.copy(
                 state = PlaybackState.ERROR,
                 errorMessage = "Playback failed. Check the stream format and try again.",
@@ -101,8 +154,12 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
 
     private fun update(state: PlaybackState) {
         if (videoUnsupported) return
-        // Live streams report an unset/dynamic duration; treat unknown as live.
-        val live = player.duration == androidx.media3.common.C.TIME_UNSET || player.isCurrentMediaItemDynamic
+        if (state == PlaybackState.PLAYING) connectionRetries = 0
+        val archive = seekController != null
+        // Live streams report an unset/dynamic duration; treat unknown as live — but an
+        // ARCHIVE stream is never "live" regardless of what ExoPlayer reports for its duration.
+        val live = !archive &&
+            (player.duration == C.TIME_UNSET || player.isCurrentMediaItemDynamic)
         _status.value = _status.value.copy(state = state, isLive = live, errorMessage = null)
     }
 
@@ -111,18 +168,138 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     }
 
     override fun open(url: String, play: Boolean, headers: Map<String, String>) {
+        // Leaving archive mode: drop the seek controller so status reverts to LIVE.
+        clearArchive()
+        connectionRetries = 0
+        openInternal(url, play, headers, PlaybackMode.Live)
+    }
+
+    override fun openArchive(
+        url: String,
+        startMs: Long,
+        endMs: Long,
+        play: Boolean,
+        headers: Map<String, String>,
+        reopen: (targetStartMs: Long) -> String?,
+        fallback: (targetStartMs: Long) -> String?,
+    ) {
+        fallbackProvider = fallback
+        onFallback = false
+        seekController = ArchiveSeekController(
+            windowStartMs = startMs,
+            windowEndMs = endMs,
+            openStartMs = startMs,
+        )
+        reopenProvider = reopen
+        _duration.value = (endMs - startMs).coerceAtLeast(0)
+        _position.value = startMs
+        connectionRetries = 0
+        openInternal(url, play, headers, PlaybackMode.Archive(startMs, endMs))
+        mainHandler.removeCallbacks(positionPoll)
+        mainHandler.postDelayed(positionPoll, POSITION_POLL_MS)
+    }
+
+    private fun clearArchive() {
+        seekController = null
+        reopenProvider = null
+        fallbackProvider = null
+        onFallback = false
+        pendingSeekRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingSeekRunnable = null
+        mainHandler.removeCallbacks(positionPoll)
+        _position.value = C.TIME_UNSET
+        _duration.value = C.TIME_UNSET
+    }
+
+    private var connectionRetries = 0
+    private var pendingRetry: Runnable? = null
+
+    private fun responseCode(error: PlaybackException): Int? {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) return cause.responseCode
+            cause = cause.cause
+        }
+        return null
+    }
+
+    private fun isConnectionRefusal(error: PlaybackException): Boolean {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                return cause.responseCode in CONNECTION_REFUSAL_CODES
+            }
+            cause = cause.cause
+        }
+        return false
+    }
+
+    private fun openInternal(url: String, play: Boolean, headers: Map<String, String>, mode: PlaybackMode) {
+        pendingRetry?.let { mainHandler.removeCallbacks(it) }
+        pendingRetry = null
         lastUrl = url
         lastHeaders = headers
         videoUnsupported = false
         _mediaInfo.value = MediaInfo()
-        _status.value = PlaybackStatus(state = PlaybackState.BUFFERING)
-        // Stop first so a channel switch releases the old decoder and stream connection. A
-        // decoder reused across a resolution change (1080p -> 720p) drew the new video into
-        // part of the TextureView beside a stale frame.
+        _status.value = PlaybackStatus(state = PlaybackState.BUFFERING, isLive = mode is PlaybackMode.Live, mode = mode)
+        // Stop first so a channel switch releases the old decoder AND the old provider
+        // connection before the new one opens — many providers allow only one connection
+        // (same rule as PR #30). Reopen-to-seek relies on this too.
         player.stop()
         player.setMediaSource(mediaSourceFor(url, headers))
         player.playWhenReady = play
         player.prepare()
+    }
+
+    override fun seekTo(positionMs: Long) {
+        val ctrl = seekController ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val actNow = ctrl.requestSeek(positionMs, now)
+        if (actNow != null) {
+            performSeek(actNow)
+        } else {
+            // Debounced: schedule the pending (latest) target after the debounce window so a
+            // held ◀◀ collapses to a single reopen.
+            pendingSeekRunnable?.let { mainHandler.removeCallbacks(it) }
+            val r = Runnable {
+                ctrl.takePending()?.let { performSeek(it) }
+            }
+            pendingSeekRunnable = r
+            mainHandler.postDelayed(r, SEEK_DEBOUNCE_MS)
+        }
+    }
+
+    override fun seekBy(deltaMs: Long) {
+        val ctrl = seekController ?: return
+        val current = ctrl.absolutePosition(player.currentPosition.coerceAtLeast(0))
+        seekTo(current + deltaMs)
+    }
+
+    /** Apply a resolved seek: native when buffered+seekable, else reopen the stream at the target. */
+    private fun performSeek(absoluteTargetMs: Long) {
+        val ctrl = seekController ?: return
+        val current = ctrl.absolutePosition(player.currentPosition.coerceAtLeast(0))
+        val bufferedAhead = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0)
+        val decision = ctrl.resolveSeek(
+            targetMs = absoluteTargetMs,
+            currentAbsoluteMs = current,
+            seekable = player.isCurrentMediaItemSeekable,
+            bufferedAheadMs = bufferedAhead,
+            bufferedBehindMs = player.currentPosition.coerceAtLeast(0),
+        )
+        when (decision) {
+            is ArchiveSeekController.SeekDecision.Native -> {
+                player.seekTo(decision.relativePositionMs.coerceAtLeast(0))
+                _position.value = decision.absoluteTargetMs
+            }
+            is ArchiveSeekController.SeekDecision.Reopen -> {
+                val url = activeReopen()?.invoke(decision.absoluteTargetMs) ?: return
+                ctrl.onReopenedAt(decision.absoluteTargetMs)
+                _position.value = decision.absoluteTargetMs
+                // One connection: openInternal stops the current stream before opening the new one.
+                openInternal(url, play = true, headers = lastHeaders, mode = PlaybackMode.Archive(ctrl.windowStartMs, ctrl.windowEndMs))
+            }
+        }
     }
 
     /** Builds a source whose every request (manifest, segments) carries [headers]. */
@@ -170,7 +347,18 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
 
     override fun retry() {
         val url = lastUrl ?: return
-        open(url, play = true, headers = lastHeaders)
+        val ctrl = seekController
+        if (ctrl != null) {
+            // Re-open the archive at the current position, preserving mode + window. lastUrl
+            // starts at the stream's open point, so reopening it would jump back after a
+            // native seek; ask for a URL starting where playback actually is.
+            val here = ctrl.absolutePosition(player.currentPosition.coerceAtLeast(0))
+            val resumeUrl = activeReopen()?.invoke(here)
+            if (resumeUrl != null) ctrl.onReopenedAt(here)
+            openInternal(resumeUrl ?: url, play = true, headers = lastHeaders, mode = PlaybackMode.Archive(ctrl.windowStartMs, ctrl.windowEndMs))
+        } else {
+            open(url, play = true, headers = lastHeaders)
+        }
     }
 
     override fun selectAudioTrack(id: String) = selectTrack(C.TRACK_TYPE_AUDIO, id)
@@ -300,7 +488,19 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     }
 
     override fun release() {
+        mainHandler.removeCallbacks(positionPoll)
+        pendingRetry?.let { mainHandler.removeCallbacks(it) }
+        pendingSeekRunnable?.let { mainHandler.removeCallbacks(it) }
         player.removeListener(listener)
         player.release()
+    }
+
+    private companion object {
+        const val POSITION_POLL_MS = 500L
+        const val SEEK_DEBOUNCE_MS = 600L
+        /** A refused connection is retried this many times, 1.5 s then 3 s apart. */
+        const val MAX_CONNECTION_RETRIES = 2
+        const val CONNECTION_RETRY_DELAY_MS = 1_500L
+        val CONNECTION_REFUSAL_CODES = setOf(401, 403, 429)
     }
 }

@@ -3,6 +3,7 @@ package com.livewire.tv.feature.epg
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +58,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import com.livewire.tv.feature.epg.domain.CatchupGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.GuidePastCellStyle
 import com.livewire.tv.feature.home.brandTint
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
@@ -64,6 +69,7 @@ import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
+import androidx.compose.ui.platform.LocalDensity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -79,8 +85,17 @@ private val NOW_LANE = 22.dp
 private val AXIS_HEIGHT = 26.dp
 private val DETAILS_BAND_HEIGHT = 84.dp      // kept tight so the grid clears 7 rows
 
-/** The focused guide cell: which channel + programme drives the details band. */
-private data class GuideFocus(val channel: LiveChannel, val programme: EpgProgramme?)
+/**
+ * The focused guide cell: which channel + programme drives the details band. [channelHasArchive]
+ * and [programmeArchived] carry the catch-up context so the band can offer the right action
+ * (Watch from start / Watch live + Start over) without re-deriving it.
+ */
+private data class GuideFocus(
+    val channel: LiveChannel,
+    val programme: EpgProgramme?,
+    val channelHasArchive: Boolean = false,
+    val programmeArchived: Boolean = false,
+)
 
 /**
  * Full-screen EPG guide (design system §9.4). A details band for the focused programme leads
@@ -92,6 +107,8 @@ private data class GuideFocus(val channel: LiveChannel, val programme: EpgProgra
 @Composable
 fun GuideScreen(
     onPlayChannel: (target: PlaybackTarget, title: String, fromFavorites: Boolean) -> Unit,
+    onPlayArchive: (target: PlaybackTarget, title: String, startMs: Long, endMs: Long, programme: String) -> Unit =
+        { _, _, _, _, _ -> },
     viewModel: GuideViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -127,6 +144,8 @@ fun GuideScreen(
                 onSelectCategory = viewModel::setCategory,
                 onQueryChange = viewModel::setQuery,
                 onPlayChannel = onPlayChannel,
+                onPlayArchive = onPlayArchive,
+                onRowShown = viewModel::requestPastListings,
                 targetFor = viewModel::playbackTarget,
                 resolvePreview = viewModel::previewSource,
                 onToggleFavorite = viewModel::toggleFavorite,
@@ -144,6 +163,8 @@ private fun GuideContent(
     onSelectCategory: (String?) -> Unit,
     onQueryChange: (String) -> Unit,
     onPlayChannel: (PlaybackTarget, String, Boolean) -> Unit,
+    onPlayArchive: (PlaybackTarget, String, Long, Long, String) -> Unit,
+    onRowShown: (String) -> Unit,
     targetFor: (LiveChannel) -> PlaybackTarget?,
     resolvePreview: suspend (String) -> PlaybackSource?,
     onToggleFavorite: (LiveChannel) -> Unit,
@@ -251,12 +272,36 @@ private fun GuideContent(
     val restoreIndex = rows.indexOfFirst { it.channel.streamId == focusedStreamId }.coerceAtLeast(0)
     var focus by remember(rows) {
         val r = rows.getOrNull(restoreIndex)
-        mutableStateOf(r?.let { GuideFocus(it.channel, it.programmes.firstOrNull { p -> p.airsAt(anchorMs) }) })
+        mutableStateOf(
+            r?.let { row ->
+                val prog = row.programmes.firstOrNull { p -> p.airsAt(anchorMs) }
+                GuideFocus(
+                    channel = row.channel,
+                    programme = prog,
+                    channelHasArchive = row.channel.hasArchive,
+                    programmeArchived = prog != null && row.isArchived(prog),
+                )
+            },
+        )
     }
+    // The two band actions (Watch live / Start over) shown after OK on the now programme of an
+    // archive channel. False restores the plain band with its hint chip.
+    var bandActions by remember { mutableStateOf(false) }
 
     // On open (and on return), land the ring on the restored row -- the first row on a fresh
     // open -- at the anchor time. Wait for programmes so it lands on a real cell, and never
     // move focus the user has already moved.
+    // A fresh open with a long past window would start at its far left (days ago). Scroll so
+    // the lane starts 30 min before now; Back-to-Guide keeps the saved scroll instead.
+    val density = LocalDensity.current
+    var initialScrollDone by remember { mutableStateOf(initialPosition.horizontalScroll != 0) }
+    LaunchedEffect(state.windowStartMs) {
+        if (!initialScrollDone && state.windowStartMs > 0L) {
+            val minutes = TimeUnit.MILLISECONDS.toMinutes(now - state.windowStartMs).toInt() - 30
+            if (minutes > 0) hScroll.scrollTo(with(density) { minutesToDp(minutes).roundToPx() })
+            initialScrollDone = true
+        }
+    }
     var focusPlaced by remember { mutableStateOf(false) }
     var userMovedFocus by remember { mutableStateOf(false) }
     val restoreHasCells = rows.getOrNull(restoreIndex)?.programmes?.isNotEmpty() == true
@@ -290,7 +335,33 @@ private fun GuideContent(
                 bottom = LiveWireDimens.SafeVertical,
             ),
     ) {
-        focus?.let { GuideDetailsBand(it, now, preview) }
+        focus?.let {
+            GuideDetailsBand(
+                focus = it,
+                now = now,
+                preview = preview,
+                bandActions = bandActions,
+                onWatchLive = {
+                    preview.player.stop()
+                    savePosition()
+                    targetFor(it.channel)?.let { t -> onPlayChannel(t, it.channel.name, it.channel.streamId in state.favoriteIds) }
+                },
+                onStartOver = {
+                    val prog = it.programme
+                    val target = targetFor(it.channel)
+                    if (prog != null && target != null) {
+                        preview.player.stop()
+                        savePosition()
+                        onPlayArchive(target, it.channel.name, prog.startMs, prog.stopMs, prog.title)
+                    }
+                },
+                onDismissActions = {
+                    bandActions = false
+                    val back = rows.indexOfFirst { r -> r.channel.streamId == focusedStreamId }
+                    focusRow(if (back >= 0) back else 0)
+                },
+            )
+        }
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
 
         Row(Modifier.fillMaxSize()) {
@@ -332,7 +403,7 @@ private fun GuideContent(
                     .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusCard)),
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    NowLane(nowMin, { hScroll.value }, now)
+                    NowLane(nowMin, { hScroll.value }, now, state.windowStartMs)
                     AxisRow(state.windowStartMs, spanMinutes) { hScroll.value }
                     if (rows.isEmpty()) {
                         if (state.favoritesEmpty) FavoritesGuideEmpty() else NoMatches(state.query, state.categoryName)
@@ -352,6 +423,22 @@ private fun GuideContent(
                                     when (event.key) {
                                         Key.DirectionDown -> { focusRow(current + 1); true }
                                         Key.DirectionUp -> { focusRow(current - 1); true }
+                                        // Rewind / fast-forward (or Page Up/Down) jump the browsed
+                                        // time 3 hours, so 2 days of archive is ~16 presses, not ~50
+                                        // Lefts. Left/Right keep their normal meaning.
+                                        Key.MediaRewind, Key.PageUp, Key.MediaFastForward, Key.PageDown -> {
+                                            val back = event.key == Key.MediaRewind || event.key == Key.PageUp
+                                            val target = (anchorMs + if (back) -GUIDE_JUMP_MS else GUIDE_JUMP_MS)
+                                                .coerceIn(state.windowStartMs, state.windowStartMs + state.windowSpanMs - 1)
+                                            anchorMs = target
+                                            scope.launch {
+                                                val minutes = ((target - state.windowStartMs) / 60_000L - 30L).coerceAtLeast(0L).toInt()
+                                                hScroll.scrollTo(with(density) { minutesToDp(minutes).roundToPx() })
+                                                withFrameNanos { }
+                                                focusRow(current)
+                                            }
+                                            true
+                                        }
                                         else -> false
                                     }
                                 },
@@ -361,6 +448,10 @@ private fun GuideContent(
                                 DisposableEffect(row.channel.streamId) {
                                     rowRequesters[row.channel.streamId] = requester
                                     onDispose { if (rowRequesters[row.channel.streamId] === requester) rowRequesters.remove(row.channel.streamId) }
+                                }
+                                // Past listings load only for archive rows that come on screen.
+                                if (row.channel.hasArchive) {
+                                    LaunchedEffect(row.channel.streamId) { onRowShown(row.channel.streamId) }
                                 }
                                 GuideRowView(
                                     row = row,
@@ -373,8 +464,15 @@ private fun GuideContent(
                                     anchorMs = anchorMs,
                                     anchorRequester = requester,
                                     onFocus = { prog ->
-                                        focus = GuideFocus(row.channel, prog)
+                                        focus = GuideFocus(
+                                            channel = row.channel,
+                                            programme = prog,
+                                            channelHasArchive = row.channel.hasArchive,
+                                            programmeArchived = prog != null && row.isArchived(prog),
+                                        )
                                         focusedStreamId = row.channel.streamId
+                                        // Moving focus leaves the band's action mode.
+                                        bandActions = false
                                         if (programmaticMove) {
                                             programmaticMove = false
                                         } else {
@@ -385,13 +483,26 @@ private fun GuideContent(
                                         }
                                         savePosition()
                                     },
-                                    onClick = {
-                                        // Close the preview's stream first: many providers
-                                        // allow one connection, and the player needs it.
-                                        preview.player.stop()
-                                        savePosition()
-                                        targetFor(row.channel)?.let {
-                                            onPlayChannel(it, row.channel.name, row.channel.streamId in state.favoriteIds)
+                                    onClick = { prog ->
+                                        val target = targetFor(row.channel) ?: return@GuideRowView
+                                        val archivedPast = prog != null && prog.stopMs <= now && row.isArchived(prog)
+                                        val onNowArchive = prog != null && prog.airsAt(now) && row.channel.hasArchive
+                                        when {
+                                            // Archived past programme: play it from its start (catch-up).
+                                            archivedPast -> {
+                                                preview.player.stop()
+                                                savePosition()
+                                                onPlayArchive(target, row.channel.name, prog!!.startMs, prog.stopMs, prog.title)
+                                            }
+                                            // Now programme on an archive channel: open the band's
+                                            // Watch live / Start over actions (mockup option2-now).
+                                            onNowArchive -> bandActions = true
+                                            // Everything else (no-archive, future, no EPG): play live.
+                                            else -> {
+                                                preview.player.stop()
+                                                savePosition()
+                                                onPlayChannel(target, row.channel.name, row.channel.streamId in state.favoriteIds)
+                                            }
                                         }
                                     },
                                     isFavorite = row.channel.streamId in state.favoriteIds,
@@ -486,10 +597,23 @@ private fun NoMatches(query: String, categoryName: String) {
 
 /** Guide details band (design system §9.1, guide variant ~90dp): focused programme + a synopsis. */
 @Composable
-private fun GuideDetailsBand(focus: GuideFocus, now: Long, preview: GuidePreviewState) {
+private fun GuideDetailsBand(
+    focus: GuideFocus,
+    now: Long,
+    preview: GuidePreviewState,
+    bandActions: Boolean,
+    onWatchLive: () -> Unit,
+    onStartOver: () -> Unit,
+    onDismissActions: () -> Unit,
+) {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
     val brand = brandTint(focus.channel.name)
     val prog = focus.programme
+    val onNow = prog != null && prog.airsAt(now)
+    // Catch-up affordances: a focused archived-past programme offers "Watch from start"; the now
+    // programme of an archive channel, once OK'd, offers "Watch live" (focused) / "Start over".
+    val showStartHint = focus.programmeArchived && prog != null && prog.stopMs <= now
+    val showNowActions = bandActions && onNow && focus.channelHasArchive
     Box(
         Modifier
             .fillMaxWidth()
@@ -510,10 +634,16 @@ private fun GuideDetailsBand(focus: GuideFocus, now: Long, preview: GuidePreview
                 modifier = Modifier.align(Alignment.TopEnd),
             )
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                // End padding keeps a long synopsis clear of the preview's bottom-right
+                // "PREVIEW · MUTED" tag.
+                Column(Modifier.weight(1f).padding(end = PREVIEW_TAG_CLEARANCE)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (prog != null && prog.airsAt(now)) {
+                        if (onNow) {
                             LiveDot()
+                            Spacer(Modifier.width(LiveWireDimens.SpaceS))
+                        } else if (focus.programmeArchived) {
+                            // Archived past: a neutral ⟲ marks the "in archive" state (never amber).
+                            Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
                             Spacer(Modifier.width(LiveWireDimens.SpaceS))
                         }
                         Text(
@@ -538,8 +668,14 @@ private fun GuideDetailsBand(focus: GuideFocus, now: Long, preview: GuidePreview
                         Spacer(Modifier.height(2.dp))
                         val range = "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
                         val synopsis = prog.description?.takeIf { it.isNotBlank() }
+                        // On an earlier day the clock alone is ambiguous: lead with the day.
+                        val day = dayLabel(prog.startMs, now)
                         Text(
-                            synopsis ?: (range + (prog.category?.let { " · $it" } ?: "")),
+                            if (day != null) {
+                                "$day $range" + ((synopsis ?: prog.category)?.let { " · $it" } ?: "")
+                            } else {
+                                synopsis ?: (range + (prog.category?.let { " · $it" } ?: ""))
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = LiveWireColors.OnSurfaceMuted,
                             maxLines = 1,
@@ -547,8 +683,80 @@ private fun GuideDetailsBand(focus: GuideFocus, now: Long, preview: GuidePreview
                         )
                     }
                 }
+                // Right-hand catch-up affordances.
+                when {
+                    showNowActions -> {
+                        // OK moved focus into the band: Watch live (default) + Start over.
+                        val liveFocus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) { runCatching { liveFocus.requestFocus() } }
+                        Row(
+                            modifier = Modifier.onPreviewKeyEvent { event ->
+                                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                when (event.key) {
+                                    // Back or Down returns to the grid cell (mockup: band is transient).
+                                    Key.Back, Key.DirectionDown -> { onDismissActions(); true }
+                                    else -> false
+                                }
+                            },
+                            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            BandActionButton("OK", "Watch live", onClick = onWatchLive, modifier = Modifier.focusRequester(liveFocus))
+                            BandActionButton("▶", "Start over", onClick = onStartOver)
+                        }
+                    }
+                    showStartHint -> {
+                        // Focused archived-past cell: a neutral hint (the grid cell keeps focus).
+                        BandHintChip("OK", "▶ Watch from start")
+                    }
+                }
+            }
         }
+    }
+}
+
+/** A focusable band action (Watch live / Start over) — amber ring on focus via LiveWireSurface. */
+@Composable
+private fun BandActionButton(key: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    LiveWireSurface(
+        onClick = onClick,
+        restingColor = LiveWireColors.SurfaceRaised,
+        shape = RoundedCornerShape(6.dp),
+        modifier = modifier,
+    ) {
+        Row(
+            Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.Canvas.copy(alpha = 0.5f)).padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            }
+            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
         }
+    }
+}
+
+/** A neutral (non-focusable) band hint chip, e.g. "OK ▶ Watch from start". */
+@Composable
+private fun BandHintChip(key: String, label: String) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(LiveWireColors.Canvas.copy(alpha = 0.5f))
+            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(6.dp))
+            .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp),
+        ) {
+            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+        }
+        Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
     }
 }
 
@@ -564,7 +772,8 @@ private fun GuideDetailsBand(focus: GuideFocus, now: Long, preview: GuidePreview
  * header. When now scrolls off the left, the pill pins to the viewport's left edge.
  */
 @Composable
-private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long) {
+private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long, windowStartMs: Long) {
+    val density = LocalDensity.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -573,6 +782,23 @@ private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long) {
     ) {
         Spacer(Modifier.width(CHANNEL_COL))
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp)), Alignment.CenterStart) {
+            // Scrolled back into an earlier day: name the day at the lane's left edge. Read
+            // from the scroll position, so it updates as the grid scrolls.
+            val leftDay by remember(windowStartMs, now) {
+                derivedStateOf {
+                    val minutes = with(density) { scrollPx().toDp().value } / PX_PER_MINUTE
+                    dayLabel(windowStartMs + TimeUnit.MINUTES.toMillis(minutes.toLong()), now, upper = true)
+                }
+            }
+            leftDay?.let { day ->
+                Text(
+                    day,
+                    style = LiveWireTheme.tokens.tag,
+                    color = LiveWireColors.OnSurfaceMuted,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
             if (nowMin != null) {
                 Box(
                     Modifier
@@ -661,19 +887,22 @@ private fun GuideRowView(
     anchorMs: Long,
     anchorRequester: FocusRequester,
     onFocus: (EpgProgramme?) -> Unit,
-    onClick: () -> Unit,
+    onClick: (EpgProgramme?) -> Unit,
     isFavorite: Boolean = false,
     onLongClick: (() -> Unit)? = null,
 ) {
     Row(Modifier.height(ROW_HEIGHT)) {
-        // Fixed channel column.
+        // Fixed channel column. Favourites carry a star and archive channels a ⟲ before the name.
         Row(
             Modifier.width(CHANNEL_COL).fillMaxHeight().background(LiveWireColors.Surface).padding(horizontal = LiveWireDimens.SpaceM),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXs),
         ) {
             if (isFavorite) {
                 com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 11.dp)
-                Spacer(Modifier.width(4.dp))
+            }
+            if (row.channel.hasArchive) {
+                Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
             }
             Text(
                 row.channel.name,
@@ -694,21 +923,29 @@ private fun GuideRowView(
                     widthDp = minutesToDp(spanMinutes),
                     focusRequester = anchorRequester,
                     onFocus = { onFocus(null) },
-                    onClick = onClick,
+                    onClick = { onClick(null) },
                     onLongClick = onLongClick,
                 )
             } else {
                 cells.forEachIndexed { cellIndex, cell ->
+                  // Keyed by start time: past listings arrive later and are inserted at the front
+                  // of the row, and without a key the focused slot would start drawing an
+                  // earlier programme, so focus would drift into the past on its own.
+                  key(cell.programme.startMs) {
                     if (cell.gapMinutes > 0) Spacer(Modifier.width(minutesToDp(cell.gapMinutes)))
+                    val style = CatchupGuide.cellStyle(cell.programme.stopMs, row.channel.hasArchive, now)
                     ProgrammeCell(
                         programme = cell.programme,
                         widthDp = minutesToDp(cell.minutes),
                         now = now,
+                        pastStyle = style,
+                        showBadge = CatchupGuide.showArchiveBadge(style, cell.minutes) && row.isArchived(cell.programme),
                         focusRequester = anchorRequester.takeIf { cellIndex == anchorIndex },
                         onFocus = { onFocus(cell.programme) },
-                        onClick = onClick,
+                        onClick = { onClick(cell.programme) },
                         onLongClick = onLongClick,
                     )
+                  }
                 }
             }
         }
@@ -720,12 +957,17 @@ private fun ProgrammeCell(
     programme: EpgProgramme,
     widthDp: Dp,
     now: Long,
+    pastStyle: GuidePastCellStyle,
+    showBadge: Boolean,
     focusRequester: FocusRequester?,
     onFocus: () -> Unit,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
     val onNow = programme.airsAt(now)
+    // A past programme on a no-archive channel is dimmed; archived past and current are full.
+    val dimmed = CatchupGuide.isDimmed(pastStyle)
+    val contentAlpha = if (dimmed) 0.45f else 1f
     LiveWireSurface(
         onClick = onClick,
         onLongClick = onLongClick,
@@ -740,17 +982,27 @@ private fun ProgrammeCell(
             .androidx_onFocus(onFocus),
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceM, vertical = 6.dp)) {
-            Column(Modifier.align(Alignment.CenterStart)) {
-                Text(
-                    programme.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Column(Modifier.align(Alignment.CenterStart).fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        programme.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = LiveWireColors.OnSurface.copy(alpha = contentAlpha),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // The title truncates before the badge: it takes the row's width minus
+                        // the badge's reserved space (handled by weighting the title).
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (showBadge) {
+                        Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+                        Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                    }
+                }
                 Text(
                     "${clockLabel(programme.startMs)} – ${clockLabel(programme.stopMs)}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireColors.OnSurfaceMuted.copy(alpha = contentAlpha),
                     maxLines = 1,
                 )
             }
@@ -811,6 +1063,33 @@ private fun clockLabel(ms: Long): String {
     return fmt.format(Date(ms))
 }
 
+// Rebuilt with the locale, like [clockLabel].
+private var dayFmt: Pair<Locale, SimpleDateFormat>? = null
+
+/**
+ * The short weekday and date ("Thu 1 Oct") when [ms] falls on a different calendar day from
+ * [now], else null. Used where a clock time alone would be ambiguous after scrolling back.
+ */
+internal fun dayLabel(ms: Long, now: Long, upper: Boolean = false): String? {
+    val cal = java.util.Calendar.getInstance()
+    cal.timeInMillis = ms
+    val day = cal.get(java.util.Calendar.YEAR) * 1000 + cal.get(java.util.Calendar.DAY_OF_YEAR)
+    cal.timeInMillis = now
+    val today = cal.get(java.util.Calendar.YEAR) * 1000 + cal.get(java.util.Calendar.DAY_OF_YEAR)
+    if (day == today) return null
+    val locale = Locale.getDefault()
+    val fmt = dayFmt?.takeIf { it.first == locale }?.second
+        ?: SimpleDateFormat("EEE d MMM", locale).also { dayFmt = locale to it }
+    val label = fmt.format(Date(ms))
+    return if (upper) label.uppercase(locale) else label
+}
+
 /** onFocusChanged that fires our callback only when this cell gains focus. */
 private fun Modifier.androidx_onFocus(onFocus: () -> Unit): Modifier =
     this.onFocusChanged { if (it.isFocused) onFocus() }
+
+/** Room kept at the band's right edge for the preview's "PREVIEW · MUTED" tag. */
+private val PREVIEW_TAG_CLEARANCE = 150.dp
+
+/** How far rewind / fast-forward jump the Guide's browsed time. */
+private const val GUIDE_JUMP_MS = 3L * 60 * 60 * 1000

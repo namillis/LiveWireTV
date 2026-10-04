@@ -15,6 +15,7 @@ import androidx.navigation.navArgument
 import com.livewire.tv.feature.epg.GuideScreen
 import com.livewire.tv.feature.home.HomeScreen
 import com.livewire.tv.feature.onboarding.OnboardingScreen
+import com.livewire.tv.feature.player.ArchiveLaunch
 import com.livewire.tv.feature.player.PlayerScreen
 import com.livewire.tv.feature.providers.ProvidersScreen
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
@@ -37,6 +38,15 @@ object Routes {
     fun player(target: PlaybackTarget, title: String, fromFavorites: Boolean = false): String =
         "$PLAYER?providerId=${Uri.encode(target.providerId)}&streamId=${Uri.encode(target.streamId)}" +
             "&title=${Uri.encode(title)}&fromFavorites=$fromFavorites"
+
+    /**
+     * Player route that opens straight into catch-up for a past programme: the archive window
+     * [startMs, endMs] (UTC) and the programme title. No credentials or stream URL in the route
+     * — the player's view model resolves the archive source from (provider, stream) on open.
+     */
+    fun playerArchive(target: PlaybackTarget, title: String, startMs: Long, endMs: Long, programme: String): String =
+        player(target, title) +
+            "&archiveStart=$startMs&archiveEnd=$endMs&programme=${Uri.encode(programme)}"
 }
 
 /** Root navigation. Provider configuration chooses onboarding versus Home at startup. */
@@ -114,6 +124,9 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
                 onPlayChannel = { target, title, fromFavorites ->
                     navController.navigate(Routes.player(target, title, fromFavorites))
                 },
+                onPlayArchive = { target, title, startMs, endMs, programme ->
+                    navController.navigate(Routes.playerArchive(target, title, startMs, endMs, programme))
+                },
             )
         }
         composable(Routes.SPORTS) {
@@ -122,14 +135,21 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
             )
         }
         composable(
-            route = "${Routes.PLAYER}?providerId={providerId}&streamId={streamId}&title={title}&fromFavorites={fromFavorites}",
+            route = "${Routes.PLAYER}?providerId={providerId}&streamId={streamId}&title={title}" +
+                "&fromFavorites={fromFavorites}" +
+                "&archiveStart={archiveStart}&archiveEnd={archiveEnd}&programme={programme}",
             arguments = listOf(
                 navArgument("providerId") { type = NavType.StringType; defaultValue = "" },
                 navArgument("streamId") { type = NavType.StringType; defaultValue = "" },
                 navArgument("title") { type = NavType.StringType; defaultValue = "" },
                 navArgument("fromFavorites") { type = NavType.BoolType; defaultValue = false },
+                navArgument("archiveStart") { type = NavType.LongType; defaultValue = 0L },
+                navArgument("archiveEnd") { type = NavType.LongType; defaultValue = 0L },
+                navArgument("programme") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { entry ->
+            val start = entry.arguments?.getLong("archiveStart") ?: 0L
+            val end = entry.arguments?.getLong("archiveEnd") ?: 0L
             PlayerScreen(
                 target = PlaybackTarget(
                     providerId = entry.arguments?.getString("providerId").orEmpty(),
@@ -137,6 +157,11 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
                 ),
                 title = entry.arguments?.getString("title").orEmpty(),
                 fromFavorites = entry.arguments?.getBoolean("fromFavorites") ?: false,
+                archiveLaunch = if (start > 0L && end > start) {
+                    ArchiveLaunch(startMs = start, endMs = end, programme = entry.arguments?.getString("programme").orEmpty())
+                } else {
+                    null
+                },
                 onExit = { navController.popBackStack() },
             )
         }

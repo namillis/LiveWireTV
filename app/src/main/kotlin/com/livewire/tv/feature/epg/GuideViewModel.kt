@@ -3,6 +3,8 @@ package com.livewire.tv.feature.epg
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
+import com.livewire.tv.feature.catchup.data.ArchiveRepository
+import com.livewire.tv.feature.epg.domain.CatchupGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderStorage
@@ -27,7 +29,24 @@ import javax.inject.Inject
 data class GuideRow(
     val channel: LiveChannel,
     val programmes: List<EpgProgramme>,
-)
+    /**
+     * Start-ms of the past programmes the provider flags as archived on this channel, from the
+     * on-demand past-listing fetch (not the shared EPG cache). A past cell whose start is in this
+     * set shows the ⟲ badge and plays from its start; past cells not in it are shown but not
+     * playable. Empty until the past listings load (or for a no-archive channel).
+     */
+    val pastArchivedStarts: Set<Long> = emptySet(),
+) {
+    /**
+     * True when [programme] is an archived past programme on this channel (playable catch-up).
+     * The provider's per-listing `has_archive` flag lags its real archive by hours (a programme
+     * that ended minutes ago already plays), so an ended programme inside the channel's archive
+     * window counts as archived too; the flag still counts on its own.
+     */
+    fun isArchived(programme: EpgProgramme, nowMs: Long = System.currentTimeMillis()): Boolean =
+        programme.startMs in pastArchivedStarts ||
+            CatchupGuide.inArchiveWindow(programme.startMs, programme.stopMs, channel.archiveDays, nowMs)
+}
 
 data class GuideUiState(
     val loading: Boolean = true,
@@ -42,6 +61,8 @@ data class GuideUiState(
     val programmesLoaded: Boolean = false,
     val windowStartMs: Long = 0,
     val windowSpanMs: Long = TimeUnit.HOURS.toMillis(4),
+    /** True when the window extends into the past because a channel offers catch-up. */
+    val pastEnabled: Boolean = false,
     /** The Settings switch for the muted channel preview. */
     val previewEnabled: Boolean = false,
     /** Favourited stream ids for the active provider, for the row star + ★ Favourites filter. */
@@ -85,6 +106,7 @@ class GuideViewModel @Inject constructor(
     private val client: ProviderRepository,
     private val storage: ProviderStorage,
     private val epg: EpgRepository,
+    private val archive: ArchiveRepository,
     private val settings: SettingsStore,
     private val favorites: com.livewire.tv.feature.favorites.data.FavoritesStore,
 ) : ViewModel() {
@@ -133,9 +155,6 @@ class GuideViewModel @Inject constructor(
             if (!forceRefresh && isFresh(configured, spanMs, now)) return@launch
 
             _state.update { it.copy(loading = it.allRows.isEmpty(), error = null) }
-            // Rows start near now (a 30-min lead-in), not an hour before (design system §9.4).
-            val windowStart = guideWindowStart(now)
-            val window = EpgWindow(windowStart, windowStart + spanMs)
 
             if (configured == null) {
                 _state.update { it.copy(loading = false, error = "No provider configured") }
@@ -150,6 +169,25 @@ class GuideViewModel @Inject constructor(
                 val categories = runCatching { client.liveCategories(configured) }.getOrDefault(emptyList())
                 val channels = client.liveChannels(configured).distinctBy { it.streamId }
                 val guideCategories = guideCategories(categories, channels)
+
+                // Catch-up: when any channel offers an archive, open the window further into the
+                // past so archived programmes are visible and the user can scroll left into them.
+                // Otherwise keep the shipped near-now start (design system §9.4).
+                val hasAnyArchive = channels.any { it.hasArchive }
+                val windowStart = if (hasAnyArchive) {
+                    val maxDays = channels.maxOf { it.archiveDays }
+                    CatchupGuide.pastWindowStart(now, CatchupGuide.pastLeadMinutes(maxDays))
+                } else {
+                    guideWindowStart(now)
+                }
+                // The forward EPG window is unchanged (near-now start → +span): past programmes
+                // come from the on-demand archive fetch, NOT the shared EPG cache, so the cache
+                // never grows with past data (the plan's decision). The grid's visible span is
+                // widened to cover from [windowStart] through the forward window's end.
+                val forwardStart = guideWindowStart(now)
+                val forwardWindow = EpgWindow(forwardStart, forwardStart + spanMs)
+                val visibleSpan = (forwardStart + spanMs) - windowStart
+
                 // Progressive display: show the channel rows immediately (no programmes yet)
                 // and clear the spinner, so the grid is usable while the large guide loads.
                 _state.update {
@@ -165,14 +203,15 @@ class GuideViewModel @Inject constructor(
                         query = if (switchedProvider) "" else it.query,
                         programmesLoaded = false,
                         windowStartMs = windowStart,
-                        windowSpanMs = spanMs,
+                        windowSpanMs = visibleSpan,
+                        pastEnabled = hasAnyArchive,
                     )
                 }
                 observeFavorites(configured.id)
                 // A missing or broken guide should not hide the channel list (M3U
                 // playlists often ship without one); rows then show no programmes.
                 val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
-                val guide = runCatching { epg.fetch(configured, window, ids, forceRefresh) }.getOrNull()
+                val guide = runCatching { epg.fetch(configured, forwardWindow, ids, forceRefresh) }.getOrNull()
                 _state.update {
                     if (guide == null) it.copy(programmesLoaded = true) else it.copy(
                         programmesLoaded = true,
@@ -185,6 +224,11 @@ class GuideViewModel @Inject constructor(
                     )
                 }
                 loadedAtMs = now
+
+                // Past listings are fetched per row as rows come on screen (requestPastListings),
+                // not for every archive channel up front: one provider request per visible
+                // archive channel, cached ~15 min in ArchiveRepository, never in the EPG cache.
+                pastRequested.clear()
             } catch (_: Exception) {
                 // Only surface an error if we never got as far as showing rows.
                 _state.update {
@@ -196,14 +240,69 @@ class GuideViewModel @Inject constructor(
         }
     }
 
+    /** Archive channels whose past listings were already requested since the last load. */
+    private val pastRequested = HashSet<String>()
+
+    /**
+     * Fetch [streamId]'s past listings (on demand, memory-only) when its row comes on screen, and
+     * merge them into the row: past programmes join the programme list (deduped by start against
+     * the forward EPG), and the archived ones' starts go into [GuideRow.pastArchivedStarts] for
+     * the ⟲ badge and catch-up playability. Each channel is requested once per load; a failure
+     * leaves the row unchanged.
+     */
+    fun requestPastListings(streamId: String) {
+        val s = _state.value
+        val cfg = provider ?: return
+        if (!s.pastEnabled || !pastRequested.add(streamId)) return
+        val channel = s.allRows.firstOrNull { it.channel.streamId == streamId }?.channel ?: return
+        if (!channel.hasArchive) return
+        val fromMs = s.windowStartMs
+        viewModelScope.launch {
+            val nowMs = System.currentTimeMillis()
+            val past = runCatching { archive.pastListings(cfg, channel, fromMs, nowMs, nowMs) }.getOrDefault(emptyList())
+            if (past.isEmpty()) return@launch
+            val archivedStarts = past.filter { it.hasArchive }.mapTo(HashSet()) { it.startMs }
+            val pastProgrammes = past.map { p ->
+                EpgProgramme(
+                    channelId = channel.epgChannelId ?: channel.streamId,
+                    startMs = p.startMs,
+                    stopMs = p.stopMs,
+                    title = p.title,
+                    description = p.description,
+                )
+            }
+            _state.update { st ->
+                // A reload or provider switch since the request: drop the stale result.
+                if (provider != cfg || st.windowStartMs != fromMs) return@update st
+                st.copy(
+                    allRows = st.allRows.map { row ->
+                        if (row.channel.streamId != streamId) {
+                            row
+                        } else {
+                            val existingStarts = row.programmes.mapTo(HashSet()) { it.startMs }
+                            val merged = (row.programmes + pastProgrammes.filter { it.startMs !in existingStarts })
+                                .sortedBy { it.startMs }
+                            row.copy(programmes = merged, pastArchivedStarts = archivedStarts)
+                        }
+                    },
+                )
+            }
+        }
+    }
+
     private fun isFresh(configured: ProviderConfig?, spanMs: Long, now: Long): Boolean {
         val s = _state.value
+        // The expected start is the past-scroll start when catch-up is on, else the near-now start.
+        val expectedStart = if (s.pastEnabled) CatchupGuide.pastWindowStart(now) else guideWindowStart(now)
+        // The visible span runs from the window start to the end of the forward window, so a
+        // changed guide-window setting changes it and forces a reload.
+        val expectedSpan = guideWindowStart(now) + spanMs - expectedStart
         return s.allRows.isNotEmpty() && s.error == null && s.programmesLoaded &&
             configured != null && configured == provider &&
-            s.windowSpanMs == spanMs &&
+            s.windowSpanMs == expectedSpan &&
             now - loadedAtMs < FRESH_FOR_MS &&
-            // The window starts 30 min before now; past that the now-line drifts too far right.
-            guideWindowStart(now) == s.windowStartMs
+            // Window start past the previous half-hour means the now-line drifted; reload.
+            expectedStart == s.windowStartMs
     }
 
     init {

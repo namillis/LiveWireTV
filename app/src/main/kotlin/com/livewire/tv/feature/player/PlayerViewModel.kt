@@ -3,6 +3,7 @@ package com.livewire.tv.feature.player
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
+import com.livewire.tv.feature.catchup.domain.ArchiveUrlBuilder
 import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
@@ -12,6 +13,7 @@ import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.providers.domain.ProviderType
 import com.livewire.tv.feature.search.data.RecentHistoryStore
 import com.livewire.tv.feature.search.data.WatchedChannel
 import com.livewire.tv.feature.settings.data.SettingsStore
@@ -32,6 +34,36 @@ data class PlayerSourceState(
     /** The channel currently playing (may differ from the launch target after an in-place switch). */
     val currentStreamId: String? = null,
     val title: String = "",
+)
+
+/**
+ * Resolved catch-up (archive) request from [PlayerViewModel.playArchive]. [source] is
+ * security-sensitive (embeds credentials); [startMs]/[endMs] are the UTC window bounds the
+ * player engine uses for `openArchive`.
+ *
+ * [reopen] is the synchronous URL builder the engine calls when a seek lands outside the
+ * buffered range: given an absolute UTC target it returns a fresh archive URL starting there,
+ * or null when the target is out of the window. It is pre-resolved (server timezone / M3U
+ * entry fetched up front) so it needs no suspension at seek time. [token] changes on every
+ * new [playArchive] so the screen can tell a fresh request from a stale recomposition.
+ * [timeShift] marks a request that came from pausing live TV (PAUSED_LIVE), not catch-up.
+ */
+data class ArchiveState(
+    val loading: Boolean = false,
+    val source: PlaybackSource? = null,
+    val error: String? = null,
+    val streamId: String? = null,
+    val startMs: Long = 0,
+    val endMs: Long = 0,
+    val title: String = "",
+    val programmeTitle: String? = null,
+    val timeShift: Boolean = false,
+    /** Wall-clock ms when live was paused; stays fixed across time-shift reopens. */
+    val pausedAtMs: Long = 0,
+    val token: Int = 0,
+    val reopen: (targetStartMs: Long) -> String? = { null },
+    /** The provider's alternate archive URL for a start (Xtream `timeshift.php`), tried on a 404. */
+    val fallback: (targetStartMs: Long) -> String? = { null },
 )
 
 /** One row of the channel-list panel: a channel plus its now-playing programme (may be null). */
@@ -78,9 +110,19 @@ class PlayerViewModel @Inject constructor(
     private val _favoriteIds = MutableStateFlow<Set<String>>(emptySet())
     val favoriteIds: StateFlow<Set<String>> = _favoriteIds.asStateFlow()
 
+    private val _archive = MutableStateFlow(ArchiveState())
+    /**
+     * Resolved archive (catch-up) request, populated by [playArchive]. This is the non-UI
+     * entry point the Phase C player UI will consume ([ArchiveState.source] +
+     * window bounds feed `PlaybackEngine.openArchive`). No UI reads it yet, so wiring it up
+     * has no visible effect today.
+     */
+    val archive: StateFlow<ArchiveState> = _archive.asStateFlow()
+
     private var provider: ProviderConfig? = null
     private var guide: EpgGuide? = null
     private var categoryChannels: List<LiveChannel> = emptyList()
+    private var archiveToken: Int = 1
 
     /** True when the player was opened from a favourite, so ▲/▼ zap within favourites (task §4). */
     private var fromFavorites: Boolean = false
@@ -122,6 +164,128 @@ class PlayerViewModel @Inject constructor(
 
     /** Switch to [item] in place (requirement 3): re-resolve its source, no navigation. */
     fun switchTo(item: ChannelListItem) = switchToStream(item.channel.streamId, item.channel.name)
+
+    /**
+     * Catch-up entry point: resolve the archive source for [channel] between [startMs] and
+     * [endMs] (UTC) and publish it on [archive] for the player UI to open via
+     * `PlaybackEngine.openArchive`. Also pre-resolves a SYNCHRONOUS [ArchiveState.reopen] so a
+     * seek that reopens the stream needs no suspension. Fails soft — an unavailable window
+     * sets [ArchiveState.error] ("This programme isn't in the archive") rather than throwing.
+     *
+     * [timeShift] distinguishes a pause-live request (PAUSED_LIVE) from catch-up playback.
+     * [programmeTitle] is the past programme's title for the overlay ("CATCH-UP <title>").
+     */
+    fun playArchive(
+        channel: LiveChannel,
+        startMs: Long,
+        endMs: Long,
+        timeShift: Boolean = false,
+        programmeTitle: String? = null,
+        pausedAtMs: Long = 0,
+    ) {
+        val token = archiveToken++
+        _archive.update {
+            ArchiveState(
+                loading = true,
+                streamId = channel.streamId,
+                startMs = startMs,
+                endMs = endMs,
+                title = channel.name,
+                programmeTitle = programmeTitle,
+                timeShift = timeShift,
+                pausedAtMs = pausedAtMs,
+                token = token,
+            )
+        }
+        viewModelScope.launch {
+            val cfg = provider
+            if (cfg == null) {
+                _archive.update { it.copy(loading = false, error = "This provider is no longer configured.") }
+                return@launch
+            }
+            // Pre-resolve the pieces a synchronous reopen needs: the Xtream server timezone (so
+            // archive start times are in the provider's local time) and the M3U entry's live
+            // URL + headers. Doing it once here keeps seek-time reopen off the IO dispatcher.
+            val serverInfo = if (cfg.type == ProviderType.XTREAM) {
+                runCatching { providers.serverInfo(cfg) }.getOrNull()
+            } else {
+                null
+            }
+            val m3u = if (cfg.type == ProviderType.M3U) {
+                runCatching { providers.m3uEntry(cfg, channel.streamId) }.getOrNull()
+            } else {
+                null
+            }
+            val fullWindowMin = ((endMs - startMs) / 60_000L).toInt().coerceAtLeast(1)
+
+            // Synchronous builder for both the first open and every reopen-to-seek: an absolute
+            // target start, played to the end of the window.
+            fun buildAt(target: Long): PlaybackSource? {
+                val durMin = ((endMs - target) / 60_000L).toInt().coerceAtLeast(1)
+                return ArchiveUrlBuilder.archiveUrl(
+                    cfg = cfg,
+                    channel = channel,
+                    startMs = target,
+                    durationMin = durMin,
+                    serverInfo = serverInfo,
+                    m3uLiveUrl = m3u?.first,
+                    m3uHeaders = m3u?.second ?: emptyMap(),
+                )
+            }
+            val reopen: (Long) -> String? = { target -> buildAt(target)?.url }
+            val fallback: (Long) -> String? = { target ->
+                val durMin = ((endMs - target) / 60_000L).toInt().coerceAtLeast(1)
+                ArchiveUrlBuilder.xtreamFallbackUrl(cfg, channel, target, durMin, serverInfo)
+            }
+            val firstUrl = buildAt(startMs)
+            _archive.update {
+                // Ignore a result from an older request the user has already moved past.
+                if (it.token != token) return@update it
+                if (firstUrl == null) {
+                    it.copy(loading = false, source = null, error = "This programme isn't in the archive.")
+                } else {
+                    it.copy(loading = false, source = firstUrl, error = null, reopen = reopen, fallback = fallback)
+                }
+            }
+        }
+    }
+
+    /** Live source for [streamId], for "Go live" from archive/time-shift. */
+    suspend fun liveSource(streamId: String): PlaybackSource? {
+        val cfg = provider ?: return null
+        val streamFormat = settingsStore.settings.first().streamFormat
+        return runCatching { providers.playbackSource(cfg, streamId, streamFormat.ext) }.getOrNull()
+    }
+
+    /** True when [streamId] offers any catch-up window — drives the "can't rewind" card. */
+    fun channelHasArchive(streamId: String?): Boolean =
+        streamId?.let { id -> categoryChannels.firstOrNull { it.streamId == id }?.hasArchive } ?: false
+
+    /**
+     * A Guide catch-up launch: load the provider and the channel for [target] (independently of
+     * [resolve]'s own background load), then play the archive window [startMs, endMs] from its
+     * start. Fails soft onto [archive]'s error. Credentials never enter the route — only
+     * (providerId, streamId) and the window times do.
+     */
+    fun resolveAndPlayArchive(target: PlaybackTarget, startMs: Long, endMs: Long, programme: String) {
+        viewModelScope.launch {
+            val cfg = provider ?: providerStorage.load().firstOrNull { it.id == target.providerId }
+            if (cfg == null) {
+                _archive.update { it.copy(loading = false, error = "This provider is no longer configured.") }
+                return@launch
+            }
+            provider = cfg
+            val channel = categoryChannels.firstOrNull { it.streamId == target.streamId }
+                ?: runCatching { locateCategory(cfg, target.streamId) }.getOrNull()
+                    ?.also { categoryChannels = it.channels }
+                    ?.channels?.firstOrNull { it.streamId == target.streamId }
+            if (channel == null) {
+                _archive.update { it.copy(loading = false, error = "This programme isn't in the archive.") }
+                return@launch
+            }
+            playArchive(channel, startMs, endMs, programmeTitle = programme.ifBlank { null })
+        }
+    }
 
     /** ▲/▼ with no panel: play the previous channel in the current category (requirement 4). */
     fun previousChannel() = stepChannel(ChannelNeighbours::previous)
@@ -245,6 +409,10 @@ class PlayerViewModel @Inject constructor(
 
     fun nowPlaying(channel: LiveChannel): EpgProgramme? =
         channel.epgChannelId?.let { guide?.nowPlaying(it) }
+
+    /** The programme airing on [channel] at [atMs] — the title for a time-shifted stream. */
+    fun programmeAt(channel: LiveChannel, atMs: Long): EpgProgramme? =
+        channel.epgChannelId?.let { guide?.nowPlaying(it, atMs) }
 
     fun upNext(channel: LiveChannel): EpgProgramme? =
         channel.epgChannelId?.let { guide?.upNext(it) }
