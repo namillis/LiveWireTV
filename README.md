@@ -24,11 +24,34 @@ on the device.
 - **Guide.** A programme grid with a red now-line. You can filter it by
   category or keyword, and it keeps your place when you come back from a
   channel. Above the grid, a details band describes the focused programme,
-  and after 2 seconds it also plays that channel muted. A downloaded guide is reused for up to 3 hours, so reopening the
-  Guide in that time doesn't download it again.
+  and after 2 seconds it also plays that channel muted. A downloaded guide is
+  reused for up to 3 hours, so reopening the Guide in that time doesn't
+  download it again.
 - **Player.** Up and Down change channel. Left opens the channel list, and
-  Right opens Options: audio track, subtitles, picture mode (fit, fill, zoom),
-  reload and stream info.
+  Right opens Options: favourite, audio track, subtitles, picture mode (fit,
+  fill, zoom), reload and stream info.
+- **Catch-up and time shift.** Some providers keep a recording of each
+  channel for a few days (an archive). On those channels:
+  - **In the Guide,** scroll left to go back up to 2 days. Programmes you can
+    still play are marked ⟲. OK on one of them plays it from the start. OK on
+    the programme airing now asks whether to watch live or start it over.
+    The remote's rewind and fast-forward keys, or Page Up and Page Down,
+    jump the Guide by 3 hours.
+  - **In the player,** OK pauses live TV, and OK again carries on from where
+    you paused, behind live. Up goes back to live. To seek, press Down to
+    select the progress bar; while it's selected, Left and Right move back
+    and forward instead of opening the panels. The rewind and fast-forward
+    keys seek too.
+  - On a channel without an archive, OK pauses and plays as before, and a
+    one-time message says the channel can't rewind.
+- **Favourites.** To add one, hold OK on a channel in Home, the Guide or
+  Search and choose Favourite, or use the Favourite row in the player's
+  Options. Favourites appear as a rail at the top of Home, a ★ Favourites
+  filter in the Guide and a group at the top of the player's channel list.
+  If you start watching from a favourite, Up and Down in the player move
+  through your favourites only. Reorder or remove them under
+  Settings → Favourites. They're saved separately for each provider, on the
+  device only.
 - **Search.** Results are grouped into channels, programmes that are on now
   or later, and games. When the field is empty it shows your recent searches
   and the channels you watched last.
@@ -41,7 +64,11 @@ on the device.
   them. Placeholder rows that some providers use as category headers
   (`##### NEWS #####`) are hidden.
 - **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,
-  and now-playing text on Home cards.
+  now-playing text on Home cards, favourites, and About with Check for
+  updates.
+- **Updates.** LiveWire checks GitHub for a new release once a day and offers
+  to install it. It installs an update only if the file's checksum matches
+  the release and it's signed with the same key as the installed app.
 
 Everything works with a TV remote's D-pad. On phones and touch TVs, taps work too.
 
@@ -80,12 +107,20 @@ and sideload it.
 
 ## Setup
 
-On first launch LiveWire asks for a provider. Your IPTV provider gives you
-these details when you sign up. You can add more later under
+On first launch a short setup walks you through adding a provider: choose
+Xtream Codes or M3U, enter the details, and LiveWire connects and shows the
+channel count before you start watching. Your IPTV provider gives you these
+details when you sign up. You can add more later under
 Settings → Manage providers.
 
 - **Xtream Codes:** server address, username and password. The guide is
-  loaded from the same server.
+  loaded from the same server. If your provider gave you a single link
+  (`get.php?username=…&password=…` or `player_api.php?…`), paste it into
+  Server URL and LiveWire splits it into the three fields.
+- **Catch-up:** works only if your provider keeps an archive for a channel.
+  For Xtream that comes from the provider. For M3U, the playlist needs
+  catch-up attributes (`catchup`, `catchup-source`, `catchup-days`); without
+  them channels show no archive.
 - **M3U playlist:** the playlist URL, and optionally a guide (XMLTV) URL. If
   you leave the guide URL empty, LiveWire uses the one advertised in the
   playlist header (`url-tvg` or `x-tvg-url`), if there is one. Movie and
@@ -104,8 +139,10 @@ in Settings.
 - Backups and device-to-device transfer are turned off, so app data isn't
   copied to Google Drive or a new device.
 - LiveWire connects to your provider (channels, guide, streams), to ESPN's
-  public scoreboard API for the Sports screen, and to wherever your provider's
-  channel list says the channel logos are hosted.
+  public scoreboard API for the Sports screen, to wherever your provider's
+  channel list says the channel logos are hosted, and to GitHub to check for
+  and download updates. You can turn off the daily update check under
+  Settings → About.
 - There are no analytics, ads or crash reporting. The full source is in this
   repository if you want to check.
 
@@ -154,16 +191,19 @@ app/src/main/kotlin/com/livewire/tv/
   core/net/        Response stream helpers (gzip handling)
   di/              Hilt modules
   navigation/      Nav host and the left navigation drawer
-  ui/              Theme, shared surfaces and text fields, touch support
+  ui/              Theme, shared surfaces, the shared provider form, touch support
   feature/
-    onboarding/    First-run provider setup
+    onboarding/    First-run setup wizard
     providers/     Xtream and M3U clients, provider storage, Providers screen
     epg/           Guide screen, XMLTV parsing and the guide cache
+    catchup/       Archive URLs and past guide listings for catch-up
     home/          Home screen
     player/        Player screen, overlay, Options and channel list panels
+    favorites/     Favourites storage, hold-OK menu, Channel info, manage screen
     search/        Search and search history
     sports/        ESPN scoreboard and the channel picker
     settings/      Settings screen and stored preferences
+    update/        Update check, download, verification and install
 scripts/measure.sh Memory, start-up and APK size measurements on a real device
 ```
 
@@ -172,8 +212,9 @@ playback engine can be added later without changing the screens.
 
 ## Releasing
 
-Pushing a tag like `v0.1.4` builds a signed release APK and publishes it as a
-GitHub Release. See [docs/RELEASING.md](docs/RELEASING.md) for the steps,
+Pushing a tag like `v0.2.1` builds a signed release APK and publishes it as a
+GitHub Release, with a `.sha256` checksum file and `update.json` that the
+in-app updater reads. See [docs/RELEASING.md](docs/RELEASING.md) for the steps,
 version numbering and signing setup.
 
 ## Credits

@@ -24,6 +24,9 @@
         </intent>
     </queries>
 
+    <!-- Predictive Back (android:enableOnBackInvokedCallback) is left off on purpose. With it
+         on, Android 13+ stops delivering KEYCODE_BACK as a key event, which the Guide's action
+         row and the player's scrub bar rely on. TVs have no back gesture, so it gains nothing. -->
     <application
         android:name=".LiveWireApp"
         android:allowBackup="false"

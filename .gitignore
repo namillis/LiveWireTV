@@ -30,6 +30,4 @@ Thumbs.db
 *~
 .vscode/
 .kiro/
-docs/*
-!docs/RELEASING.md
-!docs/images/
+design/
