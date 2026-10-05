@@ -79,8 +79,9 @@ fun rememberOptionsPanelState(): OptionsPanelState = remember { OptionsPanelStat
  * The Options side panel (design system §9.6, mockup option3-options.png): a right-hand panel
  * with one up/down list, each row showing its current value. OK on a choice row opens a
  * sub-list in the same panel; Back returns to the root, Back again closes the panel (handled
- * by the screen via [OptionsPanelState]). Rows in first-PR scope: Audio, Subtitles, Picture,
- * Reload stream, Stream info. Favourites / Sleep timer / Stream format are deferred.
+ * by the screen via [OptionsPanelState]). Rows: Favourite (add/remove the current channel),
+ * Audio, Subtitles, Picture, Reload stream, Stream info. Stream format lives in Settings; a
+ * sleep timer is not built.
  *
  * All track changes go through [PlaybackEngine] via the callbacks; this panel never touches
  * ExoPlayer.
