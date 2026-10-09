@@ -1,0 +1,60 @@
+{
+  "id": 41,
+  "tag_name": "v0.2.2",
+  "target_commitish": "",
+  "name": "LiveWire v0.2.2",
+  "body": "LiveWire v0.2.2\n\n- Updates now come from git.namillis.me\n- Release builds run on Forgejo Actions",
+  "url": "https://git.namillis.me/api/v1/repos/namillis/LiveWireTV/releases/41",
+  "html_url": "https://git.namillis.me/namillis/LiveWireTV/releases/tag/v0.2.2",
+  "tarball_url": "https://git.namillis.me/namillis/LiveWireTV/archive/v0.2.2.tar.gz",
+  "zipball_url": "https://git.namillis.me/namillis/LiveWireTV/archive/v0.2.2.zip",
+  "hide_archive_links": false,
+  "upload_url": "https://git.namillis.me/api/v1/repos/namillis/LiveWireTV/releases/41/assets",
+  "draft": false,
+  "prerelease": false,
+  "created_at": "2026-10-09T15:20:00-04:00",
+  "published_at": "2026-10-09T15:20:00-04:00",
+  "author": {
+    "id": 1,
+    "login": "namillis",
+    "full_name": "",
+    "html_url": "https://git.namillis.me/namillis",
+    "username": "namillis"
+  },
+  "assets": [
+    {
+      "id": 101,
+      "name": "livewire-0.2.2.apk",
+      "size": 3750123,
+      "download_count": 0,
+      "created_at": "2026-10-09T15:20:05-04:00",
+      "uuid": "0b6f2a0e-4c1e-4a36-9f39-6d9d1f6e2a11",
+      "browser_download_url": "https://git.namillis.me/namillis/LiveWireTV/releases/download/v0.2.2/livewire-0.2.2.apk",
+      "type": "attachment"
+    },
+    {
+      "id": 102,
+      "name": "livewire-0.2.2.apk.sha256",
+      "size": 85,
+      "download_count": 0,
+      "created_at": "2026-10-09T15:20:05-04:00",
+      "uuid": "6a1d9b2c-1f7e-4a7b-8c2d-0e5f4b3a2c19",
+      "browser_download_url": "https://git.namillis.me/namillis/LiveWireTV/releases/download/v0.2.2/livewire-0.2.2.apk.sha256",
+      "type": "attachment"
+    },
+    {
+      "id": 103,
+      "name": "update.json",
+      "size": 160,
+      "download_count": 0,
+      "created_at": "2026-10-09T15:20:05-04:00",
+      "uuid": "9c3e7f1a-2b4d-4e6f-8a0b-1c2d3e4f5a6b",
+      "browser_download_url": "https://git.namillis.me/namillis/LiveWireTV/releases/download/v0.2.2/update.json",
+      "type": "attachment"
+    }
+  ],
+  "archive_download_count": {
+    "zip": 0,
+    "tar_gz": 0
+  }
+}

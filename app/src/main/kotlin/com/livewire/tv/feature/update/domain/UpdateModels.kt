@@ -1,8 +1,8 @@
 package com.livewire.tv.feature.update.domain
 
 /**
- * A GitHub release reduced to what the updater needs. Parsed from the releases API by
- * [com.livewire.tv.feature.update.data.GitHubReleaseSource]; [assets] carry the APK and
+ * A release reduced to what the updater needs. Parsed from the releases API by
+ * [com.livewire.tv.feature.update.data.ReleaseSource]; [assets] carry the APK and
  * its `.sha256` sidecar.
  */
 data class ReleaseInfo(
@@ -84,7 +84,7 @@ fun parseSha256(content: String?): String? {
 /** Typed, user-facing failure reasons. [message] is plain-language, ready to show. */
 enum class UpdateError(val message: String) {
     NO_CONNECTION("Couldn't reach the internet. Check your connection and try again."),
-    GITHUB_UNAVAILABLE("Couldn't reach GitHub to check for updates. Try again later."),
+    SERVER_UNAVAILABLE("Couldn't reach the LiveWire update server. Try again later."),
     CHECKSUM_MISMATCH("The download didn't match what was expected and was discarded."),
     UNKNOWN_SOURCES_NOT_ALLOWED("LiveWire needs permission to install apps. Allow it and try again."),
     NOT_ENOUGH_SPACE("Not enough free space to download the update."),
@@ -101,9 +101,9 @@ enum class UpdateError(val message: String) {
  * Map a network-layer throwable to a user-facing [UpdateError]. Pure and unit-testable;
  * shared by the checker and the downloader so a "no internet" failure reads the same
  * everywhere. Unknown-host / connection-refused is a connectivity problem; a timeout or
- * any other IO problem is reported as GitHub being unavailable.
+ * any other IO problem is reported as the update server being unavailable.
  */
 fun mapNetworkError(cause: Throwable?): UpdateError = when (cause) {
     is java.net.UnknownHostException, is java.net.ConnectException -> UpdateError.NO_CONNECTION
-    else -> UpdateError.GITHUB_UNAVAILABLE
+    else -> UpdateError.SERVER_UNAVAILABLE
 }

@@ -14,21 +14,24 @@ android {
         applicationId = "com.livewire.tv"
         minSdk = 23          // Android 6 — covers virtually all Android TV / Fire TV in use
         targetSdk = 35
-        // Version is injected by CI from the git tag (-PversionName / -PversionCode);
-        // these defaults apply to local/dev builds.
+        // Version is injected by CI from the git tag (-PversionName / -PversionCode, see
+        // docs/RELEASING.md for how versionCode is derived); these defaults apply to
+        // local/dev builds.
         versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("versionName") as String?) ?: "1.0.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // --- Self-update configuration --------------------------------------------
-        // The update feature reads GitHub Releases for the app package. Owner/name and
-        // the asset naming go in BuildConfig so forks and the local e2e test can point
-        // elsewhere (-PupdateRepoOwner, -PupdateRepoName, -PupdateApiBase, ...).
+        // The update feature reads the releases API of the repo's Forgejo host
+        // (git.namillis.me), which has the same /repos/{owner}/{name}/releases/latest
+        // shape as GitHub's. Owner/name and the asset naming go in BuildConfig so forks
+        // and the local e2e test can point elsewhere (-PupdateRepoOwner,
+        // -PupdateRepoName, -PupdateApiBase, ...).
         val updateRepoOwner = (project.findProperty("updateRepoOwner") as String?) ?: "namillis"
         val updateRepoName = (project.findProperty("updateRepoName") as String?) ?: "LiveWireTV"
-        // API base for the release lookup. Real builds hit GitHub; the emulator e2e
-        // test overrides this with -PupdateApiBase=http://127.0.0.1:8765 (adb reverse).
-        val updateApiBase = (project.findProperty("updateApiBase") as String?) ?: "https://api.github.com"
+        // API base for the release lookup. Real builds hit Forgejo's /api/v1; the emulator
+        // e2e test overrides this with -PupdateApiBase=http://127.0.0.1:8765 (adb reverse).
+        val updateApiBase = (project.findProperty("updateApiBase") as String?) ?: "https://git.namillis.me/api/v1"
         // Downloaded asset filename pattern; %s is the versionName (e.g. livewire-0.1.4.apk).
         val updateAssetPattern = (project.findProperty("updateAssetPattern") as String?) ?: "livewire-%s.apk"
         buildConfigField("String", "UPDATE_REPO_OWNER", "\"$updateRepoOwner\"")

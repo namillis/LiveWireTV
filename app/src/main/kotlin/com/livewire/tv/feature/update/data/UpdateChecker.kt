@@ -25,7 +25,7 @@ sealed interface UpdateCheckResult {
 }
 
 /**
- * Decides whether an update should be offered. Wraps [GitHubReleaseSource] with the
+ * Decides whether an update should be offered. Wraps [ReleaseSource] with the
  * newness comparison against [BuildConfig.VERSION_NAME], the user's skip choice, and the
  * 24h / auto-check / player-open policy. Records `lastUpdateCheck` after any real fetch.
  *
@@ -34,7 +34,7 @@ sealed interface UpdateCheckResult {
  */
 @Singleton
 class UpdateChecker @Inject constructor(
-    private val source: GitHubReleaseSource,
+    private val source: ReleaseSource,
     private val settings: SettingsStore,
 ) {
     /** Automatic launch check. Returns [UpdateCheckResult.Skipped] when policy defers it. */
@@ -54,16 +54,16 @@ class UpdateChecker @Inject constructor(
     suspend fun checkNow(nowMs: Long, skippedVersion: String? = null): UpdateCheckResult {
         val skip = skippedVersion ?: settings.settings.first().skippedVersion
         return when (val r = source.fetchLatest()) {
-            is GitHubReleaseSource.Result.Failed -> UpdateCheckResult.Failed(classify(r.cause))
-            is GitHubReleaseSource.Result.Ignored -> {
+            is ReleaseSource.Result.Failed -> UpdateCheckResult.Failed(classify(r.cause))
+            is ReleaseSource.Result.Ignored -> {
                 settings.setLastUpdateCheck(nowMs)
                 UpdateCheckResult.UpToDate(currentVersion())
             }
-            is GitHubReleaseSource.Result.NotModified -> {
+            is ReleaseSource.Result.NotModified -> {
                 settings.setLastUpdateCheck(nowMs)
                 r.release?.let { evaluate(it, skip) } ?: UpdateCheckResult.UpToDate(currentVersion())
             }
-            is GitHubReleaseSource.Result.Success -> {
+            is ReleaseSource.Result.Success -> {
                 settings.setLastUpdateCheck(nowMs)
                 evaluate(r.release, skip)
             }

@@ -15,17 +15,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Reads the app's latest GitHub release. The repo is public, so the request is
- * unauthenticated (limit 60/hr/IP). We send `Accept: application/vnd.github+json` and
- * cache the `ETag`, replaying it as `If-None-Match` so a "no change" answer is a cheap
- * 304 that doesn't count against a tight budget.
+ * Reads the app's latest release from the Forgejo instance that hosts the repo
+ * (`git.namillis.me`). Forgejo's releases API has the same path and JSON shape as
+ * GitHub's (`/repos/{owner}/{name}/releases/latest`), so either host works. The repo is
+ * public, so the request is unauthenticated. If the server sends an `ETag`, we replay it
+ * as `If-None-Match` so a "no change" answer is a cheap 304.
  *
  * The API base, owner and name come from [BuildConfig] so the emulator e2e test can point
- * this at a local server (`-PupdateApiBase=http://127.0.0.1:8765`). When the base is not
- * GitHub the path is the same shape (`/repos/{owner}/{name}/releases/latest`).
+ * this at a local server (`-PupdateApiBase=http://127.0.0.1:8765`).
  */
 @Singleton
-class GitHubReleaseSource @Inject constructor(
+class ReleaseSource @Inject constructor(
     private val http: OkHttpClient,
 ) {
     // In-memory ETag cache. A process-lifetime cache is enough: checks are at most daily.
@@ -58,8 +58,7 @@ class GitHubReleaseSource @Inject constructor(
     suspend fun fetchLatest(): Result = withContext(Dispatchers.IO) {
         val builder = Request.Builder()
             .url(url)
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header("Accept", "application/json")
         cachedEtag?.let { builder.header("If-None-Match", it) }
 
         try {
@@ -70,7 +69,7 @@ class GitHubReleaseSource @Inject constructor(
                 )
                 val body = resp.body?.string()
                     ?: return@withContext Result.Failed(IOException("Empty body"))
-                val release = GitHubReleaseParser.parse(body)
+                val release = ReleaseParser.parse(body)
                     ?: return@withContext Result.Failed(IOException("Unparseable release JSON"))
                 // Cache the ETag only for a value we actually parsed and will keep.
                 resp.header("ETag")?.let { cachedEtag = it }
@@ -85,10 +84,10 @@ class GitHubReleaseSource @Inject constructor(
 }
 
 /**
- * Pure JSON → [ReleaseInfo] parser for the GitHub `releases/latest` shape. Split out of
- * [GitHubReleaseSource] so it can be unit-tested against a saved fixture without OkHttp.
+ * Pure JSON → [ReleaseInfo] parser for the Forgejo/GitHub `releases/latest` shape. Split out of
+ * [ReleaseSource] so it can be unit-tested against a saved fixture without OkHttp.
  */
-object GitHubReleaseParser {
+object ReleaseParser {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /** Parse a release JSON document, or null if it cannot be decoded. */
@@ -127,7 +126,10 @@ object GitHubReleaseParser {
 }
 
 /**
- * Parse an ISO-8601 instant (`2026-09-30T12:00:00Z`) to epoch ms, or null.
+ * Parse an ISO-8601 instant to epoch ms, or null. Accepts both `2026-09-30T12:00:00Z`
+ * (GitHub) and an offset form like `2026-09-30T14:00:00+02:00` (Forgejo writes the
+ * server's zone). `Instant.parse` only accepts offsets from JDK 12, and older Android
+ * `java.time` predates that, so the offset form goes through [java.time.OffsetDateTime].
  *
  * Safe below API 26: core library desugaring rewrites `java.time` to the bundled
  * `j$.time` copy (see NetworkModule/parseEspnDate for the same pattern in this repo).
@@ -135,5 +137,7 @@ object GitHubReleaseParser {
 @Suppress("NewApi")
 internal fun parseIso8601(s: String?): Long? {
     if (s.isNullOrBlank()) return null
-    return runCatching { java.time.Instant.parse(s.trim()).toEpochMilli() }.getOrNull()
+    val t = s.trim()
+    return runCatching { java.time.Instant.parse(t).toEpochMilli() }.getOrNull()
+        ?: runCatching { java.time.OffsetDateTime.parse(t).toInstant().toEpochMilli() }.getOrNull()
 }

@@ -66,7 +66,7 @@ on the device.
 - **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,
   now-playing text on Home cards, favourites, and About with Check for
   updates.
-- **Updates.** LiveWire checks GitHub for a new release once a day and offers
+- **Updates.** LiveWire checks for a new release once a day and offers
   to install it. It installs an update only if the file's checksum matches
   the release and it's signed with the same key as the installed app.
 
@@ -99,7 +99,7 @@ and sideload it.
      adb install -r livewire-<version>.apk
      ```
    - **A file manager**, from a USB drive or network share.
-3. **Updating:** LiveWire checks GitHub for a new release once a day and offers
+3. **Updating:** LiveWire checks for a new release once a day and offers
    to install it from Home. You can also check under Settings → About → Check
    for updates. The first time, Android asks you to allow LiveWire to install
    apps. To update by hand, install the new APK over the old one. Every release
@@ -140,9 +140,9 @@ in Settings.
   copied to Google Drive or a new device.
 - LiveWire connects to your provider (channels, guide, streams), to ESPN's
   public scoreboard API for the Sports screen, to wherever your provider's
-  channel list says the channel logos are hosted, and to GitHub to check for
-  and download updates. You can turn off the daily update check under
-  Settings → About.
+  channel list says the channel logos are hosted, and to `git.namillis.me`
+  (the project's Forgejo server) to check for and download updates. You can
+  turn off the daily update check under Settings → About.
 - There are no analytics, ads or crash reporting. The full source is in this
   repository if you want to check.
 
@@ -212,10 +212,11 @@ playback engine can be added later without changing the screens.
 
 ## Releasing
 
-Pushing a tag like `v0.2.1` builds a signed release APK and publishes it as a
-GitHub Release, with a `.sha256` checksum file and `update.json` that the
-in-app updater reads. See [docs/RELEASING.md](docs/RELEASING.md) for the steps,
-version numbering and signing setup.
+Pushing a tag like `v0.2.2` builds a signed release APK on Forgejo Actions and
+publishes it as a release on `git.namillis.me`, with a `.sha256` checksum file
+and `update.json` that the in-app updater reads. See
+[docs/RELEASING.md](docs/RELEASING.md) for the steps, version numbering, runner
+and signing setup.
 
 ## Credits
 
