@@ -1,7 +1,6 @@
 # LiveWire
 
-[![CI](https://github.com/namillis/LiveWireTV/actions/workflows/ci.yml/badge.svg)](https://github.com/namillis/LiveWireTV/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/namillis/LiveWireTV?sort=semver)](https://github.com/namillis/LiveWireTV/releases/latest)
+[![Latest release](https://img.shields.io/gitea/v/release/namillis/LiveWireTV?gitea_url=https%3A%2F%2Fgit.namillis.me&sort=semver)](https://git.namillis.me/namillis/LiveWireTV/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 LiveWire is an IPTV player for Android TV, Google TV and Fire TV. You bring
@@ -75,7 +74,7 @@ Everything works with a TV remote's D-pad. On phones and touch TVs, taps work to
 ## Install
 
 LiveWire isn't in the Play Store or the Amazon Appstore. Download the APK from
-the [latest release](https://github.com/namillis/LiveWireTV/releases/latest)
+the [latest release](https://git.namillis.me/namillis/LiveWireTV/releases/latest)
 and sideload it.
 
 1. **Allow installs from unknown sources** for the app you'll install with.
@@ -89,7 +88,7 @@ and sideload it.
 2. **Install the APK** in one of these ways:
    - **Downloader app** (Fire TV and Google TV), free from the Amazon
      Appstore or Google Play: enter
-     `https://github.com/namillis/LiveWireTV/releases/latest`, scroll to *Assets*, and
+     `https://git.namillis.me/namillis/LiveWireTV/releases/latest`, scroll to *Assets*, and
      select the `livewire-<version>.apk` link.
    - **adb** from a computer on the same network. Turn on network or ADB
      debugging in Developer options, and find the TV's IP address under its
@@ -158,7 +157,7 @@ Android Gradle Plugin, SDK levels and library versions are set in
 `app/build.gradle.kts` and `gradle/libs.versions.toml`.
 
 ```bash
-git clone https://github.com/namillis/LiveWireTV.git
+git clone https://git.namillis.me/namillis/LiveWireTV.git
 cd LiveWireTV
 ```
 
