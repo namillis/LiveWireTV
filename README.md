@@ -65,9 +65,9 @@ on the device.
 - **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,
   now-playing text on Home cards, favourites, and About with Check for
   updates.
-- **Updates.** LiveWire checks GitHub for a new release once a day and offers
-  to install it. It installs an update only if the file's checksum matches
-  the release and it's signed with the same key as the installed app.
+- **Updates.** LiveWire checks git.namillis.me for a new release once a day
+  and offers to install it. It installs an update only if the file's checksum
+  matches the release and it's signed with the same key as the installed app.
 
 Everything works with a TV remote's D-pad. On phones and touch TVs, taps work too.
 
@@ -98,11 +98,13 @@ and sideload it.
      adb install -r livewire-<version>.apk
      ```
    - **A file manager**, from a USB drive or network share.
-3. **Updating:** LiveWire checks GitHub for a new release once a day and offers
-   to install it from Home. You can also check under Settings → About → Check
-   for updates. The first time, Android asks you to allow LiveWire to install
-   apps. To update by hand, install the new APK over the old one. Every release
-   is signed with the same key, so your providers and settings are kept.
+3. **Updating:** LiveWire checks git.namillis.me for a new release once a day
+   and offers to install it from Home. You can also check under Settings →
+   About → Check for updates. The first time, Android asks you to allow
+   LiveWire to install apps. To update by hand, install the new APK over the
+   old one. Every release from v0.2.2 on is signed with the same key, so your
+   providers and settings are kept. Releases up to v0.2.1 used a different
+   key: uninstall that version once before installing v0.2.2 or later.
 
 ## Setup
 
@@ -139,9 +141,9 @@ in Settings.
   copied to Google Drive or a new device.
 - LiveWire connects to your provider (channels, guide, streams), to ESPN's
   public scoreboard API for the Sports screen, to wherever your provider's
-  channel list says the channel logos are hosted, and to GitHub to check for
-  and download updates. You can turn off the daily update check under
-  Settings → About.
+  channel list says the channel logos are hosted, and to git.namillis.me to
+  check for and download updates. You can turn off the daily update check
+  under Settings → About.
 - There are no analytics, ads or crash reporting. The full source is in this
   repository if you want to check.
 
@@ -179,8 +181,11 @@ If your default `java` isn't 17, point Gradle at a JDK 17 without editing
 tracked files, either with `org.gradle.java.home` in
 `~/.gradle/gradle.properties` or by exporting `JAVA_HOME`.
 
-CI runs the unit tests, lint and a debug build on every pull request and
-every push to `main`.
+Run the unit tests and lint before opening a pull request:
+
+```bash
+./gradlew :app:testDebugUnitTest :app:lintDebug
+```
 
 ## Project layout
 
@@ -211,8 +216,8 @@ playback engine can be added later without changing the screens.
 
 ## Releasing
 
-Pushing a tag like `v0.2.1` builds a signed release APK and publishes it as a
-GitHub Release, with a `.sha256` checksum file and `update.json` that the
+`scripts/release.py` builds a signed release APK and publishes it as a release
+on git.namillis.me, with a `.sha256` checksum file and `update.json` that the
 in-app updater reads. See [docs/RELEASING.md](docs/RELEASING.md) for the steps,
 version numbering and signing setup.
 

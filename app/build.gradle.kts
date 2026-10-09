@@ -14,21 +14,21 @@ android {
         applicationId = "com.livewire.tv"
         minSdk = 23          // Android 6 — covers virtually all Android TV / Fire TV in use
         targetSdk = 35
-        // Version is injected by CI from the git tag (-PversionName / -PversionCode);
-        // these defaults apply to local/dev builds.
+        // Version is injected by scripts/release.py from the release tag
+        // (-PversionName / -PversionCode); these defaults apply to local/dev builds.
         versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("versionName") as String?) ?: "1.0.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // --- Self-update configuration --------------------------------------------
-        // The update feature reads GitHub Releases for the app package. Owner/name and
-        // the asset naming go in BuildConfig so forks and the local e2e test can point
+        // The update feature reads the app's Forgejo releases on git.namillis.me. Owner/name
+        // and the asset naming go in BuildConfig so forks and the local e2e test can point
         // elsewhere (-PupdateRepoOwner, -PupdateRepoName, -PupdateApiBase, ...).
         val updateRepoOwner = (project.findProperty("updateRepoOwner") as String?) ?: "namillis"
         val updateRepoName = (project.findProperty("updateRepoName") as String?) ?: "LiveWireTV"
-        // API base for the release lookup. Real builds hit GitHub; the emulator e2e
-        // test overrides this with -PupdateApiBase=http://127.0.0.1:8765 (adb reverse).
-        val updateApiBase = (project.findProperty("updateApiBase") as String?) ?: "https://api.github.com"
+        // API base for the release lookup. The emulator e2e test overrides this with
+        // -PupdateApiBase=http://127.0.0.1:8765 (adb reverse).
+        val updateApiBase = (project.findProperty("updateApiBase") as String?) ?: "https://git.namillis.me/api/v1"
         // Downloaded asset filename pattern; %s is the versionName (e.g. livewire-0.1.4.apk).
         val updateAssetPattern = (project.findProperty("updateAssetPattern") as String?) ?: "livewire-%s.apk"
         buildConfigField("String", "UPDATE_REPO_OWNER", "\"$updateRepoOwner\"")
@@ -38,8 +38,8 @@ android {
     }
 
     // Release signing. Config is populated ONLY when the keystore env vars are present
-    // (set by CI from encrypted secrets); otherwise release builds are left unsigned
-    // so local/CI-without-secrets builds still succeed. No key material is ever hardcoded.
+    // (set by scripts/release.py); otherwise release builds are left unsigned so local
+    // builds without the key still succeed. No key material is ever hardcoded.
     val ksPath = System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
     val hasSigning = ksPath != null && file(ksPath).exists()
     signingConfigs {

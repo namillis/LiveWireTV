@@ -8,14 +8,14 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class GitHubReleaseParserTest {
+class ReleaseParserTest {
 
     private fun fixture(name: String): String =
         javaClass.classLoader!!.getResourceAsStream("update/$name")!!
             .bufferedReader().use { it.readText() }
 
     @Test fun `parses the saved releases-latest fixture`() {
-        val release = GitHubReleaseParser.parse(fixture("github_release_latest.json"))
+        val release = ReleaseParser.parse(fixture("release_latest.json"))
         assertNotNull(release)
         release!!
         assertEquals("v0.1.4", release.tagName)
@@ -36,7 +36,7 @@ class GitHubReleaseParserTest {
 
     @Test fun `tolerates unknown fields and missing optional ones`() {
         val minimal = """{"tag_name":"v0.2.0","assets":[]}"""
-        val release = GitHubReleaseParser.parse(minimal)!!
+        val release = ReleaseParser.parse(minimal)!!
         assertEquals("v0.2.0", release.tagName)
         assertNull(release.name)
         assertNull(release.notes)
@@ -44,14 +44,14 @@ class GitHubReleaseParserTest {
     }
 
     @Test fun `returns null on malformed json`() {
-        assertNull(GitHubReleaseParser.parse("not json at all"))
-        assertNull(GitHubReleaseParser.parse("{"))
+        assertNull(ReleaseParser.parse("not json at all"))
+        assertNull(ReleaseParser.parse("{"))
     }
 
     @Test fun `carries draft and prerelease flags`() {
-        val draft = GitHubReleaseParser.parse("""{"tag_name":"v0.3.0","draft":true}""")!!
+        val draft = ReleaseParser.parse("""{"tag_name":"v0.3.0","draft":true}""")!!
         assertTrue(draft.draft)
-        val pre = GitHubReleaseParser.parse("""{"tag_name":"v0.3.0","prerelease":true}""")!!
+        val pre = ReleaseParser.parse("""{"tag_name":"v0.3.0","prerelease":true}""")!!
         assertTrue(pre.prerelease)
     }
 }
