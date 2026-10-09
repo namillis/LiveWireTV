@@ -400,7 +400,7 @@ private fun ProgressDialog(pct: Int, bytes: Long, total: Long, verifying: Boolea
         }
 
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
-        StepRow(label = "Downloading the update", sub = "from the LiveWire releases page on GitHub", icon = if (verifying) ActionIcon.CHECK else ActionIcon.DOWNLOAD, active = !verifying, done = verifying)
+        StepRow(label = "Downloading the update", sub = "from the LiveWire releases page on git.namillis.me", icon = if (verifying) ActionIcon.CHECK else ActionIcon.DOWNLOAD, active = !verifying, done = verifying)
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         StepRow(label = "Checking the download…", sub = "makes sure it's the genuine, complete file before installing", icon = ActionIcon.SHIELD, active = verifying, done = false)
 

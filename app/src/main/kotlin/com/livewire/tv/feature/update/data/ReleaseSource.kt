@@ -15,17 +15,16 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Reads the app's latest GitHub release. The repo is public, so the request is
- * unauthenticated (limit 60/hr/IP). We send `Accept: application/vnd.github+json` and
- * cache the `ETag`, replaying it as `If-None-Match` so a "no change" answer is a cheap
- * 304 that doesn't count against a tight budget.
+ * Reads the app's latest release from the Forgejo API on git.namillis.me. The repo is
+ * public, so the request is unauthenticated. If the server sends an `ETag`, it is replayed
+ * as `If-None-Match` so a "no change" answer is a cheap 304.
  *
  * The API base, owner and name come from [BuildConfig] so the emulator e2e test can point
- * this at a local server (`-PupdateApiBase=http://127.0.0.1:8765`). When the base is not
- * GitHub the path is the same shape (`/repos/{owner}/{name}/releases/latest`).
+ * this at a local server (`-PupdateApiBase=http://127.0.0.1:8765`). The path is
+ * `/repos/{owner}/{name}/releases/latest` under the base.
  */
 @Singleton
-class GitHubReleaseSource @Inject constructor(
+class ReleaseSource @Inject constructor(
     private val http: OkHttpClient,
 ) {
     // In-memory ETag cache. A process-lifetime cache is enough: checks are at most daily.
@@ -58,8 +57,7 @@ class GitHubReleaseSource @Inject constructor(
     suspend fun fetchLatest(): Result = withContext(Dispatchers.IO) {
         val builder = Request.Builder()
             .url(url)
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header("Accept", "application/json")
         cachedEtag?.let { builder.header("If-None-Match", it) }
 
         try {
@@ -70,7 +68,7 @@ class GitHubReleaseSource @Inject constructor(
                 )
                 val body = resp.body?.string()
                     ?: return@withContext Result.Failed(IOException("Empty body"))
-                val release = GitHubReleaseParser.parse(body)
+                val release = ReleaseParser.parse(body)
                     ?: return@withContext Result.Failed(IOException("Unparseable release JSON"))
                 // Cache the ETag only for a value we actually parsed and will keep.
                 resp.header("ETag")?.let { cachedEtag = it }
@@ -85,25 +83,25 @@ class GitHubReleaseSource @Inject constructor(
 }
 
 /**
- * Pure JSON → [ReleaseInfo] parser for the GitHub `releases/latest` shape. Split out of
- * [GitHubReleaseSource] so it can be unit-tested against a saved fixture without OkHttp.
+ * Pure JSON → [ReleaseInfo] parser for the Forgejo `releases/latest` shape. Split out of
+ * [ReleaseSource] so it can be unit-tested against a saved fixture without OkHttp.
  */
-object GitHubReleaseParser {
+object ReleaseParser {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /** Parse a release JSON document, or null if it cannot be decoded. */
     fun parse(body: String): ReleaseInfo? =
-        runCatching { json.decodeFromString(GhRelease.serializer(), body).toReleaseInfo() }.getOrNull()
+        runCatching { json.decodeFromString(ApiRelease.serializer(), body).toReleaseInfo() }.getOrNull()
 
     @Serializable
-    private data class GhRelease(
+    private data class ApiRelease(
         @SerialName("tag_name") val tagName: String = "",
         val name: String? = null,
         val body: String? = null,
         val draft: Boolean = false,
         val prerelease: Boolean = false,
         @SerialName("published_at") val publishedAt: String? = null,
-        val assets: List<GhAsset> = emptyList(),
+        val assets: List<ApiAsset> = emptyList(),
     ) {
         fun toReleaseInfo() = ReleaseInfo(
             tagName = tagName,
@@ -119,7 +117,7 @@ object GitHubReleaseParser {
     }
 
     @Serializable
-    private data class GhAsset(
+    private data class ApiAsset(
         val name: String = "",
         val size: Long = 0,
         @SerialName("browser_download_url") val browserDownloadUrl: String = "",

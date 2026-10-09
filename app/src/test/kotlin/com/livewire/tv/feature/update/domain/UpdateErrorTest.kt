@@ -11,14 +11,14 @@ import java.net.UnknownHostException
 class UpdateErrorTest {
 
     @Test fun `unknown host and connect refused map to no connection`() {
-        assertEquals(UpdateError.NO_CONNECTION, mapNetworkError(UnknownHostException("api.github.com")))
+        assertEquals(UpdateError.NO_CONNECTION, mapNetworkError(UnknownHostException("git.namillis.me")))
         assertEquals(UpdateError.NO_CONNECTION, mapNetworkError(ConnectException("refused")))
     }
 
-    @Test fun `timeout and other io map to github unavailable`() {
-        assertEquals(UpdateError.GITHUB_UNAVAILABLE, mapNetworkError(SocketTimeoutException("timeout")))
-        assertEquals(UpdateError.GITHUB_UNAVAILABLE, mapNetworkError(IOException("HTTP 503")))
-        assertEquals(UpdateError.GITHUB_UNAVAILABLE, mapNetworkError(null))
+    @Test fun `timeout and other io map to server unavailable`() {
+        assertEquals(UpdateError.SERVER_UNAVAILABLE, mapNetworkError(SocketTimeoutException("timeout")))
+        assertEquals(UpdateError.SERVER_UNAVAILABLE, mapNetworkError(IOException("HTTP 503")))
+        assertEquals(UpdateError.SERVER_UNAVAILABLE, mapNetworkError(null))
     }
 
     @Test fun `every error carries a non-blank user-facing message`() {

@@ -1,9 +1,10 @@
 # Releasing LiveWire
 
-Releases are built by GitHub Actions from a git tag. Pushing a tag named
-`v*` runs `.github/workflows/release.yml`, which builds a minified release APK,
-signs it, and publishes a GitHub Release with the APK attached and release
-notes generated from the merged PRs.
+Releases are built and published from a dev machine with
+`scripts/release.py`. It runs the tests and lint, builds a minified release
+APK signed with the release key, checks it, and publishes a release on
+[git.namillis.me](https://git.namillis.me/namillis/LiveWireTV/releases) with
+the APK, its checksum and `update.json` attached.
 
 ## Version numbers
 
@@ -16,13 +17,12 @@ Tags follow `vMAJOR.MINOR.PATCH`. While the app is below 1.0:
   guide cache format), so testers know to expect a re-setup.
 - **MAJOR**: reserved for the first public release (`v1.0.0`).
 
-The tag is the only place a version is set. CI passes it to Gradle:
+The version you pass to the script is the only place a version is set:
 
-- `versionName` is the tag without the `v` (`v0.1.1` → `0.1.1`).
-- `versionCode` is the Release workflow's run number, so it rises by at least one
-  on every release. Android refuses to install an APK over one with a higher
-  `versionCode`, so **don't rename or recreate `release.yml`**: GitHub would treat
-  it as a new workflow and restart the run number at 1.
+- `versionName` is the version itself (`0.2.2`), and the tag is `v0.2.2`.
+- `versionCode` is `MAJOR*10000 + MINOR*100 + PATCH` (`0.2.2` → `202`), so it
+  rises with every release. Android refuses to install an APK over one with a
+  higher `versionCode`. MINOR and PATCH must stay below 100.
 
 Local builds use `versionName = 1.0.0-dev` and `versionCode = 1` unless you pass
 `-PversionName` / `-PversionCode`.
@@ -30,38 +30,45 @@ Local builds use `versionName = 1.0.0-dev` and `versionCode = 1` unless you pass
 ## When to release
 
 There's no fixed schedule. Tag a release when `main` has user-visible changes
-that have been checked on the emulator or a device, and CI on `main` is green.
+that have been checked on the emulator or a device, and the unit tests and lint
+pass.
 
 ## Cutting a release
 
-1. Make sure your local `main` matches GitHub and CI passed on the last merge:
+You need:
+
+- JDK 17 or later as `JAVA_HOME`, and an Android SDK with build-tools 36.0.0 as
+  `ANDROID_HOME`.
+- The release keystore and its password (see [Signing](#signing)).
+- The `fj` CLI ([forgejo-cli](https://codeberg.org/forgejo-contrib/forgejo-cli)),
+  signed in with `fj -H git.namillis.me auth login`.
+
+1. Check out `main` and pull, so HEAD matches `origin/main` and the worktree is
+   clean.
+
+2. Dry-run the release. This builds and checks the APK and prints the release
+   notes, but publishes nothing:
 
    ```bash
-   git fetch origin --tags
-   gh run list --workflow ci.yml --branch main --limit 1
+   LIVEWIRE_KEYSTORE=/path/to/livewire-release.p12 \
+   LIVEWIRE_KEYSTORE_PASS_FILE=/path/to/livewire-signing-recovery.txt \
+   python3 scripts/release.py 0.2.3 --dry-run
    ```
 
-2. Tag the commit and push the tag. Use an annotated tag, and push it by name:
-
-   ```bash
-   git tag -a v0.1.1 origin/main -m "LiveWire v0.1.1"
-   git push origin v0.1.1
-   ```
-
-3. Watch the Release run (about 3 minutes):
-
-   ```bash
-   gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
-   ```
-
-4. Check the published APK (see [Verifying a release](#verifying-a-release)).
+3. Run it again without `--dry-run`. The script tags HEAD as `v0.2.3`, creates
+   a draft release with the three files attached, then publishes it and checks
+   that all three assets are there.
 
 Never move or re-push an existing tag. If a release is bad, fix it on `main`
-and tag the next patch version.
+and release the next patch version.
+
+The release notes list the commit subjects since the previous tag, without
+their `feat:` / `fix:` prefixes. The in-app update dialog shows them as
+What's new.
 
 ## Release assets
 
-Each release publishes three files, all attached by `release.yml`:
+Each release publishes three files:
 
 | Asset | Purpose |
 |---|---|
@@ -69,65 +76,57 @@ Each release publishes three files, all attached by `release.yml`:
 | `livewire-X.Y.Z.apk.sha256` | `sha256sum`-format checksum (`<64-hex>  <filename>`). The in-app updater downloads this and verifies the APK's SHA-256 against it before installing. |
 | `update.json` | A small machine-readable manifest: `{ version, versionCode, sha256, size, minSdk }`. Handy for a lightweight "is there an update" probe without parsing the releases API. |
 
-The in-app self-update feature (in `feature/update/`) reads `releases/latest`,
+The in-app self-update feature (in `feature/update/`) reads
+`https://git.namillis.me/api/v1/repos/namillis/LiveWireTV/releases/latest`,
 compares the tag against the running `versionName`, downloads the APK, verifies
 its size, SHA-256 (against the `.sha256` asset) and signing certificate (which
 must match the installed app), then hands it to Android's installer. The
 `.sha256` asset is therefore **required** for the updater to install a release:
 a release without it fails verification rather than installing unverified.
 
-Do not remove these steps or rename their output files without updating
-`BuildConfig.UPDATE_ASSET_PATTERN` in `app/build.gradle.kts` — the updater looks
-for `livewire-<version>.apk` and its `.sha256` sidecar by name.
+Do not rename these files without updating `BuildConfig.UPDATE_ASSET_PATTERN`
+in `app/build.gradle.kts`. The updater looks for `livewire-<version>.apk` and
+its `.sha256` sidecar by name.
 
 ## Signing
 
-The workflow signs the APK when these repository secrets are set
-(Settings → Secrets and variables → Actions):
+The release key is a PKCS12 keystore with the alias `livewire`, created on
+2026-10-09. Its certificate SHA-256 is:
 
-| Secret | Value |
-|---|---|
-| `KEYSTORE_BASE64` | The release keystore file, base64-encoded |
-| `KEYSTORE_PASSWORD` | The keystore password |
-| `KEY_ALIAS` | The key's alias inside the keystore |
-| `KEY_PASSWORD` | The key's password |
-
-If `KEYSTORE_BASE64` is missing, the workflow still succeeds but publishes an
-**unsigned** APK and says so in the release notes. Android won't install an
-unsigned APK, so add the secrets and tag the next patch version.
-
-The signing values reach Gradle only as environment variables, and the keystore
-is decoded outside the checkout. Nothing about the key is committed or logged.
-
-### Creating or replacing the keystore
-
-```bash
-keytool -genkeypair -v -keystore livewire-release.jks -alias livewire \
-  -keyalg RSA -keysize 4096 -validity 10000
-base64 -i livewire-release.jks | pbcopy     # macOS; paste into KEYSTORE_BASE64
+```
+B9:39:21:94:61:93:74:36:89:74:08:D8:92:ED:A7:6C:C7:7F:DA:AC:FB:F2:79:3F:29:F8:61:AD:1C:1D:74:50
 ```
 
-**Keep the keystore and its passwords backed up somewhere safe, outside the
+`scripts/release.py` refuses to publish an APK signed with any other
+certificate. It passes the keystore to Gradle only as environment variables
+(`KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), so nothing
+about the key is committed or logged. A release build without those variables
+is left unsigned.
+
+**Keep the keystore and its password backed up somewhere safe, outside the
 repo.** Every update must be signed with the same key. If the key is lost or
 replaced, existing installs can't be updated in place: users have to uninstall
 LiveWire, which deletes their providers, and install again.
 
+Releases up to v0.2.1 were signed with an earlier key that was lost when the
+project moved off GitHub. Installs of those versions have to be uninstalled
+once before installing v0.2.2 or later.
+
 ## Verifying a release
 
-Download the APK and confirm it's signed with the same certificate as the
-previous release:
+Download the APK and confirm it's signed with the release certificate:
 
 ```bash
-gh release download v0.1.1 --pattern '*.apk' --dir /tmp/lw
-"$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs /tmp/lw/livewire-0.1.1.apk \
+curl -LO https://git.namillis.me/namillis/LiveWireTV/releases/download/v0.2.2/livewire-0.2.2.apk
+"$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs livewire-0.2.2.apk \
   | grep 'SHA-256'
 ```
 
-The SHA-256 digest must match the one from the previous release. Then install it
-over the previous release on the emulator or a TV and open it:
+The digest must match the one above. Then install it over the previous release
+on the emulator or a TV and open it:
 
 ```bash
-adb install -r /tmp/lw/livewire-0.1.1.apk
+adb install -r livewire-0.2.2.apk
 adb shell monkey -p com.livewire.tv -c android.intent.category.LAUNCHER 1
 ```
 

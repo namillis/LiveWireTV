@@ -1,0 +1,53 @@
+{
+  "id": 12,
+  "tag_name": "v0.1.4",
+  "target_commitish": "main",
+  "name": "LiveWire v0.1.4",
+  "body": "## What's new\n\n- Favourites rail on Home\n- In-app update check\n- Guide filter fixes",
+  "url": "https://git.namillis.me/api/v1/repos/namillis/LiveWireTV/releases/12",
+  "html_url": "https://git.namillis.me/namillis/LiveWireTV/releases/tag/v0.1.4",
+  "tarball_url": "https://git.namillis.me/namillis/LiveWireTV/archive/v0.1.4.tar.gz",
+  "zipball_url": "https://git.namillis.me/namillis/LiveWireTV/archive/v0.1.4.zip",
+  "upload_url": "https://git.namillis.me/api/v1/repos/namillis/LiveWireTV/releases/12/assets",
+  "draft": false,
+  "prerelease": false,
+  "hide_archive_links": false,
+  "created_at": "2026-09-30T11:59:00Z",
+  "published_at": "2026-09-30T12:00:00Z",
+  "author": {
+    "id": 1,
+    "login": "namillis"
+  },
+  "assets": [
+    {
+      "id": 31,
+      "name": "livewire-0.1.4.apk",
+      "size": 3671234,
+      "download_count": 42,
+      "created_at": "2026-09-30T12:00:05Z",
+      "uuid": "6f1c2a9e-4b8d-4e1a-9c3f-2d7b5e8a1f40",
+      "browser_download_url": "https://git.namillis.me/namillis/LiveWireTV/releases/download/v0.1.4/livewire-0.1.4.apk",
+      "type": "attachment"
+    },
+    {
+      "id": 32,
+      "name": "livewire-0.1.4.apk.sha256",
+      "size": 88,
+      "download_count": 40,
+      "created_at": "2026-09-30T12:00:06Z",
+      "uuid": "0a8e3d71-5c2f-4b96-8e1d-7f4a6c9b2e53",
+      "browser_download_url": "https://git.namillis.me/namillis/LiveWireTV/releases/download/v0.1.4/livewire-0.1.4.apk.sha256",
+      "type": "attachment"
+    },
+    {
+      "id": 33,
+      "name": "update.json",
+      "size": 120,
+      "download_count": 3,
+      "created_at": "2026-09-30T12:00:07Z",
+      "uuid": "c4b9e2f8-1d6a-4f37-a5e0-8b3c7d1f9a62",
+      "browser_download_url": "https://git.namillis.me/namillis/LiveWireTV/releases/download/v0.1.4/update.json",
+      "type": "attachment"
+    }
+  ]
+}

@@ -13,10 +13,12 @@
 *.ap_
 *.dex
 .kotlin
-
+/dist/
 # --- Secrets / signing (never commit) ---
 *.jks
 *.keystore
+*.p12
+*.pfx
 keystore.properties
 signing.properties
 google-services.json

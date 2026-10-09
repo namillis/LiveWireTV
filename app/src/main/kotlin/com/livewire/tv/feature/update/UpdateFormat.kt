@@ -17,7 +17,7 @@ object UpdateFormat {
 
     /**
      * A release/download size as the mockup shows it: "3.6 MB", "850 KB", "1.2 GB". Uses
-     * decimal (1000-based) units to match how GitHub reports asset sizes, one decimal place
+     * decimal (1000-based) units, one decimal place
      * for MB/GB and none for KB/bytes. Zero or negative is rendered as "—" (unknown).
      */
     fun size(bytes: Long): String {
@@ -61,7 +61,7 @@ object UpdateFormat {
     data class NoteLine(val text: String, val bullet: Boolean)
 
     /**
-     * Turn a GitHub release body (markdown, plain text, or null) into the What's-new lines the
+     * Turn a release body (markdown, plain text, or null) into the What's-new lines the
      * dialog shows. Rules, matching the brief:
      *  - a markdown bullet (`- `, `* `, `+ `) becomes a [NoteLine] with `bullet = true` and the
      *    marker stripped;
