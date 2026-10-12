@@ -23,6 +23,7 @@ class ProviderRepository @Inject constructor(
     private val xtream: XtreamClient,
     private val m3u: M3uClient,
 ) {
+    private val channelCache = LiveChannelCache()
 
     /** Checks that the provider is reachable and usable before it is saved. */
     suspend fun validate(cfg: ProviderConfig): ProviderAuthResult = when (cfg.type) {
@@ -51,6 +52,10 @@ class ProviderRepository @Inject constructor(
     }
 
     suspend fun liveChannels(cfg: ProviderConfig, categoryId: String? = null): List<LiveChannel> =
+        if (categoryId == null) channelCache.get(cfg) { fetchLiveChannels(cfg, null) }
+        else fetchLiveChannels(cfg, categoryId)
+
+    private suspend fun fetchLiveChannels(cfg: ProviderConfig, categoryId: String?): List<LiveChannel> =
         // Providers pad their live lists with category-separator rows
         // ("##### US - NEWS #####", "===== SPORTS ====="). Drop them at this one
         // choke point so no screen (Home rails/hero, Guide, Sports picker, Search)
@@ -156,7 +161,10 @@ class ProviderRepository @Inject constructor(
             ?: runCatching { m3u.load(cfg).playlist.epgUrl }.getOrNull()
     }
 
-    suspend fun forget() = m3u.clear()
+    suspend fun forget() {
+        channelCache.clear()
+        m3u.clear()
+    }
 
     private fun M3uEntry.groupName(): String = group ?: UNCATEGORIZED
 
