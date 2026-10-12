@@ -144,7 +144,7 @@ fun PlayerScreen(
     // (archiveLaunch), where the archive open below owns the engine.
     LaunchedEffect(source.source) {
         if (archiveLaunch == null && pausedLiveAtMs == 0L && archive.source == null) {
-            source.source?.let { engine.open(it.url, headers = it.headers) }
+            source.source?.let { engine.open(it.url, headers = it.headers, retryUrl = it.retryUrl, onStop = it.onStop) }
         }
     }
     // Open an ARCHIVE source (catch-up launch, Start over, or resume from time-shift) exactly
@@ -162,6 +162,7 @@ fun PlayerScreen(
                 headers = src.headers,
                 reopen = { reopen(it) },
                 fallback = { fallback(it) },
+                onStop = src.onStop,
             )
             barFocused = false
             reveal()
@@ -195,7 +196,7 @@ fun PlayerScreen(
         barFocused = false
         scope.launch {
             val live = viewModel.liveSource(source.currentStreamId ?: target.streamId)
-            if (live != null) engine.open(live.url, headers = live.headers)
+            if (live != null) engine.open(live.url, headers = live.headers, retryUrl = live.retryUrl, onStop = live.onStop)
         }
         reveal()
     }

@@ -127,7 +127,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             // quietly a couple of times before showing an error.
             if (isConnectionRefusal(error) && connectionRetries < MAX_CONNECTION_RETRIES) {
                 connectionRetries++
-                val r = Runnable { retry() }
+                val r = Runnable { if (seekController == null) retryLive(refused = true) else retry() }
                 pendingRetry = r
                 mainHandler.postDelayed(r, CONNECTION_RETRY_DELAY_MS * connectionRetries)
                 return
@@ -167,10 +167,19 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         player.setVideoSurface(surface)
     }
 
-    override fun open(url: String, play: Boolean, headers: Map<String, String>) {
+    override fun open(
+        url: String,
+        play: Boolean,
+        headers: Map<String, String>,
+        retryUrl: ((attempt: Int, refused: Boolean) -> String)?,
+        onStop: (() -> Unit)?,
+    ) {
         // Leaving archive mode: drop the seek controller so status reverts to LIVE.
         clearArchive()
         connectionRetries = 0
+        endStream(onStop)
+        liveRetryUrl = retryUrl
+        liveAttempt = 0
         openInternal(url, play, headers, PlaybackMode.Live)
     }
 
@@ -182,7 +191,10 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         headers: Map<String, String>,
         reopen: (targetStartMs: Long) -> String?,
         fallback: (targetStartMs: Long) -> String?,
+        onStop: (() -> Unit)?,
     ) {
+        endStream(onStop)
+        liveRetryUrl = null
         fallbackProvider = fallback
         onFallback = false
         seekController = ArchiveSeekController(
@@ -213,6 +225,33 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
 
     private var connectionRetries = 0
     private var pendingRetry: Runnable? = null
+
+    /** Builds the live URL for retry N, when the provider wants retries reported. */
+    private var liveRetryUrl: ((attempt: Int, refused: Boolean) -> String)? = null
+    private var liveAttempt = 0
+
+    /** The current stream's stop hook, run once when it is replaced, stopped or released. */
+    private var onStopCurrent: (() -> Unit)? = null
+
+    private fun endStream(next: (() -> Unit)? = null) {
+        val previous = onStopCurrent
+        onStopCurrent = next
+        previous?.let { runCatching { it() } }
+    }
+
+    /**
+     * Re-open the live stream. [refused] marks the automatic retry after a 401/403/429, which
+     * keeps counting toward [MAX_CONNECTION_RETRIES]; a user retry starts that count again.
+     */
+    private fun retryLive(refused: Boolean) {
+        val url = lastUrl ?: return
+        if (!refused) connectionRetries = 0
+        val next = liveRetryUrl?.let { build ->
+            liveAttempt++
+            build(liveAttempt, refused)
+        } ?: url
+        openInternal(next, play = true, headers = lastHeaders, mode = PlaybackMode.Live)
+    }
 
     private fun responseCode(error: PlaybackException): Int? {
         var cause: Throwable? = error.cause
@@ -357,8 +396,16 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             if (resumeUrl != null) ctrl.onReopenedAt(here)
             openInternal(resumeUrl ?: url, play = true, headers = lastHeaders, mode = PlaybackMode.Archive(ctrl.windowStartMs, ctrl.windowEndMs))
         } else {
-            open(url, play = true, headers = lastHeaders)
+            retryLive(refused = false)
         }
+    }
+
+    override fun stop() {
+        pendingRetry?.let { mainHandler.removeCallbacks(it) }
+        pendingRetry = null
+        player.stop()
+        player.clearMediaItems()
+        endStream()
     }
 
     override fun selectAudioTrack(id: String) = selectTrack(C.TRACK_TYPE_AUDIO, id)
@@ -488,6 +535,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     }
 
     override fun release() {
+        endStream()
         mainHandler.removeCallbacks(positionPoll)
         pendingRetry?.let { mainHandler.removeCallbacks(it) }
         pendingSeekRunnable?.let { mainHandler.removeCallbacks(it) }

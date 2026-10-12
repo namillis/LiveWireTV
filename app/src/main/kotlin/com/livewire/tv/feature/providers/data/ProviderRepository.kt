@@ -6,10 +6,16 @@ import com.livewire.tv.feature.providers.domain.CatchupSpec
 import com.livewire.tv.feature.providers.domain.CatchupType
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
+import com.livewire.tv.feature.providers.domain.PoolSignals
 import com.livewire.tv.feature.providers.domain.ProviderAuthResult
 import com.livewire.tv.feature.providers.domain.ProviderCategory
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.providers.domain.ProviderType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,6 +30,10 @@ class ProviderRepository @Inject constructor(
     private val m3u: M3uClient,
 ) {
     private val channelCache = LiveChannelCache()
+    private val poolFeatures = ConcurrentHashMap<String, Set<String>>()
+
+    /** For fire-and-forget calls that must outlive the screen that started them (pool stop). */
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Checks that the provider is reachable and usable before it is saved. */
     suspend fun validate(cfg: ProviderConfig): ProviderAuthResult = when (cfg.type) {
@@ -81,11 +91,42 @@ class ProviderRepository @Inject constructor(
     /** Resolves the playable source. Returns null when the channel no longer exists. */
     suspend fun playbackSource(cfg: ProviderConfig, streamId: String, xtreamExt: String): PlaybackSource? =
         when (cfg.type) {
-            ProviderType.XTREAM -> PlaybackSource(cfg.liveStreamUrl(streamId, xtreamExt))
+            ProviderType.XTREAM -> withPoolSignals(cfg, streamId, cfg.liveStreamUrl(streamId, xtreamExt))
             ProviderType.M3U -> m3u.load(cfg).entriesById[streamId]?.let {
                 PlaybackSource(url = it.url, headers = it.headers)
             }
         }
+
+    /**
+     * The pool extensions [cfg] supports, checked once per app run (see [PoolSignals]). Empty for
+     * M3U and plain Xtream panels. A failed check is retried on the next call instead of cached.
+     */
+    suspend fun poolFeatures(cfg: ProviderConfig): Set<String> {
+        if (cfg.type != ProviderType.XTREAM) return emptySet()
+        val key = providerKey(cfg)
+        poolFeatures[key]?.let { return it }
+        val found = xtream.poolFeatures(cfg) ?: return emptySet()
+        poolFeatures[key] = found
+        return found
+    }
+
+    private suspend fun withPoolSignals(cfg: ProviderConfig, streamId: String, url: String): PlaybackSource {
+        val features = poolFeatures(cfg)
+        if (features.isEmpty()) return PlaybackSource(url)
+        val retry = PoolSignals.RETRY in features
+        return PlaybackSource(
+            url = if (retry) PoolSignals.attemptUrl(url, 0) else url,
+            retryUrl = if (retry) { attempt, refused -> PoolSignals.attemptUrl(url, attempt, refused) } else null,
+            onStop = if (PoolSignals.STOP in features) stopper(cfg, streamId) else null,
+        )
+    }
+
+    private fun stopper(cfg: ProviderConfig, streamId: String): () -> Unit = {
+        background.launch { xtream.poolStop(cfg, streamId) }
+    }
+
+    private fun providerKey(cfg: ProviderConfig): String =
+        listOf(cfg.id, cfg.baseUrl, cfg.username, cfg.password).joinToString("\u0000").hashCode().let { "${cfg.id}:$it" }
 
     /**
      * Resolve an ARCHIVE (catch-up) source for [channel] starting at [startMs] (UTC) for
@@ -112,7 +153,9 @@ class ProviderRepository @Inject constructor(
             serverInfo = xtream.serverInfo(cfg.id)
                 ?: runCatching { xtream.authenticate(cfg) }.getOrNull()?.let { xtream.serverInfo(cfg.id) },
             nowMs = nowMs,
-        )
+        )?.let { src ->
+            if (PoolSignals.STOP in poolFeatures(cfg)) src.copy(onStop = stopper(cfg, channel.streamId)) else src
+        }
         ProviderType.M3U -> {
             val entry = m3u.load(cfg).entriesById[channel.streamId]
             ArchiveUrlBuilder.archiveUrl(
@@ -163,6 +206,7 @@ class ProviderRepository @Inject constructor(
 
     suspend fun forget() {
         channelCache.clear()
+        poolFeatures.clear()
         m3u.clear()
     }
 
