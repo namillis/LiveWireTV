@@ -9,7 +9,6 @@ import com.livewire.tv.feature.catchup.data.ArchiveRepository
 import com.livewire.tv.feature.epg.domain.CatchupGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
-import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
@@ -108,7 +107,7 @@ data class GuidePosition(
 @HiltViewModel
 class GuideViewModel @Inject constructor(
     private val client: ProviderRepository,
-    private val storage: ProviderStorage,
+    private val active: com.livewire.tv.feature.providers.data.ActiveProvider,
     private val epg: EpgRepository,
     private val archive: ArchiveRepository,
     private val settings: SettingsStore,
@@ -153,8 +152,7 @@ class GuideViewModel @Inject constructor(
             streamFormat = appSettings.streamFormat
             val spanMs = TimeUnit.HOURS.toMillis(appSettings.guideWindowHours.toLong())
             val now = System.currentTimeMillis()
-            val providers = storage.load()
-            val configured = providers.firstOrNull()
+            val configured = active.current()
 
             // Coming back from the player (or another section) re-runs load(). Keep the grid
             // as it is when nothing that shapes it has changed, so the user's place survives.

@@ -155,6 +155,28 @@ class XtreamClient @Inject constructor(
         http.newBuilder().callTimeout(POOL_CHECK_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS).build()
     }
 
+    /**
+     * Whether the panel accepts this login within [REACH_TIMEOUT_MS]. False when it's down, too
+     * slow, answers with an error, or refuses the login: any of those means it can't be used now.
+     */
+    suspend fun reachable(cfg: ProviderConfig): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url(cfg.playerApiUrl()).build()
+            reachHttp.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use false
+                val root = json.parseToJsonElement(resp.body?.string().orEmpty()) as? JsonObject ?: return@use false
+                val auth = (root["user_info"] as? JsonObject)?.get("auth").str()
+                auth == "1" || auth == "1.0"
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private val reachHttp: OkHttpClient by lazy {
+        http.newBuilder().callTimeout(REACH_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS).build()
+    }
+
     /** The pool's streams for [streamId] (`action=pool_sources`), empty on any error. */
     suspend fun poolSources(cfg: ProviderConfig, streamId: String): List<com.livewire.tv.feature.providers.domain.PoolSource> =
         withContext(Dispatchers.IO) {
@@ -179,6 +201,7 @@ class XtreamClient @Inject constructor(
 
     private companion object {
         const val POOL_CHECK_TIMEOUT_MS = 3_000L
+        const val REACH_TIMEOUT_MS = 6_000L
     }
 }
 

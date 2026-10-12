@@ -68,6 +68,13 @@ on the device.
 - **Providers.** Add more than one Xtream or M3U provider and switch between
   them. Placeholder rows that some providers use as category headers
   (`##### NEWS #####`) are hidden.
+- **Backup provider.** In Settings → Providers, open another provider and
+  choose Use as backup. When the active provider is Xtream and doesn't
+  answer a login within 6 seconds, Home, the Guide, Search and Sports use the
+  backup instead, and Home says so. LiveWire checks the active provider again
+  every 2 minutes while it's down and switches back once it answers.
+  Favourites, pins and recents are saved per provider, so the backup shows its
+  own.
 - **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,
   now-playing text on Home cards, favourites, and About with Check for
   updates.

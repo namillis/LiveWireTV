@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
-import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
@@ -58,7 +57,7 @@ data class SearchUiState(
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val storage: ProviderStorage,
+    private val active: com.livewire.tv.feature.providers.data.ActiveProvider,
     private val client: ProviderRepository,
     private val epg: EpgRepository,
     private val sports: SportsRepository,
@@ -128,10 +127,10 @@ class SearchViewModel @Inject constructor(
         // The ViewModel survives section switches, so once the corpus is loaded a
         // re-entry into Search must not re-download+re-parse the ~64 MB guide. A load
         // already in flight is left to finish; a completed load is reused as-is.
-        val configuredProvider = storage.load().firstOrNull()
         if (loadJob?.isActive == true) return
-        if (configuredProvider != null && configuredProvider == loadedFor) return
         loadJob = viewModelScope.launch {
+            val configuredProvider = active.current()
+            if (configuredProvider != null && configuredProvider == loadedFor) return@launch
             _state.update { it.copy(loading = true) }
             provider = configuredProvider
             configuredProvider?.let { observeFavorites(it.id) }

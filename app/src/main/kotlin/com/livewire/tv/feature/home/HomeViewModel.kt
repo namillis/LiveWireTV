@@ -11,7 +11,6 @@ import com.livewire.tv.feature.favorites.data.FavoritesStore
 import com.livewire.tv.feature.favorites.ui.FavoritesUi
 import com.livewire.tv.feature.home.data.HomeRails
 import com.livewire.tv.feature.home.data.PinnedCategoriesStore
-import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
@@ -59,7 +58,7 @@ data class HomeUiState(
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val client: ProviderRepository,
-    private val storage: ProviderStorage,
+    private val active: com.livewire.tv.feature.providers.data.ActiveProvider,
     private val epg: EpgRepository,
     private val settings: SettingsStore,
     private val favorites: FavoritesStore,
@@ -98,18 +97,24 @@ class HomeViewModel @Inject constructor(
             showNowPlaying = appSettings.showNowPlayingOnCards
             streamFormat = appSettings.streamFormat
 
-            val providers = storage.load()
-            if (providers.isEmpty()) {
+            val cfg = active.current()
+            if (cfg == null) {
                 _state.update { it.copy(loading = false, error = "No provider configured") }
                 return@launch
             }
-            val cfg = providers.first()
+            active.activeFailover?.let { f ->
+                confirmToken += 1
+                _state.update {
+                    it.copy(confirmation = FavoriteConfirmation(confirmToken, "${f.primary.name} isn't responding. Using ${f.backup.name}."))
+                }
+            }
             provider = cfg
             try {
                 // Favourites and recents can sit in any category, so resolve them against every
                 // channel, downloaded alongside the rails rather than after them.
                 val fullList = async { runCatching { client.liveChannels(cfg) }.getOrNull().orEmpty() }
                 categories = client.liveCategories(cfg)
+                if (categories.isEmpty()) active.recheck()
                 val pinned = pins.pinned(cfg.id).first()
                 categoryRails = loadCategoryRails(cfg, pinned)
                 publishRails()
@@ -119,6 +124,7 @@ class HomeViewModel @Inject constructor(
                 observePins(cfg, pinned)
                 loadGuide()
             } catch (_: Exception) {
+                active.recheck()
                 _state.update {
                     it.copy(loading = false, error = "Could not load channels. Check the provider and network.")
                 }

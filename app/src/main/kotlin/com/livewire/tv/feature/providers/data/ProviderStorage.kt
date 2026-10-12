@@ -58,6 +58,15 @@ class ProviderStorage @Inject constructor(
 
     fun remove(id: String) {
         save(load().filterNot { it.id == id })
+        if (backupId() == id) setBackup(null)
+    }
+
+    /** The provider to use while the active one is down, or null when none is set. */
+    fun backupId(): String? = prefs.getString(KEY_BACKUP, null)?.takeIf { it.isNotEmpty() }
+
+    /** Mark [id] as the backup provider (one at most), or clear it with null. */
+    fun setBackup(id: String?) {
+        prefs.edit { if (id == null) remove(KEY_BACKUP) else putString(KEY_BACKUP, id) }
     }
 
     /** Move [id] to the front (front = active). */
@@ -71,6 +80,7 @@ class ProviderStorage @Inject constructor(
     companion object {
         private const val PREFS_NAME = "livewire_providers_secure"
         private const val KEY = "providers"
+        private const val KEY_BACKUP = "backup_provider"
 
         /**
          * Pure helper: a new list with [id] moved to the front, or null when [id] is
