@@ -18,6 +18,9 @@ object PoolSignals {
     /** The app reports when playback stops, so the pool frees that provider connection at once. */
     const val STOP = "stop"
 
+    /** The pool lists a channel's streams (`action=pool_sources`) and plays a picked one (`source=`). */
+    const val SOURCES = "sources"
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /**
@@ -41,4 +44,45 @@ object PoolSignals {
         val sep = if ('?' in url) '&' else '?'
         return "$url${sep}try=$attempt" + if (refused) "&why=refused" else ""
     }
+
+    /** [url] opened on the stream the user picked ([PoolSource.key]) instead of the pool's choice. */
+    fun pickedUrl(url: String, sourceKey: String): String =
+        attemptUrl(url, 0) + "&source=" + java.net.URLEncoder.encode(sourceKey, "UTF-8")
+
+    /** The streams in a `pool_sources` response, in the order the pool tries them. Never throws. */
+    fun parseSources(body: String?): List<PoolSource> {
+        if (body.isNullOrBlank()) return emptyList()
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull() as? JsonObject ?: return emptyList()
+        val list = root["sources"] as? JsonArray ?: return emptyList()
+        return list.mapNotNull { el ->
+            val o = el as? JsonObject ?: return@mapNotNull null
+            fun str(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+            fun flag(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull == "true"
+            val key = str("source").ifBlank { return@mapNotNull null }
+            PoolSource(
+                key = key,
+                provider = str("provider").ifBlank { key.substringBefore('.') },
+                channelName = str("name"),
+                quality = str("quality"),
+                backup = flag("backup"),
+                current = flag("current"),
+                failed = flag("failed"),
+            )
+        }
+    }
+}
+
+/** One stream a pool channel can play from. [key] goes back to the pool as `source=`. */
+data class PoolSource(
+    val key: String,
+    val provider: String,
+    val channelName: String = "",
+    val quality: String = "",
+    val backup: Boolean = false,
+    val current: Boolean = false,
+    val failed: Boolean = false,
+) {
+    /** "Teck · HD", "Nova · HD · Backup": what the Source list shows for this stream. */
+    val label: String
+        get() = listOf(provider, quality, if (backup) "Backup" else "").filter { it.isNotBlank() }.joinToString(" · ")
 }

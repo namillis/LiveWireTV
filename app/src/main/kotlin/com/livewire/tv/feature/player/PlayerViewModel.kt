@@ -163,6 +163,37 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch { favorites.toggle(cfg.id, channel) }
     }
 
+    private val _poolSources = MutableStateFlow<List<com.livewire.tv.feature.providers.domain.PoolSource>>(emptyList())
+    /** The playing channel's streams on the IPTV provider pool, for the Options panel's Source row. */
+    val poolSources: StateFlow<List<com.livewire.tv.feature.providers.domain.PoolSource>> = _poolSources.asStateFlow()
+
+    /** Refresh [poolSources] for the playing channel. Empty for any provider that isn't the pool. */
+    fun loadPoolSources() {
+        val cfg = provider ?: return
+        val streamId = _source.value.currentStreamId ?: return
+        if (_archive.value.source != null) {
+            _poolSources.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            val found = runCatching { providers.poolSources(cfg, streamId) }.getOrDefault(emptyList())
+            if (_source.value.currentStreamId == streamId) _poolSources.value = found
+        }
+    }
+
+    /** Play the stream the user picked in the Source list, on the same channel. */
+    fun pickPoolSource(key: String) {
+        val cfg = provider ?: return
+        val streamId = _source.value.currentStreamId ?: return
+        _poolSources.update { list -> list.map { it.copy(current = it.key == key) } }
+        viewModelScope.launch {
+            val format = settingsStore.settings.first().streamFormat
+            val picked = runCatching { providers.playbackSource(cfg, streamId, format.ext, poolSource = key) }.getOrNull()
+                ?: return@launch
+            _source.update { if (it.currentStreamId == streamId) it.copy(source = picked, error = null, loading = false) else it }
+        }
+    }
+
     /** Switch to [item] in place (requirement 3): re-resolve its source, no navigation. */
     fun switchTo(item: ChannelListItem) = switchToStream(item.channel.streamId, item.channel.name)
 
@@ -328,6 +359,7 @@ class PlayerViewModel @Inject constructor(
     private fun switchToStream(streamId: String, title: String) {
         val cfg = provider ?: return
         if (streamId == _source.value.currentStreamId && _source.value.source != null) return
+        _poolSources.value = emptyList()
         _source.update { it.copy(loading = true, error = null, source = null, currentStreamId = streamId, title = title) }
         viewModelScope.launch { openStream(cfg, streamId, title) }
     }

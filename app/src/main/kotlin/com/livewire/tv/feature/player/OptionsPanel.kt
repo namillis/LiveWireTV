@@ -35,6 +35,7 @@ import androidx.tv.material3.Text
 import com.livewire.tv.R
 import com.livewire.tv.core.player.MediaInfo
 import com.livewire.tv.core.player.PlayerFormats
+import com.livewire.tv.feature.providers.domain.PoolSource
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireTheme
@@ -43,7 +44,7 @@ import com.livewire.tv.ui.theme.LiveWireTheme
 enum class PictureMode(val label: String) { FIT("Fit"), FILL("Fill"), ZOOM("Zoom") }
 
 /** Which screen the Options panel is showing: the top-level list or a value sub-list. */
-enum class OptionsView { ROOT, AUDIO, SUBTITLES, PICTURE, STREAM_INFO }
+enum class OptionsView { ROOT, SOURCE, AUDIO, SUBTITLES, PICTURE, STREAM_INFO }
 
 /**
  * Hoisted Options-panel navigation state, owned by the screen so its BackHandler can decide
@@ -98,6 +99,9 @@ fun OptionsPanel(
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** The channel's streams on the IPTV provider pool; the Source row shows when there are two or more. */
+    sources: List<PoolSource> = emptyList(),
+    onSelectSource: (String) -> Unit = {},
 ) {
     val view = state.view
     val firstRow = remember(view) { FocusRequester() }
@@ -116,6 +120,7 @@ fun OptionsPanel(
         Column(Modifier.fillMaxHeight()) {
             val header = when (view) {
                 OptionsView.ROOT -> "OPTIONS"
+                OptionsView.SOURCE -> "SOURCE"
                 OptionsView.AUDIO -> "AUDIO"
                 OptionsView.SUBTITLES -> "SUBTITLES"
                 OptionsView.PICTURE -> "PICTURE"
@@ -130,7 +135,8 @@ fun OptionsPanel(
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Box(Modifier.weight(1f)) {
                 when (view) {
-                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, rootRows, onReload, isFavorite, onToggleFavorite) { state.open(it) }
+                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, rootRows, onReload, isFavorite, onToggleFavorite, sources) { state.open(it) }
+                    OptionsView.SOURCE -> SourceList(sources, firstRow) { onSelectSource(it); state.reset() }
                     OptionsView.AUDIO -> AudioList(mediaInfo, firstRow) { onSelectAudio(it); state.reset() }
                     OptionsView.SUBTITLES -> SubtitlesList(mediaInfo, firstRow) { onSelectText(it); state.reset() }
                     OptionsView.PICTURE -> PictureList(pictureMode, firstRow) { onSelectPicture(it); state.reset() }
@@ -156,6 +162,7 @@ private fun RootList(
     onReload: () -> Unit,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
+    sources: List<PoolSource>,
     onOpen: (OptionsView) -> Unit,
 ) {
     val audioValue = mediaInfo.audioTracks.firstOrNull { it.id == mediaInfo.selectedAudioId }?.summary
@@ -173,6 +180,14 @@ private fun RootList(
             ) { onToggleFavorite() }
         }
         item { Separator() }
+        if (sources.size > 1) {
+            item {
+                val current = sources.firstOrNull { it.current }?.label ?: "Automatic"
+                OptionRow(R.drawable.ic_opt_source, "Source", current, hasChevron = true, focusRequester = rows.getValue(OptionsView.SOURCE)) {
+                    onOpen(OptionsView.SOURCE)
+                }
+            }
+        }
         item {
             OptionRow(R.drawable.ic_opt_audio, "Audio", audioValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.AUDIO)) {
                 onOpen(OptionsView.AUDIO)
@@ -196,6 +211,27 @@ private fun RootList(
             OptionRow(R.drawable.ic_opt_info, "Stream info", streamInfoValue.ifBlank { null }, hasChevron = true, focusRequester = rows.getValue(OptionsView.STREAM_INFO)) {
                 onOpen(OptionsView.STREAM_INFO)
             }
+        }
+    }
+}
+
+@Composable
+private fun SourceList(sources: List<PoolSource>, firstRow: FocusRequester, onPick: (String) -> Unit) {
+    if (sources.isEmpty()) {
+        EmptyNote("No other sources for this channel")
+        return
+    }
+    val repeated = sources.groupingBy { it.label }.eachCount()
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        items(sources, key = { it.key }) { s ->
+            // Two streams can share a label ("Teck · UHD" for both UHD and UHD+); the provider's own
+            // channel name tells them apart.
+            val base = if ((repeated[s.label] ?: 0) > 1 && s.channelName.isNotBlank()) "${s.label} · ${s.channelName}" else s.label
+            ChoiceRow(
+                label = if (s.failed) "$base · Failed" else base,
+                selected = s.current,
+                focusRequester = if (s.key == sources.first().key) firstRow else null,
+            ) { onPick(s.key) }
         }
     }
 }
