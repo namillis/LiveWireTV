@@ -9,6 +9,7 @@ import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.ProviderStorage
+import com.livewire.tv.feature.providers.domain.CategoryLookup
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
@@ -395,9 +396,18 @@ class PlayerViewModel @Inject constructor(
 
     private data class LocatedCategory(val categoryName: String, val channels: List<LiveChannel>)
 
-    /** Find [streamId]'s category and load that category's channels. */
+    /**
+     * Find [streamId]'s category and that category's channels. Reads the provider's full channel
+     * list (shared with the other screens) first; only when the stream isn't in it does this ask
+     * each category in turn, which on a large provider is one request per category.
+     */
     private suspend fun locateCategory(cfg: ProviderConfig, streamId: String): LocatedCategory? {
         val categories = providers.liveCategories(cfg)
+        val all = runCatching { providers.liveChannels(cfg) }.getOrDefault(emptyList())
+        CategoryLookup.find(all, streamId)?.let { match ->
+            val name = categories.firstOrNull { it.id == match.categoryId }?.name.orEmpty()
+            return LocatedCategory(name, match.channels)
+        }
         for (category in categories) {
             val channels = providers.liveChannels(cfg, categoryId = category.id)
             if (channels.any { it.streamId == streamId }) {

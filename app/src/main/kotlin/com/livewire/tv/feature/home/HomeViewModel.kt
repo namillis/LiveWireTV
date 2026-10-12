@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -64,7 +65,10 @@ class HomeViewModel @Inject constructor(
     private var streamFormat: com.livewire.tv.feature.settings.data.StreamFormat =
         com.livewire.tv.feature.settings.data.StreamFormat.TS
 
-    /** Every loaded channel across the category rails, for resolving favourites by id/name. */
+    /**
+     * The provider's full channel list, for resolving favourites by id/name. Falls back to the
+     * rails' channels when the full list can't be loaded.
+     */
     private var allChannels: List<LiveChannel> = emptyList()
     private var confirmToken = 0
 
@@ -80,15 +84,20 @@ class HomeViewModel @Inject constructor(
                 _state.update { it.copy(loading = false, error = "No provider configured") }
                 return@launch
             }
-            provider = providers.first()
+            val cfg = providers.first()
+            provider = cfg
             try {
-                val categories = client.liveCategories(provider!!)
+                // Favourites can sit in any category, so resolve them against every channel,
+                // downloaded alongside the rails rather than after them.
+                val fullList = async { runCatching { client.liveChannels(cfg) }.getOrNull().orEmpty() }
+                val categories = client.liveCategories(cfg)
                 val categoryRails = categories.take(6).mapNotNull { category ->
-                    val channels = client.liveChannels(provider!!, categoryId = category.id)
+                    val channels = client.liveChannels(cfg, categoryId = category.id)
                     if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)
                 }
-                allChannels = categoryRails.flatMap { it.channels }.distinctBy { it.streamId }
+                val railChannels = categoryRails.flatMap { it.channels }.distinctBy { it.streamId }
                 publishRails(categoryRails)
+                allChannels = fullList.await().ifEmpty { railChannels }
                 observeFavorites()
 
                 if (showNowPlaying) {
@@ -97,8 +106,11 @@ class HomeViewModel @Inject constructor(
                         startMs = now - TimeUnit.HOURS.toMillis(2),
                         endMs = now + TimeUnit.HOURS.toMillis(12),
                     )
-                    val ids = allChannels.mapNotNullTo(HashSet()) { it.epgChannelId }
-                    guide = runCatching { epg.fetch(provider!!, window, ids) }.getOrNull()
+                    val favChannels = FavoritesLogic
+                        .resolve(favorites.favorites(cfg.id).first(), allChannels)
+                        .mapNotNull { it.channel }
+                    val ids = (railChannels + favChannels).mapNotNullTo(HashSet()) { it.epgChannelId }
+                    guide = runCatching { epg.fetch(cfg, window, ids) }.getOrNull()
                     if (guide != null) _state.update { it.copy(guideLoaded = true) }
                 }
             } catch (_: Exception) {
