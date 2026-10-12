@@ -38,6 +38,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 
+import com.livewire.tv.feature.home.data.HomeRails
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.favorites.ui.ChannelMenuOverlay
@@ -98,8 +99,11 @@ fun HomeScreen(
     var restoreStreamId by remember { mutableStateOf<String?>(null) }
     var restoreToken by remember { mutableIntStateOf(0) }
     val hasChannels = state.rails.any { it.channels.isNotEmpty() }
-    val firstRailIndexForFocus = state.rails.indexOfFirst { it.channels.isNotEmpty() }
-    val targetKey = lastFocusedKey ?: "$firstRailIndexForFocus:0"
+    // lastFocusedKey remembers the card by rail id + stream id, because rails above it can
+    // appear (Recently watched after the first play) and shift every position.
+    val targetKey = remember(state.rails, lastFocusedKey) {
+        HomeRails.focusPosition(state.rails.map { r -> r.categoryId to r.channels.map { it.streamId } }, lastFocusedKey)
+    }
 
     // The hero band follows focus, but only after a 150ms settle so holding a D-pad
     // direction doesn't recompose the band on every step (section 9.1). We track the
@@ -113,7 +117,7 @@ fun HomeScreen(
             .collect { heroKey = it }
     }
     // guideLoaded flips once the EPG arrives; recompute the hero content when it does.
-    val heroContent = remember(heroKey, state.rails, state.guideLoaded) {
+    val heroContent = remember(heroKey, state.rails, state.guideLoaded, state.guideVersion) {
         heroKey?.let { key ->
             val (r, c) = key.split(":").let { it[0].toInt() to it[1].toInt() }
             state.rails.getOrNull(r)?.channels?.getOrNull(c)?.let { channel ->
@@ -152,7 +156,9 @@ fun HomeScreen(
         val favRailIndex = state.rails.indexOfFirst { it.isFavorites }
         val target = com.livewire.tv.feature.favorites.ui.FavoritesFocus
             .restoreTarget(railIds, favRailIndex, restoreStreamId) ?: return@LaunchedEffect
-        lastFocusedKey = "${target.railIndex}:${target.cardIndex}"
+        lastFocusedKey = state.rails.getOrNull(target.railIndex)?.let { rail ->
+            rail.channels.getOrNull(target.cardIndex)?.let { HomeRails.focusMemory(rail.categoryId, it.streamId) }
+        } ?: return@LaunchedEffect
         var held = 0
         repeat(40) {
             if (cardHasFocus) held++ else {
@@ -222,7 +228,7 @@ fun HomeScreen(
                                         modifier = Modifier
                                             .onFocusChanged {
                                                 if (it.isFocused) {
-                                                    lastFocusedKey = key
+                                                    lastFocusedKey = HomeRails.focusMemory(rail.categoryId, channel.streamId)
                                                     focusedKey = key
                                                 }
                                             }

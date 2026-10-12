@@ -3,6 +3,8 @@ package com.livewire.tv.feature.epg
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
+import com.livewire.tv.feature.home.data.HomeRails
+import com.livewire.tv.feature.home.data.PinnedCategoriesStore
 import com.livewire.tv.feature.catchup.data.ArchiveRepository
 import com.livewire.tv.feature.epg.domain.CatchupGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
@@ -67,6 +69,8 @@ data class GuideUiState(
     val previewEnabled: Boolean = false,
     /** Favourited stream ids for the active provider, for the row star + ★ Favourites filter. */
     val favoriteIds: Set<String> = emptySet(),
+    /** Category ids pinned to Home for the active provider, for the column's pin marker. */
+    val pinnedIds: Set<String> = emptySet(),
     /** Add/remove confirmation for the top-right toast; token increases on each toggle. */
     val confirmation: com.livewire.tv.feature.home.FavoriteConfirmation = com.livewire.tv.feature.home.FavoriteConfirmation(),
 ) {
@@ -109,6 +113,7 @@ class GuideViewModel @Inject constructor(
     private val archive: ArchiveRepository,
     private val settings: SettingsStore,
     private val favorites: com.livewire.tv.feature.favorites.data.FavoritesStore,
+    private val pins: PinnedCategoriesStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GuideUiState())
@@ -120,6 +125,7 @@ class GuideViewModel @Inject constructor(
     private var provider: ProviderConfig? = null
     private var loadedAtMs = 0L
     private var favoritesJob: Job? = null
+    private var pinsJob: Job? = null
     private var confirmToken = 0
     private var streamFormat: com.livewire.tv.feature.settings.data.StreamFormat =
         com.livewire.tv.feature.settings.data.StreamFormat.TS
@@ -208,6 +214,7 @@ class GuideViewModel @Inject constructor(
                     )
                 }
                 observeFavorites(configured.id)
+                observePins(configured.id)
                 // A missing or broken guide should not hide the channel list (M3U
                 // playlists often ship without one); rows then show no programmes.
                 val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
@@ -325,6 +332,39 @@ class GuideViewModel @Inject constructor(
                     .resolve(entries, _state.value.allRows.map { it.channel })
                 favorites.applyRematches(providerId, resolved)
                 _state.update { it.copy(favoriteIds = entries.map { e -> e.streamId }.toSet()) }
+            }
+        }
+    }
+
+    /**
+     * Keep [GuideUiState.pinnedIds] in step with the categories pinned to Home for the active
+     * provider. Re-subscribes when the provider changes.
+     */
+    private fun observePins(providerId: String) {
+        pinsJob?.cancel()
+        pinsJob = viewModelScope.launch {
+            pins.pinned(providerId).collect { ids -> _state.update { it.copy(pinnedIds = ids.toSet()) } }
+        }
+    }
+
+    /** Pin [categoryId] to Home, or unpin it (hold OK in the category column), and raise a toast. */
+    fun togglePin(categoryId: String) {
+        val cfg = provider ?: return
+        if (categoryId == FAVORITES_CATEGORY_ID) return
+        viewModelScope.launch {
+            val result = pins.toggle(cfg.id, categoryId)
+            confirmToken += 1
+            _state.update {
+                it.copy(
+                    confirmation = com.livewire.tv.feature.home.FavoriteConfirmation(
+                        token = confirmToken,
+                        message = when {
+                            result.full -> "Up to ${HomeRails.MAX_CATEGORY_RAILS} categories can be pinned"
+                            result.isPinned -> "Pinned to Home"
+                            else -> "Unpinned from Home"
+                        },
+                    ),
+                )
             }
         }
     }

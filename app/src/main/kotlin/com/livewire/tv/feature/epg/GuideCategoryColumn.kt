@@ -91,6 +91,9 @@ internal fun GuideCategoryColumn(
     /** Where focus goes when it arrives from the left (the nav drawer): the grid, not here. */
     gridEntry: () -> FocusRequester?,
     modifier: Modifier = Modifier,
+    /** Categories pinned to Home; holding OK on a provider category pins or unpins it. */
+    pinnedIds: Set<String> = emptySet(),
+    onTogglePin: (String) -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
     var fieldFocused by remember { mutableStateOf(false) }
@@ -154,13 +157,16 @@ internal fun GuideCategoryColumn(
             Spacer(Modifier.height(LiveWireDimens.SpaceXs))
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 items(entries, key = { it?.id ?: "\u0000all" }) { entry ->
+                    val pinId = entry?.id?.takeIf { it != FAVORITES_CATEGORY_ID }
                     CategoryItem(
                         name = entry?.name ?: "All channels",
                         count = entry?.channelCount ?: totalChannels,
                         selected = entry?.id == selectedId,
                         star = entry?.id == FAVORITES_CATEGORY_ID,
+                        pinned = pinId != null && pinId in pinnedIds,
                         requester = requesters.getValue(entry?.id),
                         onClick = { onSelect(entry?.id) },
+                        onLongClick = pinId?.let { id -> { onTogglePin(id) } },
                     )
                 }
             }
@@ -266,9 +272,12 @@ private fun CategoryItem(
     requester: FocusRequester,
     onClick: () -> Unit,
     star: Boolean = false,
+    pinned: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     LiveWireSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         restingColor = if (selected) LiveWireColors.SurfaceRaised else LiveWireColors.Surface,
         shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
         focusedScale = 1f,
@@ -301,6 +310,15 @@ private fun CategoryItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            if (pinned) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_pin),
+                    contentDescription = "Pinned to Home",
+                    tint = LiveWireColors.Accent,
+                    modifier = Modifier.size(11.dp),
+                )
+                Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+            }
             Text(
                 NumberFormat.getIntegerInstance().format(count),
                 style = LiveWireTheme.tokens.tag,

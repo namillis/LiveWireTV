@@ -31,6 +31,7 @@ class ProvidersViewModel @Inject constructor(
     private val repository: ProviderRepository,
     private val epgCache: EpgCache,
     private val favoritesStore: FavoritesStore,
+    private val pinnedCategories: com.livewire.tv.feature.home.data.PinnedCategoriesStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProvidersUiState())
@@ -77,6 +78,7 @@ class ProvidersViewModel @Inject constructor(
             epgCache.clearProvider(id)
             // …and its favourites, which are keyed by this provider id and otherwise orphaned.
             favoritesStore.removeProvider(id)
+            pinnedCategories.removeProvider(id)
         }
         load()
     }

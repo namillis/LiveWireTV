@@ -142,6 +142,7 @@ fun GuideScreen(
                 initialPosition = viewModel.position,
                 onPositionChange = { viewModel.position = it },
                 onSelectCategory = viewModel::setCategory,
+                onTogglePin = viewModel::togglePin,
                 onQueryChange = viewModel::setQuery,
                 onPlayChannel = onPlayChannel,
                 onPlayArchive = onPlayArchive,
@@ -161,6 +162,7 @@ private fun GuideContent(
     initialPosition: GuidePosition,
     onPositionChange: (GuidePosition) -> Unit,
     onSelectCategory: (String?) -> Unit,
+    onTogglePin: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     onPlayChannel: (PlaybackTarget, String, Boolean) -> Unit,
     onPlayArchive: (PlaybackTarget, String, Long, Long, String) -> Unit,
@@ -369,6 +371,8 @@ private fun GuideContent(
                 categories = state.columnCategories,
                 totalChannels = state.totalChannels,
                 selectedId = state.categoryId,
+                pinnedIds = state.pinnedIds,
+                onTogglePin = onTogglePin,
                 query = state.query,
                 onSelect = { id ->
                     onSelectCategory(id)
