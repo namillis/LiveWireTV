@@ -182,6 +182,7 @@ fun ProvidersScreen(
                     ProviderList(
                         providers = state.providers,
                         activeId = state.activeId,
+                        backupId = state.backupId,
                         firstFocus = firstFocus,
                         onFirstFocusChanged = { firstHasFocus = it },
                         focusFor = ::focusFor,
@@ -203,7 +204,9 @@ fun ProvidersScreen(
                     is ProvidersOverlay.Menu -> ActionMenuOverlay(
                         provider = o.provider,
                         isActive = o.provider.id == state.activeId,
+                        isBackup = o.provider.id == state.backupId,
                         onSetActive = { viewModel.setActive(o.provider.id); closeOverlayTo(ProvidersOverlayRules.close()) },
+                        onToggleBackup = { viewModel.toggleBackup(o.provider.id); closeOverlayTo(ProvidersOverlayRules.close()) },
                         onEdit = { overlay = ProvidersOverlayRules.editFromMenu(o.provider) },
                         onDelete = { overlay = ProvidersOverlayRules.confirmDeleteFromMenu(o.provider) },
                         onBack = { closeOverlayTo(ProvidersOverlayRules.back(o)) },
@@ -263,6 +266,7 @@ private fun rememberClockLabel(): String = remember {
 private fun ProviderList(
     providers: List<ProviderConfig>,
     activeId: String?,
+    backupId: String?,
     firstFocus: FocusRequester,
     onFirstFocusChanged: (Boolean) -> Unit,
     focusFor: (String) -> FocusRequester,
@@ -283,6 +287,7 @@ private fun ProviderList(
             ProviderRow(
                 provider = p,
                 isActive = p.id == activeId,
+                isBackup = p.id == backupId && p.id != activeId,
                 onOpenMenu = { onOpenMenu(p) },
                 modifier = Modifier
                     .focusRequester(fr)
@@ -316,6 +321,7 @@ private fun ProviderRow(
     onOpenMenu: () -> Unit,
     modifier: Modifier = Modifier,
     onFocusChanged: ((Boolean) -> Unit)? = null,
+    isBackup: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     LiveWireSurface(
@@ -348,6 +354,10 @@ private fun ProviderRow(
                     if (isActive) {
                         Spacer(Modifier.width(LiveWireDimens.SpaceS))
                         ActivePill()
+                    }
+                    if (isBackup) {
+                        Spacer(Modifier.width(LiveWireDimens.SpaceS))
+                        StatusPill("BACKUP")
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -394,6 +404,20 @@ private fun ActivePill() {
         Text("✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = LiveWireColors.OnSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
         Text("ACTIVE", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+    }
+}
+
+/** A neutral pill without the check mark, for BACKUP. */
+@Composable
+private fun StatusPill(label: String) {
+    val shape = RoundedCornerShape(50)
+    Box(
+        modifier = Modifier
+            .clip(shape)
+            .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, shape)
+            .padding(horizontal = LiveWireDimens.SpaceS, vertical = 3.dp),
+    ) {
+        Text(label, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurfaceMuted)
     }
 }
 
@@ -532,6 +556,8 @@ private fun ActionMenuOverlay(
     isActive: Boolean,
     onSetActive: () -> Unit,
     onEdit: () -> Unit,
+    isBackup: Boolean = false,
+    onToggleBackup: () -> Unit = {},
     onDelete: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -542,6 +568,11 @@ private fun ActionMenuOverlay(
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
         if (!isActive) {
             MenuItem("Set active", MenuIcon.CHECK_CIRCLE, onClick = onSetActive, modifier = Modifier.focusRequester(first))
+            Spacer(Modifier.height(MenuGap))
+            MenuItem(
+                if (isBackup) "Stop using as backup" else "Use as backup", null, onClick = onToggleBackup,
+                trailing = if (isBackup) null else "when the active one is down",
+            )
             Spacer(Modifier.height(MenuGap))
         }
         MenuItem(

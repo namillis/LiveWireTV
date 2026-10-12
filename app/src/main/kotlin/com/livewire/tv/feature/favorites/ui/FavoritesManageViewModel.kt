@@ -9,7 +9,6 @@ import com.livewire.tv.feature.favorites.data.FavoriteEntry
 import com.livewire.tv.feature.favorites.data.FavoritesLogic
 import com.livewire.tv.feature.favorites.data.FavoritesStore
 import com.livewire.tv.feature.providers.data.ProviderRepository
-import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.providers.domain.ProviderType
@@ -49,7 +48,7 @@ data class FavoritesManageUiState(
  */
 @HiltViewModel
 class FavoritesManageViewModel @Inject constructor(
-    private val storage: ProviderStorage,
+    private val active: com.livewire.tv.feature.providers.data.ActiveProvider,
     private val repository: ProviderRepository,
     private val favorites: FavoritesStore,
     private val epg: EpgRepository,
@@ -65,7 +64,7 @@ class FavoritesManageViewModel @Inject constructor(
     fun load() {
         _state.update { it.copy(loading = true) }
         viewModelScope.launch {
-            val cfg = storage.load().firstOrNull()
+            val cfg = active.current()
             provider = cfg
             if (cfg == null) {
                 _state.update { FavoritesManageUiState(loading = false, headerSummary = "No provider") }

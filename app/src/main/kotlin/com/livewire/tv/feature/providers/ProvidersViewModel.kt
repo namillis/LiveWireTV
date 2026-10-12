@@ -21,6 +21,8 @@ import javax.inject.Inject
 data class ProvidersUiState(
     val providers: List<ProviderConfig> = emptyList(),
     val activeId: String? = null,
+    /** The provider used while the active one is down, if one is marked. */
+    val backupId: String? = null,
     val validating: Boolean = false,
     val formError: String? = null,
 )
@@ -39,7 +41,7 @@ class ProvidersViewModel @Inject constructor(
 
     fun load() {
         val all = storage.load()
-        _state.update { it.copy(providers = all, activeId = all.firstOrNull()?.id) }
+        _state.update { it.copy(providers = all, activeId = all.firstOrNull()?.id, backupId = storage.backupId()) }
     }
 
     /** Validate locally and against the provider, then upsert. Calls [onDone] on success. */
@@ -84,4 +86,10 @@ class ProvidersViewModel @Inject constructor(
     }
 
     fun setActive(id: String) { storage.setActive(id); load() }
+
+    /** Mark [id] as the backup provider, or clear the backup when it already is. */
+    fun toggleBackup(id: String) {
+        storage.setBackup(if (storage.backupId() == id) null else id)
+        load()
+    }
 }

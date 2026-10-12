@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
-import com.livewire.tv.feature.providers.data.ProviderStorage
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
@@ -39,7 +38,7 @@ data class SportsUiState(
 @HiltViewModel
 class SportsViewModel @Inject constructor(
     private val repository: SportsRepository,
-    private val storage: ProviderStorage,
+    private val active: com.livewire.tv.feature.providers.data.ActiveProvider,
     private val client: ProviderRepository,
     private val epg: EpgRepository,
 ) : ViewModel() {
@@ -63,7 +62,7 @@ class SportsViewModel @Inject constructor(
                 // the scoreboard rather than before it. Every channel, not a sample of
                 // categories: this provider lists no sports in its first 8 categories, so the old
                 // first-8 sample held no ESPN, Prime or NHL channel at all.
-                storage.load().firstOrNull()?.let { prov ->
+                active.current()?.let { prov ->
                     provider = prov
                     launch {
                         channels = runCatching { client.liveChannels(prov) }.getOrDefault(emptyList())
