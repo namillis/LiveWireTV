@@ -67,15 +67,14 @@ internal class GuidePreviewPlayer(context: android.content.Context) {
 
     fun play(streamId: String, source: PlaybackSource) {
         playingStreamId = streamId
-        engine.open(source.url, play = true, headers = source.headers)
+        engine.open(source.url, play = true, headers = source.headers, retryUrl = source.retryUrl, onStop = source.onStop)
         engine.exoPlayer.volume = 0f
     }
 
     /** Stops playback and drops the stream, so the provider connection closes now. */
     fun stop() {
         playingStreamId = null
-        engine.exoPlayer.stop()
-        engine.exoPlayer.clearMediaItems()
+        engine.stop()
     }
 
     fun release() = engine.release()

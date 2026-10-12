@@ -58,8 +58,16 @@ interface PlaybackEngine {
     /**
      * Open and (optionally) start a stream. Safe to call again to switch channels.
      * [headers] are sent with every request for this stream (M3U `#EXTVLCOPT`).
+     * [retryUrl], when set, builds the URL for retry number N (see [PlaybackSource.retryUrl]);
+     * [onStop] runs once when this stream stops (another open, [stop] or [release]).
      */
-    fun open(url: String, play: Boolean = true, headers: Map<String, String> = emptyMap())
+    fun open(
+        url: String,
+        play: Boolean = true,
+        headers: Map<String, String> = emptyMap(),
+        retryUrl: ((attempt: Int, refused: Boolean) -> String)? = null,
+        onStop: (() -> Unit)? = null,
+    )
 
     /**
      * Open an ARCHIVE window. [url] plays the archive from [startMs]; [startMs]/[endMs] are the
@@ -76,6 +84,8 @@ interface PlaybackEngine {
         reopen: (targetStartMs: Long) -> String?,
         /** The provider's alternate archive URL form for a start, tried once when [url] 404s. */
         fallback: (targetStartMs: Long) -> String? = { null },
+        /** Runs once when this archive stream stops, like [open]'s onStop. */
+        onStop: (() -> Unit)? = null,
     )
 
     fun play()
@@ -96,6 +106,9 @@ interface PlaybackEngine {
 
     /** Re-open the current media — the primary resilience path for a dropped live stream. */
     fun retry()
+
+    /** Stop and drop the current stream, closing its provider connection now. */
+    fun stop()
 
     /** Release all resources. The engine is unusable afterward. */
     fun release()

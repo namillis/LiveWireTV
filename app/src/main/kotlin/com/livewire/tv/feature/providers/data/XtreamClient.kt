@@ -1,6 +1,7 @@
 package com.livewire.tv.feature.providers.data
 
 import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.feature.providers.domain.PoolSignals
 import com.livewire.tv.feature.providers.domain.ProviderAuthResult
 import com.livewire.tv.feature.providers.domain.ProviderCategory
 import com.livewire.tv.feature.providers.domain.ProviderConfig
@@ -131,12 +132,45 @@ class XtreamClient @Inject constructor(
             }
         }
 
+    /**
+     * The pool extensions this provider supports (see [PoolSignals]), empty for a plain panel.
+     * Null when the check failed on the network, so the caller can try again later. A panel
+     * that doesn't answer within [POOL_CHECK_TIMEOUT_MS] counts as plain, so a slow panel
+     * doesn't hold up every first play.
+     */
+    suspend fun poolFeatures(cfg: ProviderConfig): Set<String>? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url(cfg.playerApiUrl(action = "pool_info")).build()
+            poolHttp.newCall(req).execute().use { resp ->
+                if (resp.code >= 500) null else PoolSignals.parseFeatures(if (resp.isSuccessful) resp.body?.string() else null)
+            }
+        } catch (_: java.io.InterruptedIOException) {
+            emptySet()
+        } catch (_: java.io.IOException) {
+            null
+        }
+    }
+
+    private val poolHttp: OkHttpClient by lazy {
+        http.newBuilder().callTimeout(POOL_CHECK_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS).build()
+    }
+
+    /** Tell the pool playback of [streamId] stopped. Best effort: errors are ignored. */
+    suspend fun poolStop(cfg: ProviderConfig, streamId: String) = withContext(Dispatchers.IO) {
+        runCatching { get(cfg.playerApiUrl(action = "pool_stop", extra = mapOf("stream_id" to streamId))) }
+        Unit
+    }
+
     private fun get(url: String): String? {
         val req = Request.Builder().url(url).build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null
             return resp.body?.string()
         }
+    }
+
+    private companion object {
+        const val POOL_CHECK_TIMEOUT_MS = 3_000L
     }
 }
 
