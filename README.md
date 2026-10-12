@@ -51,6 +51,12 @@ on the device.
   through your favourites only. Reorder or remove them under
   Settings → Favourites. They're saved separately for each provider, on the
   device only.
+- **Home.** Rails run Favourites, Recently watched (the last 8 channels you
+  played), then your pinned categories. To pin a category, hold OK on it in
+  the Guide's category column; hold OK again to unpin it. Up to 6 can be
+  pinned, and they show on Home in the order you pinned them. With nothing
+  pinned, Home shows the provider's first 6 categories. Pins are saved
+  separately for each provider, on the device only.
 - **Search.** Results are grouped into channels, programmes that are on now
   or later, and games. When the field is empty it shows your recent searches
   and the channels you watched last.
