@@ -155,6 +155,14 @@ class XtreamClient @Inject constructor(
         http.newBuilder().callTimeout(POOL_CHECK_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS).build()
     }
 
+    /** The pool's streams for [streamId] (`action=pool_sources`), empty on any error. */
+    suspend fun poolSources(cfg: ProviderConfig, streamId: String): List<com.livewire.tv.feature.providers.domain.PoolSource> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                PoolSignals.parseSources(get(cfg.playerApiUrl(action = "pool_sources", extra = mapOf("stream_id" to streamId))))
+            }.getOrDefault(emptyList())
+        }
+
     /** Tell the pool playback of [streamId] stopped. Best effort: errors are ignored. */
     suspend fun poolStop(cfg: ProviderConfig, streamId: String) = withContext(Dispatchers.IO) {
         runCatching { get(cfg.playerApiUrl(action = "pool_stop", extra = mapOf("stream_id" to streamId))) }

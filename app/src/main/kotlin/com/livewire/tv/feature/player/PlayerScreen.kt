@@ -99,6 +99,7 @@ fun PlayerScreen(
     val source by viewModel.source.collectAsStateWithLifecycle()
     val channels by viewModel.channels.collectAsStateWithLifecycle()
     val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
+    val poolSources by viewModel.poolSources.collectAsStateWithLifecycle()
     val archive by viewModel.archive.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
     val optionsState = rememberOptionsPanelState()
@@ -340,7 +341,14 @@ fun PlayerScreen(
                     if (noRewind) { noRewind = false; reveal(); return@onKeyEvent true }
                     reveal()
                     when (val action = PlayerInput.onKey(panel, playerKey, mode, barFocused)) {
-                        is PlayerAction.OpenPanel -> { panel = action.panel; if (action.panel == PlayerPanel.OPTIONS) optionsState.start(); true }
+                        is PlayerAction.OpenPanel -> {
+                            panel = action.panel
+                            if (action.panel == PlayerPanel.OPTIONS) {
+                                optionsState.start()
+                                viewModel.loadPoolSources()
+                            }
+                            true
+                        }
                         PlayerAction.TogglePlayPause -> {
                             when {
                                 source.error != null -> viewModel.resolve(target, title, fromFavorites)
@@ -499,6 +507,8 @@ fun PlayerScreen(
                     onReload = engine::retry,
                     isFavorite = source.currentStreamId?.let { it in favoriteIds } ?: false,
                     onToggleFavorite = viewModel::toggleCurrentFavorite,
+                    sources = poolSources,
+                    onSelectSource = viewModel::pickPoolSource,
                 )
             }
 

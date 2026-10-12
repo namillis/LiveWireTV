@@ -89,13 +89,23 @@ class ProviderRepository @Inject constructor(
         }.filterNot { ChannelNames.isPlaceholder(it.name) }
 
     /** Resolves the playable source. Returns null when the channel no longer exists. */
-    suspend fun playbackSource(cfg: ProviderConfig, streamId: String, xtreamExt: String): PlaybackSource? =
+    suspend fun playbackSource(
+        cfg: ProviderConfig,
+        streamId: String,
+        xtreamExt: String,
+        /** A [com.livewire.tv.feature.providers.domain.PoolSource.key] the user picked, for a pool provider. */
+        poolSource: String? = null,
+    ): PlaybackSource? =
         when (cfg.type) {
-            ProviderType.XTREAM -> withPoolSignals(cfg, streamId, cfg.liveStreamUrl(streamId, xtreamExt))
+            ProviderType.XTREAM -> withPoolSignals(cfg, streamId, cfg.liveStreamUrl(streamId, xtreamExt), poolSource)
             ProviderType.M3U -> m3u.load(cfg).entriesById[streamId]?.let {
                 PlaybackSource(url = it.url, headers = it.headers)
             }
         }
+
+    /** The pool's streams for [streamId], or empty for a provider that isn't the pool. */
+    suspend fun poolSources(cfg: ProviderConfig, streamId: String): List<com.livewire.tv.feature.providers.domain.PoolSource> =
+        if (PoolSignals.SOURCES in poolFeatures(cfg)) xtream.poolSources(cfg, streamId) else emptyList()
 
     /**
      * The pool extensions [cfg] supports, checked once per app run (see [PoolSignals]). Empty for
@@ -110,12 +120,17 @@ class ProviderRepository @Inject constructor(
         return found
     }
 
-    private suspend fun withPoolSignals(cfg: ProviderConfig, streamId: String, url: String): PlaybackSource {
+    private suspend fun withPoolSignals(cfg: ProviderConfig, streamId: String, url: String, poolSource: String?): PlaybackSource {
         val features = poolFeatures(cfg)
         if (features.isEmpty()) return PlaybackSource(url)
         val retry = PoolSignals.RETRY in features
+        val opening = when {
+            poolSource != null && PoolSignals.SOURCES in features -> PoolSignals.pickedUrl(url, poolSource)
+            retry -> PoolSignals.attemptUrl(url, 0)
+            else -> url
+        }
         return PlaybackSource(
-            url = if (retry) PoolSignals.attemptUrl(url, 0) else url,
+            url = opening,
             retryUrl = if (retry) { attempt, refused -> PoolSignals.attemptUrl(url, attempt, refused) } else null,
             onStop = if (PoolSignals.STOP in features) stopper(cfg, streamId) else null,
         )
