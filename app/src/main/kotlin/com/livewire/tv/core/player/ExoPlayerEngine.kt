@@ -155,6 +155,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     private fun update(state: PlaybackState) {
         if (videoUnsupported) return
         if (state == PlaybackState.PLAYING) connectionRetries = 0
+        watchForStall(state)
         val archive = seekController != null
         // Live streams report an unset/dynamic duration; treat unknown as live — but an
         // ARCHIVE stream is never "live" regardless of what ExoPlayer reports for its duration.
@@ -180,6 +181,8 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         endStream(onStop)
         liveRetryUrl = retryUrl
         liveAttempt = 0
+        livePlayed = false
+        stallPolicy.reset()
         openInternal(url, play, headers, PlaybackMode.Live)
     }
 
@@ -195,6 +198,8 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     ) {
         endStream(onStop)
         liveRetryUrl = null
+        livePlayed = false
+        mainHandler.removeCallbacks(stallCheck)
         fallbackProvider = fallback
         onFallback = false
         seekController = ArchiveSeekController(
@@ -251,6 +256,39 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             build(liveAttempt, refused)
         } ?: url
         openInternal(next, play = true, headers = lastHeaders, mode = PlaybackMode.Live)
+    }
+
+    /** Whether the current live stream has played at all, so a later freeze counts as a stall. */
+    private var livePlayed = false
+    private val stallPolicy = StallPolicy()
+    private val stallCheck = Runnable { onStall() }
+
+    /**
+     * A live stream that played and then sits buffering for [STALL_MS] has frozen. When the
+     * provider takes reported retries (the IPTV provider pool), the next attempt gets a different
+     * source, so switch on our own; elsewhere a reopen would land on the same frozen feed.
+     */
+    private fun watchForStall(state: PlaybackState) {
+        mainHandler.removeCallbacks(stallCheck)
+        if (seekController != null) return
+        if (state == PlaybackState.PLAYING) livePlayed = true
+        if (state == PlaybackState.BUFFERING && livePlayed && liveRetryUrl != null) {
+            mainHandler.postDelayed(stallCheck, STALL_MS)
+        }
+    }
+
+    private fun onStall() {
+        if (seekController != null || liveRetryUrl == null) return
+        if (player.playbackState != Player.STATE_BUFFERING || !player.playWhenReady) return
+        if (stallPolicy.allowSwitch(android.os.SystemClock.elapsedRealtime())) {
+            retryLive(refused = false)
+        } else {
+            player.stop()
+            _status.value = _status.value.copy(
+                state = PlaybackState.ERROR,
+                errorMessage = "This channel keeps freezing. Try again or pick another channel.",
+            )
+        }
     }
 
     private fun responseCode(error: PlaybackException): Int? {
@@ -396,6 +434,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             if (resumeUrl != null) ctrl.onReopenedAt(here)
             openInternal(resumeUrl ?: url, play = true, headers = lastHeaders, mode = PlaybackMode.Archive(ctrl.windowStartMs, ctrl.windowEndMs))
         } else {
+            stallPolicy.reset()
             retryLive(refused = false)
         }
     }
@@ -403,6 +442,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     override fun stop() {
         pendingRetry?.let { mainHandler.removeCallbacks(it) }
         pendingRetry = null
+        mainHandler.removeCallbacks(stallCheck)
         player.stop()
         player.clearMediaItems()
         endStream()
@@ -536,6 +576,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
 
     override fun release() {
         endStream()
+        mainHandler.removeCallbacks(stallCheck)
         mainHandler.removeCallbacks(positionPoll)
         pendingRetry?.let { mainHandler.removeCallbacks(it) }
         pendingSeekRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -548,6 +589,8 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         const val SEEK_DEBOUNCE_MS = 600L
         /** A refused connection is retried this many times, 1.5 s then 3 s apart. */
         const val MAX_CONNECTION_RETRIES = 2
+        /** A live stream that played, then buffers this long, has frozen. */
+        const val STALL_MS = 10_000L
         const val CONNECTION_RETRY_DELAY_MS = 1_500L
         val CONNECTION_REFUSAL_CODES = setOf(401, 403, 429)
     }
