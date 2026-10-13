@@ -80,3 +80,67 @@ fun guideWindowStart(nowMs: Long, leadMinutes: Int = 30): Long {
     val startCandidate = flooredNow - lead
     return (startCandidate / halfHour) * halfHour
 }
+
+/**
+ * How far a programme lane scrolls to bring a newly focused cell into view, or null to use
+ * the platform rule. Positions are pixels in the lane's viewport ([offset] is the cell's
+ * leading edge, negative when it starts left of the viewport).
+ *
+ * On a TV the platform rule puts the focused cell's leading edge 30% into the viewport on
+ * every focus change, even when the cell is already in view. That suits Left/Right
+ * ([stepping]): the programme's title is at its start. It does not suit Up/Down, which land
+ * on the cell airing at the time being browsed: a programme that began earlier dragged the
+ * lane back on each row, so scrolling down a category drifted hours into the past, and the
+ * empty "No programme information" cell, which spans the whole window, jumped a cold-opened
+ * guide to the window start two days back.
+ *
+ * So for Up/Down (and the guide placing focus itself) a cell that is on screen at all keeps
+ * the lane still; for Left/Right only a fully visible cell does. A cell that is entirely off
+ * screen always uses the platform rule.
+ */
+internal fun laneScrollDistance(offset: Float, size: Float, containerSize: Float, stepping: Boolean): Float? {
+    val trailing = offset + size
+    if (offset >= containerSize || trailing <= 0f) return null
+    val fullyVisible = offset >= 0f && trailing <= containerSize
+    return if (fullyVisible || !stepping) 0f else null
+}
+
+/**
+ * Whether a focus change the screen did not request should count as the user moving focus
+ * (which stops the guide from placing focus on the now programme itself). Before the
+ * programmes load every row is a single empty cell, and focus entering it then comes from
+ * the nav drawer handing focus to the screen, not from the user browsing.
+ */
+internal fun isUserFocusMove(programme: EpgProgramme?, programmesLoaded: Boolean): Boolean =
+    programme != null || programmesLoaded
+
+/**
+ * The anchor for a Left/Right move from [focused] to the neighbouring cell in [cells], or
+ * null when there is no neighbour that way (the row's first or last cell, an empty row, or a
+ * programme no longer drawn). The guide moves focus through the anchor, like Up/Down, rather
+ * than leaving it to the platform's focus search: that search only looks at what is on
+ * screen, so from a long programme whose neighbour is scrolled out of view it jumped to the
+ * category column (Left) or did nothing (Right).
+ *
+ * The anchor is the one a Left/Right landing sets ([anchorForCell]) when that resolves to
+ * the neighbour; overlapping listings can make it resolve to the cell before, so the
+ * programme's start and then its midpoint are tried next.
+ */
+internal fun neighbourAnchor(
+    cells: List<LaneCell>,
+    focused: EpgProgramme,
+    forward: Boolean,
+    nowMs: Long,
+    windowStartMs: Long,
+): Long? {
+    val index = cells.indexOfFirst { it.programme == focused }
+    if (index < 0) return null
+    val target = index + if (forward) 1 else -1
+    val programme = cells.getOrNull(target)?.programme ?: return null
+    val candidates = listOfNotNull(
+        anchorForCell(programme, nowMs, windowStartMs),
+        maxOf(programme.startMs, windowStartMs),
+        programme.startMs + (programme.stopMs - programme.startMs) / 2,
+    )
+    return candidates.firstOrNull { cellIndexForAnchor(cells, it) == target }
+}
