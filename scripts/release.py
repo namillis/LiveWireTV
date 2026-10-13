@@ -1,32 +1,35 @@
 #!/usr/bin/env python3
 """Build, sign, verify and publish a LiveWire release on git.namillis.me.
 
-Run from the repo root on an up-to-date, clean `main`:
+Releases normally run in CI: pushing a tag like v0.2.6 starts
+.forgejo/workflows/release.yml, which runs this script on that tag. It also runs
+by hand from the repo root, on a clean checkout of a commit that is on main:
 
-    python3 scripts/release.py 0.2.2 --dry-run
-    python3 scripts/release.py 0.2.2
+    python3 scripts/release.py 0.2.6 --dry-run
+    python3 scripts/release.py 0.2.6
 
 Steps:
-  1. Check that HEAD is origin/main, the worktree is clean, and tag v<version>
-     doesn't exist yet.
+  1. Check that the worktree is clean and HEAD is on origin/main, that tag
+     v<version> either doesn't exist yet or already points at HEAD, and that no
+     release exists for it.
   2. Run unit tests, lint and the release build with versionName <version> and
      versionCode MAJOR*10000 + MINOR*100 + PATCH, signed with the release key.
   3. Check the APK: package com.livewire.tv, the expected version, and the
      release certificate below. A build signed with any other key is refused,
      because it could not update existing installs.
   4. Write dist/livewire-<version>.apk, its .sha256 sidecar and update.json.
-  5. Tag HEAD as v<version>, create a draft Forgejo release with the three
-     files attached, then publish it. --dry-run stops before this step.
+  5. Create a draft Forgejo release for v<version> with the three files
+     attached, then publish it. Publishing creates the tag at HEAD if it doesn't
+     exist yet. --dry-run stops before this step.
 
 Environment:
   LIVEWIRE_KEYSTORE        path to the PKCS12 release keystore (alias "livewire")
   LIVEWIRE_KEYSTORE_PASS   keystore password; or LIVEWIRE_KEYSTORE_PASS_FILE, a
                            file whose "Keystore password:" line holds it
+  FORGEJO_TOKEN            git.namillis.me token with write access to the repo
+                           (CI provides one); not needed for --dry-run
   ANDROID_HOME             Android SDK with build-tools 36.0.0
   JAVA_HOME                JDK 17 or later
-
-Publishing uses the `fj` CLI (forgejo-cli), signed in to git.namillis.me with
-`fj -H git.namillis.me auth login`.
 """
 
 from __future__ import annotations
@@ -35,9 +38,12 @@ import argparse
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -151,24 +157,60 @@ def package(ver: str, code: int) -> list[Path]:
     return [apk, sidecar, manifest]
 
 
-def fj(*args: str) -> None:
-    fj_bin = shutil.which("fj") or str(Path.home() / ".cargo" / "bin" / "fj")
-    subprocess.run([fj_bin, "-H", HOST, *args], check=True, cwd=ROOT, stdin=subprocess.DEVNULL)
+def api(method: str, path: str, body: dict | None = None, data: bytes | None = None,
+        content_type: str = "application/json") -> dict | None:
+    """Call the repo's Forgejo API. A GET that finds nothing returns None; any other error exits."""
+    token = os.environ.get("FORGEJO_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if method != "GET" and not token:
+        die("set FORGEJO_TOKEN to a git.namillis.me token with write access to the repo")
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"token {token}"
+    if body is not None:
+        data = json.dumps(body).encode()
+    if data is not None:
+        headers["Content-Type"] = content_type
+    req = urllib.request.Request(API + path, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            raw = r.read()
+    except urllib.error.HTTPError as e:
+        if method == "GET" and e.code == 404:
+            return None
+        die(f"{method} {path} failed with HTTP {e.code}: {e.read()[:300].decode(errors='replace')}")
+    return json.loads(raw) if raw else {}
+
+
+def upload(release_id: int, path: Path) -> None:
+    boundary = secrets.token_hex(16)
+    head = (f'--{boundary}\r\nContent-Disposition: form-data; name="attachment"; filename="{path.name}"\r\n'
+            "Content-Type: application/octet-stream\r\n\r\n").encode()
+    data = head + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+    api("POST", f"/releases/{release_id}/assets?name={urllib.parse.quote(path.name)}",
+        data=data, content_type=f"multipart/form-data; boundary={boundary}")
+
+
+def tag_commit(tag: str) -> str | None:
+    """The commit tag points at on origin, or None if origin has no such tag."""
+    if not git("ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
+        return None
+    run(["git", "-C", str(ROOT), "fetch", "--quiet", "origin", f"+refs/tags/{tag}:refs/tags/{tag}"])
+    return git("rev-parse", f"refs/tags/{tag}^{{commit}}")
 
 
 def publish(files: list[Path], tag: str, sha: str) -> None:
-    name = f"LiveWire {tag}"
-    attach = [a for f in files for a in ("--attach", str(f))]
-    fj("release", "create", "-r", REPO, "--create-tag", tag, "--branch", sha,
-       "--body", release_notes(tag), "--draft", *attach, name)
-    fj("release", "edit", "-r", REPO, "--draft", "false", name)
-    with urllib.request.urlopen(f"{API}/releases/tags/{tag}", timeout=60) as r:
-        rel = json.load(r)
+    rel = api("POST", "/releases", body={
+        "tag_name": tag, "target_commitish": sha, "name": f"LiveWire {tag}",
+        "body": release_notes(tag), "draft": True, "prerelease": False})
+    for f in files:
+        upload(rel["id"], f)
+    api("PATCH", f"/releases/{rel['id']}", body={"draft": False})
+    rel = api("GET", f"/releases/tags/{tag}") or {}
     names = sorted(a["name"] for a in rel.get("assets", []))
     want = sorted(f.name for f in files)
-    if rel.get("draft") or names != want:
+    if rel.get("draft", True) or names != want:
         die(f"release {tag} is not complete: draft={rel.get('draft')}, assets={names}, expected {want}")
-    tagged = git("ls-remote", "origin", f"refs/tags/{tag}").split()[0]
+    tagged = tag_commit(tag)
     if tagged != sha:
         die(f"tag {tag} points at {tagged}, expected {sha}")
     print(f"release: published {rel['html_url']}")
@@ -188,14 +230,18 @@ def main() -> None:
     if git("status", "--porcelain"):
         die("the worktree has uncommitted changes")
     sha = git("rev-parse", "HEAD")
-    if sha != git("rev-parse", "origin/main"):
+    problems = []
+    if subprocess.run(["git", "-C", str(ROOT), "merge-base", "--is-ancestor", sha, "origin/main"]).returncode:
+        problems.append("HEAD is not on origin/main; release a merged commit")
+    tagged = tag_commit(tag)
+    if tagged and tagged != sha:
+        problems.append(f"tag {tag} already exists on {tagged[:12]}, not HEAD; pick the next version")
+    if api("GET", f"/releases/tags/{tag}"):
+        problems.append(f"a release for {tag} already exists")
+    for problem in problems:
         if not args.dry_run:
-            die("HEAD is not origin/main; check out main and pull first")
-        print("release: note: HEAD is not origin/main, so only a dry run is possible")
-    if git("ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
-        if not args.dry_run:
-            die(f"tag {tag} already exists; pick the next version")
-        print(f"release: note: {tag} already exists, so only a dry run is possible")
+            die(problem)
+        print(f"release: note: {problem}, so only a dry run is possible")
 
     keystore = os.environ.get("LIVEWIRE_KEYSTORE") or die("set LIVEWIRE_KEYSTORE")
     password = secret("LIVEWIRE_KEYSTORE_PASS") or die("set LIVEWIRE_KEYSTORE_PASS or LIVEWIRE_KEYSTORE_PASS_FILE")

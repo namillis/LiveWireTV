@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to dry-run, without the v (builds, signs and checks, publishes nothing)"
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: vm-arm64
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build, sign, check and publish
+        env:
+          KEYSTORE_BASE64: ${{ secrets.LIVEWIRE_KEYSTORE_BASE64 }}
+          LIVEWIRE_KEYSTORE_PASS: ${{ secrets.LIVEWIRE_KEYSTORE_PASS }}
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          DRY_RUN_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          keystore="${RUNNER_TEMP:-/tmp}/livewire-release.p12"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          export LIVEWIRE_KEYSTORE="$keystore"
+          if [ "$EVENT" = push ]; then
+            python3 scripts/release.py "${TAG#v}"
+          else
+            python3 scripts/release.py "$DRY_RUN_VERSION" --dry-run
+          fi
+
+      - name: Show the end of the build log
+        if: failure()
+        run: tail -n 120 dist/build.log || true
