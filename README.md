@@ -39,8 +39,11 @@ on the device.
   - **In the player,** OK pauses live TV, and OK again carries on from where
     you paused, behind live. Up goes back to live. To seek, press Down to
     select the progress bar; while it's selected, Left and Right move back
-    and forward instead of opening the panels. The rewind and fast-forward
-    keys seek too.
+    and forward instead of opening the panels. Each press moves the bar's
+    marker at once, and playback jumps there when you stop pressing (or
+    press OK). Keep pressing or hold the key to go further: the steps grow
+    from 10 s back / 30 s forward up to 10 minutes. The rewind and
+    fast-forward keys seek too.
   - On a channel without an archive, OK pauses and plays as before, and a
     one-time message says the channel can't rewind.
 - **Favourites.** To add one, hold OK on a channel in Home, the Guide or
