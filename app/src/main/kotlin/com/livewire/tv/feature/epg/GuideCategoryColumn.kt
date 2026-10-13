@@ -94,6 +94,8 @@ internal fun GuideCategoryColumn(
     /** Categories pinned to Home; holding OK on a provider category pins or unpins it. */
     pinnedIds: Set<String> = emptySet(),
     onTogglePin: (String) -> Unit = {},
+    /** Lets the grid open the column itself (Left from a row's first cell). */
+    focusRequester: FocusRequester? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var fieldFocused by remember { mutableStateOf(false) }
@@ -123,6 +125,7 @@ internal fun GuideCategoryColumn(
             .background(LiveWireColors.Surface)
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
             .onFocusChanged { expanded = it.hasFocus }
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusProperties {
                 // Arriving from the drawer (moving Right) passes through to the grid; the column
                 // opens only when the user presses Left from the grid.

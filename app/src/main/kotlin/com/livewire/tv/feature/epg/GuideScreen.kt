@@ -2,6 +2,8 @@ package com.livewire.tv.feature.epg
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -192,6 +195,10 @@ private fun GuideContent(
     var focusedStreamId by remember { mutableStateOf(initialPosition.focusedStreamId) }
     // Set just before we move focus ourselves, so the landing cell does not reset the anchor.
     var programmaticMove by remember { mutableStateOf(false) }
+    // How the last guide-driven focus move happened, read by the lanes' bring-into-view.
+    val laneMode = remember { LaneMode() }
+    // The category column, which Left from a row's first cell opens.
+    val columnRequester = remember { FocusRequester() }
 
     // True while a programme cell holds focus; the category column and drawer do not count.
     var gridFocused by remember { mutableStateOf(false) }
@@ -221,14 +228,22 @@ private fun GuideContent(
     }
     DisposableEffect(Unit) { onDispose { savePosition() } }
 
-    /** Focus [rowIndex]'s cell at the anchor, scrolling it into the list first if needed. */
-    fun focusRow(rowIndex: Int): Boolean {
+    /**
+     * Focus [rowIndex]'s cell at the anchor, scrolling it into the list first if needed.
+     * [stepping] is true for a Left/Right move (see [LaneMode]).
+     */
+    fun focusRow(rowIndex: Int, stepping: Boolean = false): Boolean {
         if (rowIndex !in latestRows.indices) return false
+        laneMode.stepping = stepping
         scope.launch {
             val row = latestRows.getOrNull(rowIndex) ?: return@launch
             val visible = listState.layoutInfo.visibleItemsInfo.any { it.index == rowIndex }
             if (!visible) {
                 listState.scrollToItem(rowIndex)
+                withFrameNanos { }
+            } else if (stepping) {
+                // A Left/Right step changed the anchor: let the row recompose so its focus
+                // handle sits on the neighbouring cell before we request focus.
                 withFrameNanos { }
             }
             programmaticMove = true
@@ -247,6 +262,7 @@ private fun GuideContent(
      * after the filtered list recomposes, otherwise focus falls to the nav drawer and opens it.
      */
     fun restoreFocusToStreamId(streamId: String?) {
+        laneMode.stepping = false
         scope.launch {
             repeat(40) {
                 val target = latestRows.indexOfFirst { it.channel.streamId == streamId }
@@ -368,6 +384,7 @@ private fun GuideContent(
 
         Row(Modifier.fillMaxSize()) {
             GuideCategoryColumn(
+                focusRequester = columnRequester,
                 categories = state.columnCategories,
                 totalChannels = state.totalChannels,
                 selectedId = state.categoryId,
@@ -427,6 +444,35 @@ private fun GuideContent(
                                     when (event.key) {
                                         Key.DirectionDown -> { focusRow(current + 1); true }
                                         Key.DirectionUp -> { focusRow(current - 1); true }
+                                        // Left/Right step to the neighbouring programme through
+                                        // the anchor (see [neighbourAnchor]). Left from a row's
+                                        // first cell (or an empty row) opens the category column;
+                                        // the platform's search cannot, because the cell's left
+                                        // edge may be scrolled far off screen.
+                                        Key.DirectionLeft, Key.DirectionRight -> {
+                                            val forward = event.key == Key.DirectionRight
+                                            val row = rows[current]
+                                            val focusedProgramme = focus?.takeIf { it.channel.streamId == focusedStreamId }?.programme
+                                            val target = focusedProgramme?.let {
+                                                neighbourAnchor(
+                                                    cells = laneCells(row.programmes, state.windowStartMs, state.windowSpanMs),
+                                                    focused = it,
+                                                    forward = forward,
+                                                    nowMs = now,
+                                                    windowStartMs = state.windowStartMs,
+                                                )
+                                            }
+                                            when {
+                                                target != null -> {
+                                                    anchorMs = target
+                                                    focusRow(current, stepping = true)
+                                                }
+                                                !forward -> runCatching { columnRequester.requestFocus() }
+                                            }
+                                            // Right past the last cell stays put rather than
+                                            // escaping the grid.
+                                            true
+                                        }
                                         // Rewind / fast-forward (or Page Up/Down) jump the browsed
                                         // time 3 hours, so 2 days of archive is ~16 presses, not ~50
                                         // Lefts. Left/Right keep their normal meaning.
@@ -483,7 +529,7 @@ private fun GuideContent(
                                             // A Left/Right move (or entering from the column):
                                             // the landing cell sets the time being browsed.
                                             anchorForCell(prog, now, state.windowStartMs)?.let { anchorMs = it }
-                                            if (!focusPlaced) userMovedFocus = true
+                                            if (!focusPlaced && isUserFocusMove(prog, state.programmesLoaded)) userMovedFocus = true
                                         }
                                         savePosition()
                                     },
@@ -511,6 +557,7 @@ private fun GuideContent(
                                     },
                                     isFavorite = row.channel.streamId in state.favoriteIds,
                                     onLongClick = { menuChannel = row.channel },
+                                    laneStepping = { laneMode.stepping },
                                 )
                             }
                         }
@@ -879,6 +926,9 @@ private fun androidx.compose.foundation.layout.BoxScope.NowLine(nowMin: Int, scr
     }
 }
 
+// LocalBringIntoViewSpec is still experimental; the lane needs it to stop wide cells
+// scrolling the timeline (see laneScrollDistance).
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun GuideRowView(
     row: GuideRow,
@@ -894,6 +944,7 @@ private fun GuideRowView(
     onClick: (EpgProgramme?) -> Unit,
     isFavorite: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    laneStepping: () -> Boolean = { false },
 ) {
     Row(Modifier.height(ROW_HEIGHT)) {
         // Fixed channel column. Favourites carry a star and archive channels a ⟲ before the name.
@@ -916,7 +967,17 @@ private fun GuideRowView(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        // Programme lane on the shared timeline / scroll.
+        // Programme lane on the shared timeline / scroll. Focusing a cell already in view
+        // does not move the timeline (see [laneScrollDistance]).
+        val platformSpec = LocalBringIntoViewSpec.current
+        val laneSpec = remember(platformSpec) {
+            object : BringIntoViewSpec {
+                override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+                    laneScrollDistance(offset, size, containerSize, stepping = laneStepping())
+                        ?: platformSpec.calculateScrollDistance(offset, size, containerSize)
+            }
+        }
+        CompositionLocalProvider(LocalBringIntoViewSpec provides laneSpec) {
         Row(Modifier.horizontalScroll(hScroll).width(laneWidth)) {
             val cells = laneCells(row.programmes, windowStartMs, windowSpanMs)
             // The cell Up/Down (and a restore) lands on: the one under the anchor time.
@@ -924,6 +985,7 @@ private fun GuideRowView(
             if (cells.isEmpty()) {
                 // A row with no programmes exposes a single empty cell.
                 EmptyCell(
+                    scrollPx = { hScroll.value },
                     widthDp = minutesToDp(spanMinutes),
                     focusRequester = anchorRequester,
                     onFocus = { onFocus(null) },
@@ -952,6 +1014,7 @@ private fun GuideRowView(
                   }
                 }
             }
+        }
         }
     }
 }
@@ -1026,26 +1089,41 @@ private fun ProgrammeCell(
 
 /** Full-width no-programme-information cell for a channel with no guide data (§9.4). Focusable. */
 @Composable
-private fun EmptyCell(widthDp: Dp, focusRequester: FocusRequester?, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+private fun EmptyCell(scrollPx: () -> Int, widthDp: Dp, focusRequester: FocusRequester?, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     LiveWireSurface(
         onClick = onClick,
         onLongClick = onLongClick,
         restingColor = LiveWireColors.SurfaceRaised,
         shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
-        focusedScale = LiveWireDimens.FocusScaleWide,
+        // No focus scale: the cell is the whole window wide (days), so even 2% moved its
+        // on-screen part by hundreds of pixels. The focus border still marks it.
+        focusedScale = 1f,
         modifier = Modifier.width(widthDp).height(ROW_HEIGHT).padding(2.dp)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .androidx_onFocus(onFocus),
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceM), contentAlignment = Alignment.CenterStart) {
+            // The cell spans the whole window, so keep the label at the lane's visible left
+            // edge instead of at the window start, days off screen.
             Text(
                 "No programme information",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LiveWireColors.OnSurfaceMuted,
                 maxLines = 1,
+                modifier = Modifier.offset { IntOffset(scrollPx(), 0) },
             )
         }
     }
+}
+
+/**
+ * Whether the guide's last focus move was a Left/Right step, which may scroll a lane to show
+ * the landing cell's start, or an Up/Down or guide-placed move, which keeps the lane still
+ * (see [laneScrollDistance]). Read during bring-into-view rather than composition, so it is a
+ * plain holder, not state.
+ */
+private class LaneMode {
+    var stepping = false
 }
 
 @Composable
