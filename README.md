@@ -144,8 +144,8 @@ Settings → Manage providers.
 Plain `http://` providers are allowed, because many IPTV servers don't offer
 HTTPS. Traffic to those servers, including your login, is not encrypted.
 
-If channels won't play, try switching Stream format between MPEG-TS and HLS
-in Settings.
+If a channel says its stream couldn't be read, try switching Stream format
+between MPEG-TS and HLS in Settings.
 
 ## Privacy
 
