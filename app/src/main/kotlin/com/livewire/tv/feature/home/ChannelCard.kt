@@ -21,6 +21,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.favorites.ui.FavoriteStar
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.ui.theme.LiveWireColors
@@ -95,7 +96,15 @@ fun ChannelCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(5.dp))
-                if (nowPlaying != null) {
+                if (nowPlaying != null && nowPlaying.endIsEstimate) {
+                    // A Live Now event: its end is a guess, so name the start instead.
+                    Text(
+                        EventTimes.label(nowPlaying, System.currentTimeMillis()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = LiveWireColors.OnSurfaceMuted,
+                        maxLines = 1,
+                    )
+                } else if (nowPlaying != null) {
                     val now = System.currentTimeMillis()
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         LiveWireProgress(nowPlaying.progressAt(now), Modifier.weight(1f))

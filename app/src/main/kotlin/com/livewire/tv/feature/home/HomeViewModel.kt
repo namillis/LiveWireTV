@@ -3,14 +3,17 @@ package com.livewire.tv.feature.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
+import com.livewire.tv.feature.epg.domain.ChannelProgrammes
 import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
+import com.livewire.tv.feature.favorites.data.FavoriteEntry
 import com.livewire.tv.feature.favorites.data.FavoritesLogic
 import com.livewire.tv.feature.favorites.data.FavoritesStore
 import com.livewire.tv.feature.favorites.ui.FavoritesUi
 import com.livewire.tv.feature.home.data.HomeRails
 import com.livewire.tv.feature.home.data.PinnedCategoriesStore
+import com.livewire.tv.feature.providers.data.LiveChannelCache
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.FailoverWatch
 import com.livewire.tv.feature.providers.domain.LiveChannel
@@ -18,6 +21,7 @@ import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderCategory
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.search.data.RecentHistoryStore
+import com.livewire.tv.feature.search.data.WatchedChannel
 import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -109,11 +113,21 @@ class HomeViewModel @Inject constructor(
      */
     private var loadJob: Job? = null
 
+    /** When the rails and [allChannels] were last downloaded, for [refreshIfStale]. */
+    private var railsLoadedAtMs = 0L
+    private var refreshJob: Job? = null
+
+    /** The store's latest favourites and watch history, so a refresh can re-resolve those rails. */
+    private var favoriteEntries: List<FavoriteEntry> = emptyList()
+    private var watched: List<WatchedChannel> = emptyList()
+
     fun load() = startLoad(notice = null)
 
     /** Load Home from the provider [ActiveProvider] picks; [notice] is shown once the rails are up. */
     private fun startLoad(notice: String?) {
         loadJob?.cancel()
+        // A refresh still running for the old load would write its provider's rails back.
+        refreshJob?.cancel()
         _state.update { it.copy(loading = true, error = null, guideLoaded = false) }
         loadJob = viewModelScope.launch {
             val appSettings = settings.settings.first()
@@ -140,6 +154,7 @@ class HomeViewModel @Inject constructor(
                 val message = failover?.let { "${it.primary.name} isn't responding. Using ${it.backup.name}." } ?: notice
                 if (message != null) showProviderNotice(message)
                 allChannels = fullList.await().ifEmpty { categoryRails.flatMap { it.channels }.distinctBy { it.streamId } }
+                railsLoadedAtMs = System.currentTimeMillis()
                 observeFavorites()
                 observeRecent()
                 observePins(cfg, pinned)
@@ -177,6 +192,8 @@ class HomeViewModel @Inject constructor(
         favoriteRail = null
         recentRail = null
         allChannels = emptyList()
+        favoriteEntries = emptyList()
+        railsLoadedAtMs = 0L
         guide = null
         _state.update { it.copy(rails = emptyList(), favoriteIds = emptySet()) }
         startLoad(notice)
@@ -214,16 +231,21 @@ class HomeViewModel @Inject constructor(
         val cfg = provider ?: return
         launch {
             favorites.favorites(cfg.id).collect { entries ->
-                val resolved = FavoritesLogic.resolve(entries, allChannels)
-                // Persist any name-fallback id rewrites so the fast id path hits next time.
-                favorites.applyRematches(cfg.id, resolved)
-                val favChannels = resolved.mapNotNull { it.channel }
-                favoriteRail = favChannels.takeIf { it.isNotEmpty() }?.let {
-                    ChannelRail(FAVORITES_RAIL_ID, "Favourites", it, isFavorites = true)
-                }
+                favoriteEntries = entries
+                rebuildFavoriteRail(cfg)
                 _state.update { it.copy(favoriteIds = entries.map { e -> e.streamId }.toSet()) }
                 publishRails()
             }
+        }
+    }
+
+    private suspend fun rebuildFavoriteRail(cfg: ProviderConfig) {
+        val resolved = FavoritesLogic.resolve(favoriteEntries, allChannels)
+        // Persist any name-fallback id rewrites so the fast id path hits next time.
+        favorites.applyRematches(cfg.id, resolved)
+        val favChannels = resolved.mapNotNull { it.channel }
+        favoriteRail = favChannels.takeIf { it.isNotEmpty() }?.let {
+            ChannelRail(FAVORITES_RAIL_ID, "Favourites", it, isFavorites = true)
         }
     }
 
@@ -231,13 +253,54 @@ class HomeViewModel @Inject constructor(
     private fun CoroutineScope.observeRecent() {
         val cfg = provider ?: return
         launch {
-            history.history.map { it.watched }.distinctUntilChanged().collect { watched ->
-                val channels = HomeRails.recentlyWatched(watched, cfg.id, allChannels)
-                recentRail = channels.takeIf { it.isNotEmpty() }?.let {
-                    ChannelRail(RECENT_RAIL_ID, "Recently watched", it, isRecent = true)
-                }
+            history.history.map { it.watched }.distinctUntilChanged().collect { list ->
+                watched = list
+                rebuildRecentRail(cfg)
                 publishRails()
             }
+        }
+    }
+
+    private fun rebuildRecentRail(cfg: ProviderConfig) {
+        val channels = HomeRails.recentlyWatched(watched, cfg.id, allChannels)
+        recentRail = channels.takeIf { it.isNotEmpty() }?.let {
+            ChannelRail(RECENT_RAIL_ID, "Recently watched", it, isRecent = true)
+        }
+    }
+
+    /**
+     * Download the rails and the full channel list again when they're older than the shared
+     * channel cache ([LiveChannelCache.DEFAULT_TTL_MS]). Home otherwise keeps its first download
+     * for the whole app run, so a pinned Live Now rail would never pick up new games, drop finished
+     * ones or get later event times. The screen keeps showing the old rails while this runs, and
+     * nothing is republished when nothing changed.
+     */
+    fun refreshIfStale(now: Long = System.currentTimeMillis()) {
+        val cfg = provider ?: return
+        if (_state.value.rails.isEmpty() || refreshJob?.isActive == true) return
+        if (now - railsLoadedAtMs < LiveChannelCache.DEFAULT_TTL_MS) return
+        refreshJob = viewModelScope.launch {
+            // A provider switch is load()'s job, not this one's.
+            if (active.current() != cfg) return@launch
+            val fullList = async { runCatching { client.liveChannels(cfg) }.getOrNull().orEmpty() }
+            val pinned = pins.pinned(cfg.id).first()
+            railCache.clear()
+            val rails = runCatching { loadCategoryRails(cfg, pinned) }.getOrNull()
+            val channels = fullList.await()
+            if (rails.isNullOrEmpty() || channels.isEmpty()) {
+                // Leave the old rails up and try again on the next visit.
+                categoryRails.forEach { railCache[it.categoryId] = it }
+                return@launch
+            }
+            railsLoadedAtMs = now
+            val changed = rails != categoryRails || channels != allChannels
+            categoryRails = rails
+            allChannels = channels
+            if (!changed) return@launch
+            rebuildFavoriteRail(cfg)
+            rebuildRecentRail(cfg)
+            publishRails()
+            loadGuide()
         }
     }
 
@@ -285,13 +348,13 @@ class HomeViewModel @Inject constructor(
 
     fun nowPlaying(channel: LiveChannel): EpgProgramme? {
         if (!showNowPlaying) return null
-        return channel.epgChannelId?.let { guide?.nowPlaying(it) }
+        return ChannelProgrammes.now(channel, System.currentTimeMillis(), ChannelProgrammes.from(guide))
     }
 
     /** The programme after the one on now, for the hero band's "UP NEXT" line. */
     fun upNext(channel: LiveChannel): EpgProgramme? {
         if (!showNowPlaying) return null
-        return channel.epgChannelId?.let { guide?.upNext(it) }
+        return ChannelProgrammes.next(channel, System.currentTimeMillis(), ChannelProgrammes.from(guide))
     }
 
     fun playbackTarget(channel: LiveChannel): PlaybackTarget? =
@@ -300,7 +363,7 @@ class HomeViewModel @Inject constructor(
     /** Assemble the Channel info panel model for [channel] from cheap, already-loaded data. */
     fun channelInfoFor(channel: LiveChannel): com.livewire.tv.feature.favorites.ui.ChannelInfoModel {
         val now = System.currentTimeMillis()
-        val programmes = channel.epgChannelId?.let { guide?.programmesFor(it) }.orEmpty()
+        val lookup = ChannelProgrammes.from(guide)
         return com.livewire.tv.feature.favorites.ui.ChannelInfoModel(
             channel = channel,
             providerName = provider?.name.orEmpty(),
@@ -308,8 +371,8 @@ class HomeViewModel @Inject constructor(
                 ?: categoryRails.firstOrNull { r -> r.channels.any { it.streamId == channel.streamId } }?.title,
             formatLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.formatLabel(streamFormat),
             qualityLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.qualityLabel(channel.name),
-            nowPlaying = programmes.firstOrNull { it.airsAt(now) },
-            upNext = programmes.filter { it.startMs > now },
+            nowPlaying = ChannelProgrammes.now(channel, now, lookup),
+            upNext = ChannelProgrammes.later(channel, now, lookup),
             isFavourite = channel.streamId in state.value.favoriteIds,
         )
     }

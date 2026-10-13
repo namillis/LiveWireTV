@@ -53,4 +53,26 @@ class GuideLaneTest {
     @Test fun `programmes outside the window are dropped`() {
         assertTrue(laneCells(listOf(prog(-90, -30), prog(300, 360)), start, span).isEmpty())
     }
+
+    @Test fun `cell starts count the gaps and cells before them`() {
+        val cells = laneCells(listOf(prog(0, 30), prog(60, 90), prog(90, 200)), start, span)
+        assertEquals(listOf(0, 60, 90), cellStartMinutes(cells))
+    }
+
+    @Test fun `text stays put when the cell starts on screen`() {
+        assertEquals(0, stickyTextShift(cellStartPx = 500, scrollPx = 200, textAreaPx = 600, minTextPx = 100))
+    }
+
+    @Test fun `text follows the left edge when the cell starts off screen`() {
+        // A game that began 2 hours before the visible timeline: its title moves into view.
+        assertEquals(300, stickyTextShift(cellStartPx = 0, scrollPx = 300, textAreaPx = 1_000, minTextPx = 100))
+    }
+
+    @Test fun `text keeps a minimum width and then scrolls off with the cell`() {
+        assertEquals(500, stickyTextShift(cellStartPx = 0, scrollPx = 800, textAreaPx = 600, minTextPx = 100))
+    }
+
+    @Test fun `a cell narrower than the minimum never shifts`() {
+        assertEquals(0, stickyTextShift(cellStartPx = 0, scrollPx = 50, textAreaPx = 80, minTextPx = 100))
+    }
 }

@@ -14,6 +14,8 @@ import com.livewire.tv.feature.providers.domain.ProviderType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -71,7 +73,12 @@ class ProviderRepository @Inject constructor(
         // choke point so no screen (Home rails/hero, Guide, Sports picker, Search)
         // ever sees a placeholder as a channel.
         when (cfg.type) {
-            ProviderType.XTREAM -> xtream.liveChannels(cfg, categoryId)
+            // The pool check runs alongside the download, so it adds no wait, and is cached after
+            // its first answer. Events are dropped unless the pool lists event_info.
+            ProviderType.XTREAM -> coroutineScope {
+                val features = async { poolFeatures(cfg) }
+                PoolSignals.withEvents(xtream.liveChannels(cfg, categoryId), features.await())
+            }
             ProviderType.M3U -> m3u.load(cfg).entriesById
                 .filterValues { categoryId == null || it.groupName() == categoryId }
                 .map { (id, entry) ->

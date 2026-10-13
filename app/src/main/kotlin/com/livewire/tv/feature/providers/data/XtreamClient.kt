@@ -95,13 +95,16 @@ class XtreamClient @Inject constructor(
                 val o = el as? JsonObject ?: return@mapNotNull null
                 val archived = o["tv_archive"].str()?.let { it == "1" || it == "1.0" || it.toIntOrNull() == 1 } ?: false
                 val archiveDays = if (archived) o["tv_archive_duration"].str()?.toIntOrNull() ?: 0 else 0
+                val streamId = o["stream_id"].str().orEmpty()
                 LiveChannel(
-                    streamId = o["stream_id"].str().orEmpty(),
+                    streamId = streamId,
                     name = o["name"].str().orEmpty(),
                     logoUrl = o["stream_icon"].str()?.ifBlank { null },
                     epgChannelId = o["epg_channel_id"].str()?.ifBlank { null },
                     categoryId = o["category_id"].str().orEmpty(),
                     archiveDays = archiveDays,
+                    // Kept only for a pool that lists event_info (ProviderRepository applies the gate).
+                    poolEvent = PoolSignals.parseEvent(o["pool_event"], streamId),
                 )
             }
         }

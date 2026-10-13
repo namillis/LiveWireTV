@@ -31,6 +31,7 @@ import com.livewire.tv.core.player.PlaybackStatus
 import com.livewire.tv.core.player.PlayerFormats
 import com.livewire.tv.core.player.VideoFormat
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.home.brandTint
 import com.livewire.tv.feature.home.wordmark
 import com.livewire.tv.ui.theme.LiveWireColors
@@ -243,7 +244,9 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paus
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-        Text("ON NOW", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
+        // A Live Now event shows here before it starts too, so say which it is.
+        val overline = if (EventTimes.isUpcoming(nowPlaying, now)) "UP NEXT" else "ON NOW"
+        Text(overline, style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
         Text(
             nowPlaying.title,
             style = MaterialTheme.typography.headlineSmall,
@@ -270,10 +273,15 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paus
     }
 
     Spacer(Modifier.height(LiveWireDimens.SpaceM))
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-        Text(PlayerFormats.clockMeridiem(nowPlaying.startMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-        LiveWireProgress(nowPlaying.progressAt(now), Modifier.weight(1f), height = 4.dp)
-        Text(PlayerFormats.clockMeridiem(nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+    if (nowPlaying.endIsEstimate) {
+        // The end is the pool's guess: no end clock and no progress bar.
+        Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
+            Text(PlayerFormats.clockMeridiem(nowPlaying.startMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            LiveWireProgress(nowPlaying.progressAt(now), Modifier.weight(1f), height = 4.dp)
+            Text(PlayerFormats.clockMeridiem(nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        }
     }
 
     Spacer(Modifier.height(LiveWireDimens.SpaceM))

@@ -35,6 +35,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.livewire.tv.core.player.PlayerFormats
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireProgress
@@ -220,13 +221,13 @@ private fun ChannelRow(
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    programmeLine(item.nowPlaying),
+                    programmeLine(item.nowPlaying, now),
                     style = MaterialTheme.typography.bodyMedium,
                     color = LiveWireColors.OnSurfaceMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (item.nowPlaying != null) {
+                if (item.nowPlaying != null && !item.nowPlaying.endIsEstimate) {
                     Spacer(Modifier.height(5.dp))
                     LiveWireProgress(item.nowPlaying.progressAt(now), Modifier.fillMaxWidth(), height = 3.dp)
                 }
@@ -300,16 +301,20 @@ private fun KeyHint(key: String, label: String) {
     }
 }
 
-/** The row's programme line: "Hannity · 8:00–9:00 PM", the title alone, or the no-info note. */
-private fun programmeLine(p: EpgProgramme?): String {
+/**
+ * The row's programme line: "Hannity · 8:00–9:00 PM", the title alone, or the no-info note. A Live
+ * Now event names its start instead ("NFL · Week 5 · Starts 8:15 PM"): its end is a guess.
+ */
+private fun programmeLine(p: EpgProgramme?, now: Long): String {
     if (p == null) return "No programme information"
-    val range = PlayerFormats.timeRange(p.startMs, p.stopMs)
+    val range = if (p.endIsEstimate) EventTimes.label(p, now) else PlayerFormats.timeRange(p.startMs, p.stopMs)
     return if (range.isBlank()) p.title else "${p.title} · $range"
 }
 
-/** Preview meta line: "8:00–9:00 PM · News · 36 min left", dropping unknown parts. */
+/** Preview meta line: "8:00–9:00 PM · News · 36 min left", dropping unknown parts; an event shows "Started 8:15 PM · Football". */
 private fun previewMeta(p: EpgProgramme?, now: Long): String {
     if (p == null) return ""
+    if (p.endIsEstimate) return listOf(EventTimes.label(p, now), p.category.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
     return listOf(
         PlayerFormats.timeRange(p.startMs, p.stopMs),
         p.category.orEmpty(),

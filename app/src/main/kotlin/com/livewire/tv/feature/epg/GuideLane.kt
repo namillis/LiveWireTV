@@ -43,3 +43,26 @@ internal fun laneCells(
 
 private fun minutesFrom(originMs: Long, t: Long): Int =
     TimeUnit.MILLISECONDS.toMinutes(t - originMs).toInt()
+
+/** Where each of [cells] starts on its lane, in minutes from the window start (after its gap). */
+internal fun cellStartMinutes(cells: List<LaneCell>): List<Int> {
+    var cursor = 0
+    return cells.map { cell ->
+        val start = cursor + cell.gapMinutes
+        cursor = start + cell.minutes
+        start
+    }
+}
+
+/**
+ * How far a cell's text moves right, in pixels, so it stays readable when the cell starts left
+ * of the visible lane: by the part of the cell scrolled off screen ([scrollPx] - [cellStartPx]),
+ * but never so far that less than [minTextPx] of the cell's [textAreaPx] is left for the text.
+ * Past that point the text scrolls off with the cell. Zero for a cell that starts on screen.
+ *
+ * Without it a cell's title is drawn at the programme's start, off screen, so a programme that
+ * began before the visible part of the timeline looks blank. Live Now games run for hours, so
+ * their rows hit this most.
+ */
+internal fun stickyTextShift(cellStartPx: Int, scrollPx: Int, textAreaPx: Int, minTextPx: Int): Int =
+    (scrollPx - cellStartPx).coerceIn(0, (textAreaPx - minTextPx).coerceAtLeast(0))

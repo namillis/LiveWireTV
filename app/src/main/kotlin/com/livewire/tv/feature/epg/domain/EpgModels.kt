@@ -17,6 +17,13 @@ data class EpgProgramme(
     val title: String,
     val description: String? = null,
     val category: String? = null,
+    /**
+     * True for a pool Live Now event ([com.livewire.tv.feature.providers.domain.LiveChannel.poolEvent]),
+     * whose [stopMs] is often the pool's guess. Screens then show when it starts, never when it
+     * ends: no end time, no "N min left", no progress bar (see [EventTimes]). [stopMs] still
+     * sizes the event's block in the Guide.
+     */
+    val endIsEstimate: Boolean = false,
 ) {
     fun airsAt(t: Long): Boolean = t in startMs until stopMs
 
