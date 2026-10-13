@@ -123,8 +123,9 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
                 }
             }
             // Single-connection providers refuse a new stream for a moment after the old one
-            // closes (a channel switch or a reopen-to-seek), answering 401/403/429. Retry
-            // quietly a couple of times before showing an error.
+            // closes (a channel switch or a reopen-to-seek), answering 401/403/429, and a login
+            // at its connection limit answers 456 (RefusedCodes). Retry quietly a couple of
+            // times before showing an error.
             if (isConnectionRefusal(error) && connectionRetries < MAX_CONNECTION_RETRIES) {
                 connectionRetries++
                 val r = Runnable { if (seekController == null) retryLive(refused = true) else retry() }
@@ -245,8 +246,9 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
     }
 
     /**
-     * Re-open the live stream. [refused] marks the automatic retry after a 401/403/429, which
-     * keeps counting toward [MAX_CONNECTION_RETRIES]; a user retry starts that count again.
+     * Re-open the live stream. [refused] marks the automatic retry after a refusal
+     * ([RefusedCodes]), which keeps counting toward [MAX_CONNECTION_RETRIES]; a user retry
+     * starts that count again.
      */
     private fun retryLive(refused: Boolean) {
         val url = lastUrl ?: return
@@ -300,16 +302,8 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         return null
     }
 
-    private fun isConnectionRefusal(error: PlaybackException): Boolean {
-        var cause: Throwable? = error.cause
-        while (cause != null) {
-            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
-                return cause.responseCode in CONNECTION_REFUSAL_CODES
-            }
-            cause = cause.cause
-        }
-        return false
-    }
+    private fun isConnectionRefusal(error: PlaybackException): Boolean =
+        RefusedCodes.isRefusal(responseCode(error))
 
     private fun openInternal(url: String, play: Boolean, headers: Map<String, String>, mode: PlaybackMode) {
         pendingRetry?.let { mainHandler.removeCallbacks(it) }
@@ -592,6 +586,5 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
         /** A live stream that played, then buffers this long, has frozen. */
         const val STALL_MS = 10_000L
         const val CONNECTION_RETRY_DELAY_MS = 1_500L
-        val CONNECTION_REFUSAL_CODES = setOf(401, 403, 429)
     }
 }

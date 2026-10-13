@@ -38,7 +38,7 @@ object PoolSignals {
 
     /**
      * [url] marked as attempt [attempt] of opening this stream: 0 on open, one more on each retry,
-     * with `why=refused` when the provider answered 401/403/429.
+     * with `why=refused` when the provider refused the connection (401/403/429/456).
      */
     fun attemptUrl(url: String, attempt: Int, refused: Boolean = false): String {
         val sep = if ('?' in url) '&' else '?'
