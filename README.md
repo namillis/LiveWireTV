@@ -229,10 +229,12 @@ playback engine can be added later without changing the screens.
 
 ## Releasing
 
-`scripts/release.py` builds a signed release APK and publishes it as a release
-on git.namillis.me, with a `.sha256` checksum file and `update.json` that the
-in-app updater reads. See [docs/RELEASING.md](docs/RELEASING.md) for the steps,
-version numbering and signing setup.
+Pushing a tag like `v0.2.6` makes Forgejo Actions build a signed release APK
+with `scripts/release.py` and publish it as a release on git.namillis.me, with
+a `.sha256` checksum file and `update.json` that the in-app updater reads. Pull
+requests and pushes to `main` run the unit tests and lint. See
+[docs/RELEASING.md](docs/RELEASING.md) for the steps, version numbering and
+signing setup.
 
 ## Credits
 

@@ -1,10 +1,16 @@
 # Releasing LiveWire
 
-Releases are built and published from a dev machine with
-`scripts/release.py`. It runs the tests and lint, builds a minified release
-APK signed with the release key, checks it, and publishes a release on
+Releases are built and published by Forgejo Actions on git.namillis.me. Pushing
+a tag like `v0.2.6` runs `.forgejo/workflows/release.yml` on a runner on the
+project's VM. It runs `scripts/release.py`, which runs the tests and lint,
+builds a minified release APK signed with the release key, checks it, and
+publishes a release on
 [git.namillis.me](https://git.namillis.me/namillis/LiveWireTV/releases) with
-the APK, its checksum and `update.json` attached.
+the APK, its checksum and `update.json` attached. The same script also runs by
+hand (see [Releasing by hand](#releasing-by-hand)).
+
+Every pull request and every push to `main` runs the unit tests and lint
+(`.forgejo/workflows/ci.yml`).
 
 ## Version numbers
 
@@ -35,29 +41,24 @@ pass.
 
 ## Cutting a release
 
-You need:
+1. Make sure the commit you want to release is merged to `main` and its CI run
+   passed.
 
-- JDK 17 or later as `JAVA_HOME`, and an Android SDK with build-tools 36.0.0 as
-  `ANDROID_HOME`.
-- The release keystore and its password (see [Signing](#signing)).
-- The `fj` CLI ([forgejo-cli](https://codeberg.org/forgejo-contrib/forgejo-cli)),
-  signed in with `fj -H git.namillis.me auth login`.
+2. Optionally dry-run it in CI: on the repo's Actions tab, run the **Release**
+   workflow on `main` with the version, for example `0.2.6`. It builds, signs
+   and checks the APK and prints the release notes, but publishes nothing.
 
-1. Check out `main` and pull, so HEAD matches `origin/main` and the worktree is
-   clean.
-
-2. Dry-run the release. This builds and checks the APK and prints the release
-   notes, but publishes nothing:
+3. Push the tag:
 
    ```bash
-   LIVEWIRE_KEYSTORE=/path/to/livewire-release.p12 \
-   LIVEWIRE_KEYSTORE_PASS_FILE=/path/to/livewire-signing-recovery.txt \
-   python3 scripts/release.py 0.2.3 --dry-run
+   git fetch origin
+   git tag v0.2.6 origin/main
+   git push origin refs/tags/v0.2.6
    ```
 
-3. Run it again without `--dry-run`. The script tags HEAD as `v0.2.3`, creates
-   a draft release with the three files attached, then publishes it and checks
-   that all three assets are there.
+   The Release workflow builds that commit and publishes the release. It takes
+   about 15 minutes. If it fails, the tag stays but no release is published:
+   fix the problem on `main` and release the next patch version.
 
 Never move or re-push an existing tag. If a release is bad, fix it on `main`
 and release the next patch version.
@@ -65,6 +66,31 @@ and release the next patch version.
 The release notes list the commit subjects since the previous tag, without
 their `feat:` / `fix:` prefixes. The in-app update dialog shows them as
 What's new.
+
+## Releasing by hand
+
+If CI is down, the same script runs from a dev machine. You need:
+
+- JDK 17 or later as `JAVA_HOME`, and an Android SDK with build-tools 36.0.0 as
+  `ANDROID_HOME`.
+- The release keystore and its password (see [Signing](#signing)).
+- A git.namillis.me access token with write access to the repo, as
+  `FORGEJO_TOKEN`.
+
+Check out the commit to release (it must be on `main`) with a clean worktree,
+then dry-run and release:
+
+```bash
+LIVEWIRE_KEYSTORE=/path/to/livewire-release.p12 \
+LIVEWIRE_KEYSTORE_PASS_FILE=/path/to/livewire-signing-recovery.txt \
+python3 scripts/release.py 0.2.6 --dry-run
+
+FORGEJO_TOKEN=... LIVEWIRE_KEYSTORE=... LIVEWIRE_KEYSTORE_PASS_FILE=... \
+python3 scripts/release.py 0.2.6
+```
+
+Without an existing tag, the script creates `v0.2.6` at HEAD when it publishes
+the release.
 
 ## Release assets
 
@@ -102,6 +128,11 @@ certificate. It passes the keystore to Gradle only as environment variables
 (`KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), so nothing
 about the key is committed or logged. A release build without those variables
 is left unsigned.
+
+In CI the key comes from two repo secrets: `LIVEWIRE_KEYSTORE_BASE64` (the
+keystore, base64-encoded) and `LIVEWIRE_KEYSTORE_PASS`. The Release workflow
+writes the keystore to a temporary file for the run and deletes it afterwards.
+The secrets are stored encrypted by Forgejo on the same VM as the runner.
 
 **Keep the keystore and its password backed up somewhere safe, outside the
 repo.** Every update must be signed with the same key. If the key is lost or

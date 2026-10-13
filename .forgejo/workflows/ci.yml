@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: vm-arm64
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unit tests and lint
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: ./gradlew --console=plain :app:testDebugUnitTest :app:lintDebug
