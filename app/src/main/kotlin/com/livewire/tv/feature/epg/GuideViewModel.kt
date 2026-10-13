@@ -7,6 +7,7 @@ import com.livewire.tv.feature.home.data.HomeRails
 import com.livewire.tv.feature.home.data.PinnedCategoriesStore
 import com.livewire.tv.feature.catchup.data.ArchiveRepository
 import com.livewire.tv.feature.epg.domain.CatchupGuide
+import com.livewire.tv.feature.epg.domain.ChannelProgrammes
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderRepository
@@ -194,10 +195,13 @@ class GuideViewModel @Inject constructor(
 
                 // Progressive display: show the channel rows immediately (no programmes yet)
                 // and clear the spinner, so the grid is usable while the large guide loads.
+                // A Live Now channel's event needs no guide, so its block shows from the start.
                 _state.update {
                     it.copy(
                         loading = false,
-                        allRows = channels.map { channel -> GuideRow(channel, emptyList()) },
+                        allRows = channels.map { channel ->
+                            GuideRow(channel, ChannelProgrammes.listings(channel) { emptyList() })
+                        },
                         categories = guideCategories,
                         // A filter from a previous provider (or a vanished category) no longer
                         // applies — but the ★ Favourites sentinel is always valid.
@@ -223,7 +227,7 @@ class GuideViewModel @Inject constructor(
                         allRows = channels.map { channel ->
                             GuideRow(
                                 channel = channel,
-                                programmes = channel.epgChannelId?.let(guide::programmesFor) ?: emptyList(),
+                                programmes = ChannelProgrammes.listings(channel, guide::programmesFor),
                             )
                         },
                     )
@@ -406,8 +410,8 @@ class GuideViewModel @Inject constructor(
             categoryLabel = category,
             formatLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.formatLabel(streamFormat),
             qualityLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.qualityLabel(channel.name),
-            nowPlaying = programmes.firstOrNull { it.airsAt(now) },
-            upNext = programmes.filter { it.startMs > now },
+            nowPlaying = ChannelProgrammes.now(channel, now) { programmes },
+            upNext = ChannelProgrammes.later(channel, now) { programmes },
             isFavourite = channel.streamId in _state.value.favoriteIds,
         )
     }

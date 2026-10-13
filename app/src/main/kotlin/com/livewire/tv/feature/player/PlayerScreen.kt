@@ -58,6 +58,7 @@ import com.livewire.tv.core.player.PlaybackMode
 import com.livewire.tv.core.player.PlaybackState
 import com.livewire.tv.core.player.PlayerFormats
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
@@ -608,7 +609,10 @@ private fun OptionsMiniInfo(
             color = LiveWireColors.OnSurface,
             maxLines = 1,
         )
-        if (nowPlaying != null) {
+        if (nowPlaying != null && nowPlaying.endIsEstimate) {
+            Spacer(Modifier.height(LiveWireDimens.SpaceM))
+            Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        } else if (nowPlaying != null) {
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LiveWireProgress(nowPlaying.progressAt(now), Modifier.width(360.dp), height = 4.dp)

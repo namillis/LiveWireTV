@@ -1,7 +1,9 @@
 package com.livewire.tv.feature.providers.domain
 
+import com.livewire.tv.feature.epg.domain.EpgProgramme
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -21,7 +23,42 @@ object PoolSignals {
     /** The pool lists a channel's streams (`action=pool_sources`) and plays a picked one (`source=`). */
     const val SOURCES = "sources"
 
+    /** Live Now channels in `get_live_streams` carry a `pool_event` describing the game ([parseEvent]). */
+    const val EVENT_INFO = "event_info"
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+    /**
+     * A Live Now channel's `pool_event` as a programme on [streamId], or null when it's absent or
+     * malformed (no title, a missing time, or an end not after the start), so the channel falls
+     * back to the guide. Times arrive as Unix seconds. Never throws.
+     */
+    fun parseEvent(element: JsonElement?, streamId: String): EpgProgramme? {
+        val o = element as? JsonObject ?: return null
+        fun str(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull?.trim()?.ifEmpty { null }
+        fun seconds(k: String) = str(k)?.let { it.toLongOrNull() ?: it.toDoubleOrNull()?.toLong() }
+        val title = str("title") ?: return null
+        val start = seconds("start")?.takeIf { it > 0 } ?: return null
+        val end = seconds("end")?.takeIf { it > start } ?: return null
+        return EpgProgramme(
+            channelId = streamId,
+            startMs = start * 1000,
+            stopMs = end * 1000,
+            title = title,
+            description = str("description"),
+            category = str("category"),
+            endIsEstimate = true,
+        )
+    }
+
+    /**
+     * [channels] as the app should use them given the provider's [features]: events are kept only
+     * when the pool advertises [EVENT_INFO], so a plain panel that happens to send a `pool_event`
+     * field never changes what LiveWire shows.
+     */
+    fun withEvents(channels: List<LiveChannel>, features: Set<String>): List<LiveChannel> =
+        if (EVENT_INFO in features || channels.none { it.poolEvent != null }) channels
+        else channels.map { if (it.poolEvent == null) it else it.copy(poolEvent = null) }
 
     /**
      * The features in a `pool_info` response, or an empty set for anything that isn't the pool

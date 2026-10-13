@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
 import com.livewire.tv.feature.catchup.domain.ArchiveUrlBuilder
+import com.livewire.tv.feature.epg.domain.ChannelProgrammes
 import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
@@ -408,7 +409,8 @@ class PlayerViewModel @Inject constructor(
             ChannelListState(
                 categoryName = located.categoryName,
                 items = located.channels.map { ch ->
-                    ChannelListItem(channel = ch, number = channelNumber(ch), nowPlaying = null)
+                    // Event channels need no guide, so they're filled in straight away.
+                    ChannelListItem(channel = ch, number = channelNumber(ch), nowPlaying = ch.poolEvent?.let { nowPlaying(ch) })
                 },
                 playingIndex = located.channels.indexOfFirst { it.streamId == streamId },
             )
@@ -450,14 +452,14 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun nowPlaying(channel: LiveChannel): EpgProgramme? =
-        channel.epgChannelId?.let { guide?.nowPlaying(it) }
+        ChannelProgrammes.now(channel, System.currentTimeMillis(), ChannelProgrammes.from(guide))
 
     /** The programme airing on [channel] at [atMs] — the title for a time-shifted stream. */
     fun programmeAt(channel: LiveChannel, atMs: Long): EpgProgramme? =
-        channel.epgChannelId?.let { guide?.nowPlaying(it, atMs) }
+        ChannelProgrammes.now(channel, atMs, ChannelProgrammes.from(guide))
 
     fun upNext(channel: LiveChannel): EpgProgramme? =
-        channel.epgChannelId?.let { guide?.upNext(it) }
+        ChannelProgrammes.next(channel, System.currentTimeMillis(), ChannelProgrammes.from(guide))
 
     /** The channel currently playing, for the resting overlay's on-now block. */
     fun currentChannel(): LiveChannel? =

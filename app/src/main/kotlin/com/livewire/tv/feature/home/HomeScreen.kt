@@ -80,7 +80,7 @@ fun HomeScreen(
     // The ViewModel lives as long as Home's back-stack entry, so coming back from the player
     // or another section keeps the loaded rails. Reloading on every return showed a spinner
     // with nothing focusable, and focus fell into the nav drawer.
-    LaunchedEffect(Unit) { if (viewModel.state.value.rails.isEmpty()) viewModel.load() }
+    LaunchedEffect(Unit) { if (viewModel.state.value.rails.isEmpty()) viewModel.load() else viewModel.refreshIfStale() }
 
     // On a TV nothing is focused until something asks for it, so the first D-pad press
     // would be spent just landing on the screen. Focus a channel card whenever Home

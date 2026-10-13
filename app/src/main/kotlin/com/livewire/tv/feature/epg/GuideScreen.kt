@@ -63,6 +63,7 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.livewire.tv.feature.epg.domain.CatchupGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.epg.domain.GuidePastCellStyle
 import com.livewire.tv.feature.home.brandTint
 import com.livewire.tv.feature.providers.domain.LiveChannel
@@ -73,6 +74,7 @@ import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.layout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -83,6 +85,8 @@ import kotlinx.coroutines.launch
 private const val PX_PER_MINUTE = 3          // 3dp per minute = 90dp per 30 min (design system §9.4)
 private val ROW_HEIGHT = 48.dp               // §9.4 row height; 7 full rows fit at 1080p
 private val CHANNEL_COL = 120.dp
+/** Narrowest text area a cell keeps when its text follows the lane's left edge (stickyTextShift). */
+private val STICKY_TEXT_MIN = 48.dp
 private val SLOT = (30 * PX_PER_MINUTE).dp   // one 30-minute tick
 private val NOW_LANE = 22.dp
 private val AXIS_HEIGHT = 26.dp
@@ -717,10 +721,11 @@ private fun GuideDetailsBand(
                     )
                     if (prog != null) {
                         Spacer(Modifier.height(2.dp))
-                        val range = "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
+                        // A Live Now event's end is a guess: name its start, which carries its own day.
+                        val range = if (prog.endIsEstimate) EventTimes.label(prog, now) else "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
                         val synopsis = prog.description?.takeIf { it.isNotBlank() }
                         // On an earlier day the clock alone is ambiguous: lead with the day.
-                        val day = dayLabel(prog.startMs, now)
+                        val day = if (prog.endIsEstimate) null else dayLabel(prog.startMs, now)
                         Text(
                             if (day != null) {
                                 "$day $range" + ((synopsis ?: prog.category)?.let { " · $it" } ?: "")
@@ -993,6 +998,7 @@ private fun GuideRowView(
                     onLongClick = onLongClick,
                 )
             } else {
+                val startMinutes = cellStartMinutes(cells)
                 cells.forEachIndexed { cellIndex, cell ->
                   // Keyed by start time: past listings arrive later and are inserted at the front
                   // of the row, and without a key the focused slot would start drawing an
@@ -1003,6 +1009,8 @@ private fun GuideRowView(
                     ProgrammeCell(
                         programme = cell.programme,
                         widthDp = minutesToDp(cell.minutes),
+                        startDp = minutesToDp(startMinutes[cellIndex]),
+                        scrollPx = { hScroll.value },
                         now = now,
                         pastStyle = style,
                         showBadge = CatchupGuide.showArchiveBadge(style, cell.minutes) && row.isArchived(cell.programme),
@@ -1023,6 +1031,8 @@ private fun GuideRowView(
 private fun ProgrammeCell(
     programme: EpgProgramme,
     widthDp: Dp,
+    startDp: Dp,
+    scrollPx: () -> Int,
     now: Long,
     pastStyle: GuidePastCellStyle,
     showBadge: Boolean,
@@ -1049,7 +1059,21 @@ private fun ProgrammeCell(
             .androidx_onFocus(onFocus),
     ) {
         Box(Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceM, vertical = 6.dp)) {
-            Column(Modifier.align(Alignment.CenterStart).fillMaxWidth()) {
+            // Keep the text at the lane's visible left edge when the cell starts off screen
+            // (see stickyTextShift). Read in the layout phase, so scrolling only re-places it.
+            Column(
+                Modifier.align(Alignment.CenterStart).fillMaxWidth().layout { measurable, constraints ->
+                    val shift = stickyTextShift(
+                        cellStartPx = startDp.roundToPx(),
+                        scrollPx = scrollPx(),
+                        textAreaPx = constraints.maxWidth,
+                        minTextPx = STICKY_TEXT_MIN.roundToPx(),
+                    )
+                    val width = constraints.maxWidth - shift
+                    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                    layout(constraints.maxWidth, placeable.height) { placeable.place(shift, 0) }
+                },
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         programme.title,
@@ -1067,14 +1091,16 @@ private fun ProgrammeCell(
                     }
                 }
                 Text(
-                    "${clockLabel(programme.startMs)} – ${clockLabel(programme.stopMs)}",
+                    if (programme.endIsEstimate) EventTimes.label(programme, now)
+                    else "${clockLabel(programme.startMs)} – ${clockLabel(programme.stopMs)}",
                     style = MaterialTheme.typography.labelMedium,
                     color = LiveWireColors.OnSurfaceMuted.copy(alpha = contentAlpha),
                     maxLines = 1,
                 )
             }
             // On-now cells carry a thin grey progress strip along the bottom (never amber/red).
-            if (onNow) {
+            // A Live Now event has none: its end, and so its progress, is a guess.
+            if (onNow && !programme.endIsEstimate) {
                 Box(
                     Modifier
                         .align(Alignment.BottomStart)

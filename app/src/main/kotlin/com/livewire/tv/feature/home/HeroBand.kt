@@ -30,6 +30,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
@@ -156,7 +157,17 @@ private fun HeroBody(content: HeroContent, now: Long, modifier: Modifier) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (nowPlaying != null) {
+        if (nowPlaying != null && nowPlaying.endIsEstimate) {
+            // A Live Now event: its end is a guess, so name the start (and sport) instead.
+            Spacer(Modifier.height(8.dp))
+            Text(
+                listOfNotNull(EventTimes.label(nowPlaying, now), nowPlaying.category).joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = LiveWireColors.OnSurfaceMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else if (nowPlaying != null) {
             Spacer(Modifier.height(8.dp))
             LiveWireProgress(nowPlaying.progressAt(now), Modifier.fillMaxWidth(0.62f), height = 4.dp)
             Spacer(Modifier.height(6.dp))

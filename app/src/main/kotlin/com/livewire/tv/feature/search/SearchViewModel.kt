@@ -3,12 +3,14 @@ package com.livewire.tv.feature.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
+import com.livewire.tv.feature.epg.domain.ChannelProgrammes
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderConfig
+import com.livewire.tv.feature.search.domain.ProgrammeChannels
 import com.livewire.tv.feature.search.domain.SearchIndex
 import com.livewire.tv.feature.search.domain.SearchResult
 import com.livewire.tv.feature.search.data.RecentHistoryLogic
@@ -191,10 +193,7 @@ class SearchViewModel @Inject constructor(
      *  results and the "Jump back in" rail are live before the guide/sports arrive. */
     private fun publishChannels(loadedChannels: List<LiveChannel>) {
         channels = loadedChannels
-        // First channel wins a duplicate EPG id, matching the ranked order the index uses.
-        channelByEpgId = loadedChannels
-            .filter { !it.epgChannelId.isNullOrBlank() }
-            .associateByTo(HashMap()) { it.epgChannelId!! }
+        channelByEpgId = ProgrammeChannels.byGuideId(loadedChannels)
         // First channel wins a duplicate stream id (they should be unique per provider).
         channelByStreamId = loadedChannels.associateBy { it.streamId }
         rebuildIndex()
@@ -281,23 +280,21 @@ class SearchViewModel @Inject constructor(
     /** Assemble the Channel info panel model for [channel] from the loaded corpus. */
     fun channelInfoFor(channel: LiveChannel): com.livewire.tv.feature.favorites.ui.ChannelInfoModel {
         val now = System.currentTimeMillis()
-        val programmes = channel.epgChannelId?.let { programmesByEpgId[it] }.orEmpty().sortedBy { it.startMs }
+        val lookup: (String) -> List<EpgProgramme> = { id -> programmesByEpgId[id].orEmpty() }
         return com.livewire.tv.feature.favorites.ui.ChannelInfoModel(
             channel = channel,
             providerName = provider?.name.orEmpty(),
             categoryLabel = null,
             formatLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.formatLabel(streamFormat),
             qualityLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.qualityLabel(channel.name),
-            nowPlaying = programmes.firstOrNull { it.airsAt(now) },
-            upNext = programmes.filter { it.startMs > now },
+            nowPlaying = ChannelProgrammes.now(channel, now, lookup),
+            upNext = ChannelProgrammes.later(channel, now, lookup),
             isFavourite = channel.streamId in _favoriteIds.value,
         )
     }
     /** What's on now on [channel] (for the CHANNELS rail card's "N min left"), or null. */
-    fun nowPlaying(channel: LiveChannel, now: Long = System.currentTimeMillis()): EpgProgramme? {
-        val id = channel.epgChannelId ?: return null
-        return programmesByEpgId[id]?.firstOrNull { it.airsAt(now) }
-    }
+    fun nowPlaying(channel: LiveChannel, now: Long = System.currentTimeMillis()): EpgProgramme? =
+        ChannelProgrammes.now(channel, now) { id -> programmesByEpgId[id].orEmpty() }
 
     /** The live channel a guide programme airs on, resolved by EPG id, or null. */
     fun channelForProgramme(programme: EpgProgramme): LiveChannel? = channelByEpgId[programme.channelId]

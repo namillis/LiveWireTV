@@ -42,6 +42,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.livewire.tv.R
 import com.livewire.tv.feature.epg.domain.EpgProgramme
+import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.home.wordmark
 import com.livewire.tv.feature.player.PlayerFlatRow
 import com.livewire.tv.feature.providers.domain.LiveChannel
@@ -212,22 +213,26 @@ private fun Chip(label: String, value: String) {
 private fun NowAndNext(model: ChannelInfoModel, now: Long) {
     val prog = model.nowPlaying ?: return
     Column(Modifier.fillMaxWidth()) {
-        Text("ON NOW", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+        // A Live Now event shows here before it starts too, so say which it is.
+        Text(if (EventTimes.isUpcoming(prog, now)) "UP NEXT" else "ON NOW", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
         Text(prog.title, style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(2.dp))
         Text(
-            progRange(prog),
+            progRange(prog, now),
             style = MaterialTheme.typography.bodyMedium,
             color = LiveWireColors.OnSurfaceMuted,
             maxLines = 1,
         )
-        Spacer(Modifier.height(LiveWireDimens.SpaceS))
-        LiveWireProgress(prog.progressAt(now), Modifier.fillMaxWidth(), height = 4.dp)
-        Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-        Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-            Text(elapsedLabel(prog, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-            Text(leftLabel(prog, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+        // An event's end is the pool's guess: no progress bar, elapsed or minutes left.
+        if (!prog.endIsEstimate) {
+            Spacer(Modifier.height(LiveWireDimens.SpaceS))
+            LiveWireProgress(prog.progressAt(now), Modifier.fillMaxWidth(), height = 4.dp)
+            Spacer(Modifier.height(LiveWireDimens.SpaceXs))
+            Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
+                Text(elapsedLabel(prog, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text(leftLabel(prog, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+            }
         }
 
         if (model.upNext.isNotEmpty()) {
@@ -336,8 +341,8 @@ private fun Hint(keys: String, label: String) {
     }
 }
 
-private fun progRange(p: EpgProgramme): String {
-    val range = "${clock(p.startMs)} – ${clock(p.stopMs)}"
+private fun progRange(p: EpgProgramme, now: Long): String {
+    val range = if (p.endIsEstimate) EventTimes.label(p, now) else "${clock(p.startMs)} – ${clock(p.stopMs)}"
     return p.category?.takeIf { it.isNotBlank() }?.let { "$range · $it" } ?: range
 }
 

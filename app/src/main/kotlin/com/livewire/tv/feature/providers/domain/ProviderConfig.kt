@@ -1,6 +1,8 @@
 package com.livewire.tv.feature.providers.domain
 
+import com.livewire.tv.feature.epg.domain.EpgProgramme
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /** How LiveWire talks to a provider. Serialized, so never rename existing values. */
 @Serializable
@@ -127,6 +129,11 @@ private fun String.pathSegmentEncode(): String = urlEncode()
  * [catchup] is the M3U-only recipe for building an archive URL (Xtream builds its
  * archive URL from the panel path, so it needs no per-channel spec). New fields carry
  * defaults so channel data cached by older builds still decodes.
+ *
+ * [poolEvent] is the game a pool Live Now channel carries (`pool_event`, see
+ * [PoolSignals.parseEvent]), shown instead of the guide for [epgChannelId], which belongs to the
+ * real channel airing the game. Null for every other channel. Transient: it goes stale within
+ * minutes, so it is never written anywhere.
  */
 @Serializable
 data class LiveChannel(
@@ -137,6 +144,7 @@ data class LiveChannel(
     val categoryId: String,
     val archiveDays: Int = 0,
     val catchup: CatchupSpec? = null,
+    @Transient val poolEvent: EpgProgramme? = null,
 ) {
     /** True when this channel offers any catch-up window. */
     val hasArchive: Boolean get() = archiveDays > 0

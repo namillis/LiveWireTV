@@ -3,6 +3,7 @@ package com.livewire.tv.feature.favorites.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.livewire.tv.feature.epg.data.EpgRepository
+import com.livewire.tv.feature.epg.domain.ChannelProgrammes
 import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.favorites.data.FavoriteEntry
@@ -91,7 +92,9 @@ class FavoritesManageViewModel @Inject constructor(
                         entry = r.entry,
                         displayNumber = index + 1,
                         unavailable = r.unavailable,
-                        nowPlayingTitle = r.channel?.epgChannelId?.let { guide?.nowPlaying(it)?.title },
+                        nowPlayingTitle = r.channel?.let {
+                            ChannelProgrammes.now(it, System.currentTimeMillis(), ChannelProgrammes.from(guide))?.title
+                        },
                     )
                 }
                 _state.update {
