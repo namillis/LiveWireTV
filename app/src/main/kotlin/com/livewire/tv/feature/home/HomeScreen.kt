@@ -295,6 +295,8 @@ fun HomeScreen(
             token = state.confirmation.token,
             message = state.confirmation.message,
             suppressed = infoChannel != null,
+            holdMs = state.confirmation.holdMs,
+            showStar = state.confirmation.showStar,
         )
 
         // A small neutral "Updated to X" note after a successful self-update, shown once for a

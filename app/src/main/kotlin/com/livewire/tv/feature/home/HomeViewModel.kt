@@ -12,6 +12,7 @@ import com.livewire.tv.feature.favorites.ui.FavoritesUi
 import com.livewire.tv.feature.home.data.HomeRails
 import com.livewire.tv.feature.home.data.PinnedCategoriesStore
 import com.livewire.tv.feature.providers.data.ProviderRepository
+import com.livewire.tv.feature.providers.domain.FailoverWatch
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.providers.domain.ProviderCategory
@@ -19,6 +20,9 @@ import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.search.data.RecentHistoryStore
 import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,8 +44,17 @@ data class ChannelRail(
     val isRecent: Boolean = false,
 )
 
-/** A brief add/remove confirmation for the top-right toast; [token] increases on each toggle. */
-data class FavoriteConfirmation(val token: Int = 0, val message: String = "")
+/**
+ * A brief confirmation for the top-right toast; [token] increases on each one. It stays up for
+ * [holdMs]: 2 s for a favourite add/remove, longer for a provider switch the user didn't trigger.
+ * A provider switch shows no favourites star ([showStar]).
+ */
+data class FavoriteConfirmation(
+    val token: Int = 0,
+    val message: String = "",
+    val holdMs: Long = 2_000L,
+    val showStar: Boolean = true,
+)
 
 data class HomeUiState(
     val loading: Boolean = true,
@@ -90,9 +103,19 @@ class HomeViewModel @Inject constructor(
     /** Loaded category rails by category id, so a pin change only fetches the new ones. */
     private val railCache = HashMap<String, ChannelRail?>()
 
-    fun load() {
+    /**
+     * The current load and everything it started (rail observers, the backup watch). Cancelled
+     * when Home moves to another provider, so the old provider's flows stop writing the rails.
+     */
+    private var loadJob: Job? = null
+
+    fun load() = startLoad(notice = null)
+
+    /** Load Home from the provider [ActiveProvider] picks; [notice] is shown once the rails are up. */
+    private fun startLoad(notice: String?) {
+        loadJob?.cancel()
         _state.update { it.copy(loading = true, error = null, guideLoaded = false) }
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             val appSettings = settings.settings.first()
             showNowPlaying = appSettings.showNowPlayingOnCards
             streamFormat = appSettings.streamFormat
@@ -102,12 +125,7 @@ class HomeViewModel @Inject constructor(
                 _state.update { it.copy(loading = false, error = "No provider configured") }
                 return@launch
             }
-            active.activeFailover?.let { f ->
-                confirmToken += 1
-                _state.update {
-                    it.copy(confirmation = FavoriteConfirmation(confirmToken, "${f.primary.name} isn't responding. Using ${f.backup.name}."))
-                }
-            }
+            val failover = active.activeFailover
             provider = cfg
             try {
                 // Favourites and recents can sit in any category, so resolve them against every
@@ -118,11 +136,17 @@ class HomeViewModel @Inject constructor(
                 val pinned = pins.pinned(cfg.id).first()
                 categoryRails = loadCategoryRails(cfg, pinned)
                 publishRails()
+                // Raised only now: while the spinner shows, the toast would fade before Home appears.
+                val message = failover?.let { "${it.primary.name} isn't responding. Using ${it.backup.name}." } ?: notice
+                if (message != null) showProviderNotice(message)
                 allChannels = fullList.await().ifEmpty { categoryRails.flatMap { it.channels }.distinctBy { it.streamId } }
                 observeFavorites()
                 observeRecent()
                 observePins(cfg, pinned)
+                if (failover != null) watchForRecovery(cfg, failover.primary)
                 loadGuide()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 active.recheck()
                 _state.update {
@@ -130,6 +154,37 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * While Home shows the backup, ask every [FailoverWatch.POLL_MS] whether the main provider is
+     * back, and reload Home on it when it is. Without this Home stays on the backup until the app
+     * restarts, because it loads its provider once.
+     */
+    private fun CoroutineScope.watchForRecovery(backup: ProviderConfig, primary: ProviderConfig) {
+        launch {
+            val next = FailoverWatch.awaitChange(backup) { active.current() }
+            // Something else can also end the failover (the user changed providers in Settings).
+            switchProvider(notice = if (next?.id == primary.id) "${primary.name} is back." else null)
+        }
+    }
+
+    /** Drop everything loaded from the old provider and load Home again. */
+    private fun switchProvider(notice: String?) {
+        railCache.clear()
+        categories = emptyList()
+        categoryRails = emptyList()
+        favoriteRail = null
+        recentRail = null
+        allChannels = emptyList()
+        guide = null
+        _state.update { it.copy(rails = emptyList(), favoriteIds = emptySet()) }
+        startLoad(notice)
+    }
+
+    private fun showProviderNotice(message: String) {
+        confirmToken += 1
+        _state.update { it.copy(confirmation = FavoriteConfirmation(confirmToken, message, PROVIDER_NOTICE_MS, showStar = false)) }
     }
 
     private suspend fun loadCategoryRails(cfg: ProviderConfig, pinned: List<String>): List<ChannelRail> =
@@ -141,8 +196,8 @@ class HomeViewModel @Inject constructor(
         }
 
     /** Rebuild the category rails when the pins change (from the Guide's category column). */
-    private fun observePins(cfg: ProviderConfig, initial: List<String>) {
-        viewModelScope.launch {
+    private fun CoroutineScope.observePins(cfg: ProviderConfig, initial: List<String>) {
+        launch {
             var last = initial
             pins.pinned(cfg.id).collect { pinned ->
                 if (pinned == last) return@collect
@@ -155,9 +210,9 @@ class HomeViewModel @Inject constructor(
     }
 
     /** Keep the favourites rail, the id set and the stored M3U rematches in sync with the store. */
-    private fun observeFavorites() {
+    private fun CoroutineScope.observeFavorites() {
         val cfg = provider ?: return
-        viewModelScope.launch {
+        launch {
             favorites.favorites(cfg.id).collect { entries ->
                 val resolved = FavoritesLogic.resolve(entries, allChannels)
                 // Persist any name-fallback id rewrites so the fast id path hits next time.
@@ -173,9 +228,9 @@ class HomeViewModel @Inject constructor(
     }
 
     /** Keep the Recently watched rail in step with what the player records. */
-    private fun observeRecent() {
+    private fun CoroutineScope.observeRecent() {
         val cfg = provider ?: return
-        viewModelScope.launch {
+        launch {
             history.history.map { it.watched }.distinctUntilChanged().collect { watched ->
                 val channels = HomeRails.recentlyWatched(watched, cfg.id, allChannels)
                 recentRail = channels.takeIf { it.isNotEmpty() }?.let {
@@ -262,5 +317,8 @@ class HomeViewModel @Inject constructor(
     private companion object {
         const val FAVORITES_RAIL_ID = "\u0000favorites"
         const val RECENT_RAIL_ID = "\u0000recent"
+
+        /** How long the "isn't responding" and "is back" notices stay on screen. */
+        const val PROVIDER_NOTICE_MS = 6_000L
     }
 }
