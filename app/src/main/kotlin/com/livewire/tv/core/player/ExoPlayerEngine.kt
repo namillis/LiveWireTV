@@ -135,7 +135,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             }
             _status.value = _status.value.copy(
                 state = PlaybackState.ERROR,
-                errorMessage = "Playback failed. Check the stream format and try again.",
+                errorMessage = PlaybackErrors.messageFor(responseCode(error), error.errorCode, archive = ctrl != null),
             )
         }
     }

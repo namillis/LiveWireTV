@@ -632,7 +632,12 @@ private fun OptionsMiniInfo(
 private fun SafeErrorOverlay(message: String, onRetry: () -> Unit) {
     Box(contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(message, color = Color(0xFFFF6E6E))
+            Text(
+                message,
+                color = Color(0xFFFF6E6E),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.widthIn(max = 720.dp),
+            )
             Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
                 Text("Retry")
             }
