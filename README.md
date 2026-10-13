@@ -72,7 +72,8 @@ on the device.
   choose Use as backup. When the active provider is Xtream and doesn't
   answer a login within 6 seconds, Home, the Guide, Search and Sports use the
   backup instead, and Home says so. LiveWire checks the active provider again
-  every 2 minutes while it's down and switches back once it answers.
+  every 2 minutes while it's down and switches back once it answers, with a
+  short note on Home when it does.
   Favourites, pins and recents are saved per provider, so the backup shows its
   own.
 - **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,

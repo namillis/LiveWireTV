@@ -48,12 +48,16 @@ fun FavoriteToastHost(
     // True while a surface that already confirms the change (the Channel info panel's
     // Favourite/Favourited button) covers the toast's corner; the toast would sit on its title.
     suppressed: Boolean = false,
+    // How long the toast stays before fading. Longer for a notice the user didn't trigger.
+    holdMs: Long = 2_000L,
+    // The star belongs to favourite changes; other notices (a provider switch) go without it.
+    showStar: Boolean = true,
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(token) {
         if (token <= 0) return@LaunchedEffect
         visible = true
-        delay(2_000)
+        delay(holdMs)
         visible = false
     }
 
@@ -76,12 +80,14 @@ fun FavoriteToastHost(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_fav_star_outline),
-                    contentDescription = null,
-                    tint = LiveWireColors.OnSurfaceMuted,
-                    modifier = Modifier.size(14.dp),
-                )
+                if (showStar) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_fav_star_outline),
+                        contentDescription = null,
+                        tint = LiveWireColors.OnSurfaceMuted,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
                 Text(
                     message,
                     style = MaterialTheme.typography.labelMedium,
