@@ -21,9 +21,10 @@ enum class PlayerMode { LIVE, ARCHIVE, PAUSED_LIVE }
 /**
  * The D-pad key set the player reducer understands. Mapped from Android key codes at the
  * Compose edge so [PlayerInput] itself has no Android dependency and stays unit-testable.
- * Media transport keys fold into [SEEK_BACK]/[SEEK_FORWARD]/[CENTER] at the edge.
+ * [CENTER] is the D-pad OK key; [PLAY_PAUSE] is a remote's dedicated play/pause key, which acts
+ * like OK but never needs the overlay up first.
  */
-enum class PlayerKey { UP, DOWN, LEFT, RIGHT, CENTER, BACK, MEDIA_REW, MEDIA_FF }
+enum class PlayerKey { UP, DOWN, LEFT, RIGHT, CENTER, PLAY_PAUSE, BACK, MEDIA_REW, MEDIA_FF }
 
 /**
  * What the player screen should DO in response to a key, decided purely from the current
@@ -92,6 +93,8 @@ sealed interface PlayerAction {
  *
  * Contract, no panel open (resting overlay):
  * - LIVE: LEFT→Channels, RIGHT→Options, UP/DOWN→channel ±, CENTER→play/pause, BACK→exit.
+ * - Any mode, overlay auto-hidden: CENTER only brings the overlay back; the next CENTER pauses.
+ *   PLAY_PAUSE (a remote's own play/pause key) acts like CENTER without that first step.
  * - ARCHIVE / PAUSED_LIVE, bar NOT focused: LEFT→Channels, RIGHT→Options (unchanged),
  *   UP→Go live, DOWN→focus the scrub bar, CENTER→play/pause (Resume in PAUSED_LIVE),
  *   BACK→exit. MEDIA_REW/FF→seek.
@@ -106,18 +109,28 @@ sealed interface PlayerAction {
  */
 object PlayerInput {
 
+    /**
+     * [overlayVisible] is false when the resting overlay has auto-hidden over a playing stream.
+     * Then OK only brings the overlay back ([PlayerAction.Handled]); a second OK pauses. The
+     * dedicated play/pause key still acts at once.
+     */
     fun onKey(
         panel: PlayerPanel,
         key: PlayerKey,
         mode: PlayerMode = PlayerMode.LIVE,
         barFocused: Boolean = false,
-    ): PlayerAction = when (panel) {
-        PlayerPanel.OPTIONS -> panelKey(key, closeOn = PlayerKey.LEFT)
-        PlayerPanel.CHANNELS -> panelKey(key, closeOn = PlayerKey.RIGHT)
-        PlayerPanel.NONE -> when (mode) {
-            PlayerMode.LIVE -> liveKey(key)
-            PlayerMode.ARCHIVE, PlayerMode.PAUSED_LIVE ->
-                if (barFocused) barFocusedKey(key, mode) else archiveRestingKey(key, mode)
+        overlayVisible: Boolean = true,
+    ): PlayerAction {
+        if (key == PlayerKey.CENTER && !overlayVisible && panel == PlayerPanel.NONE) return PlayerAction.Handled
+        val k = if (key == PlayerKey.PLAY_PAUSE) PlayerKey.CENTER else key
+        return when (panel) {
+            PlayerPanel.OPTIONS -> panelKey(k, closeOn = PlayerKey.LEFT)
+            PlayerPanel.CHANNELS -> panelKey(k, closeOn = PlayerKey.RIGHT)
+            PlayerPanel.NONE -> when (mode) {
+                PlayerMode.LIVE -> liveKey(k)
+                PlayerMode.ARCHIVE, PlayerMode.PAUSED_LIVE ->
+                    if (barFocused) barFocusedKey(k, mode) else archiveRestingKey(k, mode)
+            }
         }
     }
 
@@ -127,7 +140,7 @@ object PlayerInput {
         PlayerKey.RIGHT -> PlayerAction.OpenPanel(PlayerPanel.OPTIONS)
         PlayerKey.UP -> PlayerAction.ChannelUp
         PlayerKey.DOWN -> PlayerAction.ChannelDown
-        PlayerKey.CENTER -> PlayerAction.TogglePlayPause
+        PlayerKey.CENTER, PlayerKey.PLAY_PAUSE -> PlayerAction.TogglePlayPause
         PlayerKey.BACK -> PlayerAction.Exit
         // No live-edge seek buffer, so transport keys are inert on a live channel.
         PlayerKey.MEDIA_REW, PlayerKey.MEDIA_FF -> PlayerAction.Ignored
@@ -139,7 +152,8 @@ object PlayerInput {
         PlayerKey.RIGHT -> PlayerAction.OpenPanel(PlayerPanel.OPTIONS)
         PlayerKey.UP -> PlayerAction.GoLive
         PlayerKey.DOWN -> PlayerAction.FocusScrubBar
-        PlayerKey.CENTER -> if (mode == PlayerMode.PAUSED_LIVE) PlayerAction.Resume else PlayerAction.TogglePlayPause
+        PlayerKey.CENTER, PlayerKey.PLAY_PAUSE ->
+            if (mode == PlayerMode.PAUSED_LIVE) PlayerAction.Resume else PlayerAction.TogglePlayPause
         PlayerKey.BACK -> PlayerAction.Exit
         PlayerKey.MEDIA_REW -> PlayerAction.SeekBack
         PlayerKey.MEDIA_FF -> PlayerAction.SeekForward
@@ -151,7 +165,8 @@ object PlayerInput {
         PlayerKey.RIGHT, PlayerKey.MEDIA_FF -> PlayerAction.SeekForward
         PlayerKey.UP -> PlayerAction.GoLive
         PlayerKey.DOWN, PlayerKey.BACK -> PlayerAction.ReleaseScrubBar
-        PlayerKey.CENTER -> if (mode == PlayerMode.PAUSED_LIVE) PlayerAction.Resume else PlayerAction.TogglePlayPause
+        PlayerKey.CENTER, PlayerKey.PLAY_PAUSE ->
+            if (mode == PlayerMode.PAUSED_LIVE) PlayerAction.Resume else PlayerAction.TogglePlayPause
     }
 
     private fun panelKey(key: PlayerKey, closeOn: PlayerKey): PlayerAction = when (key) {

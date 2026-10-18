@@ -22,6 +22,38 @@ class PlayerInputTest {
         assertEquals(PlayerAction.Exit, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.BACK))
     }
 
+    // --- Overlay auto-hidden -------------------------------------------------------------
+
+    @Test fun `ok over a hidden overlay only brings it back, in every mode`() {
+        PlayerMode.entries.forEach { mode ->
+            assertEquals("$mode", PlayerAction.Handled, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.CENTER, mode, overlayVisible = false))
+        }
+        assertEquals(
+            PlayerAction.Handled,
+            PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.CENTER, PlayerMode.ARCHIVE, barFocused = true, overlayVisible = false),
+        )
+    }
+
+    @Test fun `ok with the overlay showing pauses as before`() {
+        assertEquals(PlayerAction.TogglePlayPause, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.CENTER, overlayVisible = true))
+        assertEquals(PlayerAction.Resume, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.CENTER, PlayerMode.PAUSED_LIVE, overlayVisible = true))
+    }
+
+    @Test fun `the remote's play-pause key acts at once even over a hidden overlay`() {
+        assertEquals(PlayerAction.TogglePlayPause, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.PLAY_PAUSE, overlayVisible = false))
+        assertEquals(PlayerAction.TogglePlayPause, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.PLAY_PAUSE, PlayerMode.ARCHIVE, overlayVisible = false))
+        assertEquals(PlayerAction.Resume, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.PLAY_PAUSE, PlayerMode.PAUSED_LIVE, overlayVisible = false))
+    }
+
+    @Test fun `other keys still act over a hidden overlay`() {
+        assertEquals(PlayerAction.ChannelUp, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.UP, overlayVisible = false))
+        assertEquals(PlayerAction.OpenPanel(PlayerPanel.OPTIONS), PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.RIGHT, overlayVisible = false))
+    }
+
+    @Test fun `an open panel keeps ok for its list`() {
+        assertEquals(PlayerAction.Ignored, PlayerInput.onKey(PlayerPanel.OPTIONS, PlayerKey.CENTER, overlayVisible = false))
+    }
+
     @Test fun `media transport keys are inert on a live channel`() {
         assertEquals(PlayerAction.Ignored, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.MEDIA_REW, PlayerMode.LIVE))
         assertEquals(PlayerAction.Ignored, PlayerInput.onKey(PlayerPanel.NONE, PlayerKey.MEDIA_FF, PlayerMode.LIVE))

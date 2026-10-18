@@ -340,8 +340,11 @@ fun PlayerScreen(
                     }
                     // The one-time no-rewind card: any key dismisses it and is consumed.
                     if (noRewind) { noRewind = false; reveal(); return@onKeyEvent true }
+                    // Read before reveal() shows it: OK over a hidden overlay only brings it back.
+                    // An error stays on screen with its Retry, so OK acts on it at once.
+                    val overlayVisible = controlsVisible || status.state == PlaybackState.ERROR || source.error != null
                     reveal()
-                    when (val action = PlayerInput.onKey(panel, playerKey, mode, barFocused)) {
+                    when (val action = PlayerInput.onKey(panel, playerKey, mode, barFocused, overlayVisible)) {
                         is PlayerAction.OpenPanel -> {
                             panel = action.panel
                             if (action.panel == PlayerPanel.OPTIONS) {
@@ -542,8 +545,8 @@ private fun androidx.compose.ui.input.key.KeyEvent.toPlayerKey(): PlayerKey? = w
     KeyEvent.KEYCODE_DPAD_DOWN -> PlayerKey.DOWN
     KeyEvent.KEYCODE_DPAD_LEFT -> PlayerKey.LEFT
     KeyEvent.KEYCODE_DPAD_RIGHT -> PlayerKey.RIGHT
-    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_SPACE -> PlayerKey.CENTER
+    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> PlayerKey.CENTER
+    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_SPACE -> PlayerKey.PLAY_PAUSE
     KeyEvent.KEYCODE_MEDIA_REWIND -> PlayerKey.MEDIA_REW
     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> PlayerKey.MEDIA_FF
     KeyEvent.KEYCODE_BACK -> PlayerKey.BACK
