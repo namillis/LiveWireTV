@@ -24,8 +24,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,15 +57,53 @@ class OptionsPanelState {
     var view by mutableStateOf(OptionsView.ROOT)
         private set
 
-    /** The sub-list last opened from the root, so returning to the root refocuses its row. */
-    var lastOpened by mutableStateOf(OptionsView.AUDIO)
+    /**
+     * The sub-list last opened from the root, so returning to the root refocuses its row. Null
+     * means a fresh open (see [rootFocus]).
+     */
+    var lastOpened by mutableStateOf<OptionsView?>(null)
         private set
 
-    fun open(v: OptionsView) { lastOpened = v; view = v }
+    fun open(v: OptionsView) { lastOpened = v; placed = null; userMoved = false; view = v }
     fun reset() { view = OptionsView.ROOT }
 
-    /** Fresh open of the panel: root list, focus on the first row. */
-    fun start() { lastOpened = OptionsView.AUDIO; view = OptionsView.ROOT }
+    /** Fresh open of the panel: root list, focus per [rootTarget]. */
+    fun start() { lastOpened = null; placed = null; userMoved = false; view = OptionsView.ROOT }
+
+    /** The root row the panel focused by itself; null until it has picked one. */
+    private var placed: OptionsView? = null
+
+    /** True once [placed] has actually taken focus. */
+    private var landed = false
+
+    /** True once the user moves focus off [placed] on the root list. */
+    private var userMoved = false
+
+    /**
+     * Report a root row taking focus. [row] is null for rows that open no sub-list (Favourite,
+     * Reload stream). Focus leaving [placed] after it landed there is the user moving.
+     */
+    fun onRootRowFocused(row: OptionsView?) {
+        val p = placed ?: return
+        if (row == p) landed = true else if (landed) userMoved = true
+    }
+
+    /**
+     * The root row to focus now, or null to leave focus where the user put it.
+     *
+     * Back from a sub-list returns to the row that opened it. A fresh open focuses Source, not
+     * Favourite, so a quick Right then OK can't toggle Favourite by accident. Source only shows
+     * when the channel has two or more streams; otherwise the next row, Audio.
+     *
+     * The streams load after the panel opens, so [hasSourceRow] can turn true a moment later.
+     * Focus then moves up to Source only if it is still on the row the panel picked.
+     */
+    fun rootTarget(hasSourceRow: Boolean): OptionsView? {
+        if (userMoved) return null
+        val target = lastOpened ?: if (hasSourceRow) OptionsView.SOURCE else OptionsView.AUDIO
+        if (target != placed) { placed = target; landed = false }
+        return target
+    }
 
     /** Handle Back: true = stepped a sub-list up to root (consumed); false = already at root. */
     fun onBack(): Boolean {
@@ -135,7 +175,7 @@ fun OptionsPanel(
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Box(Modifier.weight(1f)) {
                 when (view) {
-                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, rootRows, onReload, isFavorite, onToggleFavorite, sources) { state.open(it) }
+                    OptionsView.ROOT -> RootList(mediaInfo, pictureMode, rootRows, state::onRootRowFocused, onReload, isFavorite, onToggleFavorite, sources) { state.open(it) }
                     OptionsView.SOURCE -> SourceList(sources, firstRow) { onSelectSource(it); state.reset() }
                     OptionsView.AUDIO -> AudioList(mediaInfo, firstRow) { onSelectAudio(it); state.reset() }
                     OptionsView.SUBTITLES -> SubtitlesList(mediaInfo, firstRow) { onSelectText(it); state.reset() }
@@ -147,18 +187,44 @@ fun OptionsPanel(
         }
     }
 
-    // Initial focus is the first row. Back to the root refocuses the row that opened the sub-list.
-    androidx.compose.runtime.LaunchedEffect(view) {
-        val target = if (view == OptionsView.ROOT) rootRows.getValue(state.lastOpened) else firstRow
-        runCatching { target.requestFocus() }
+    // A sub-list focuses its first row; the root focuses the row from [OptionsPanelState.rootTarget].
+    // The rows live in a LazyColumn, which composes them during its first layout, a frame or more
+    // after this effect starts. Focusing before then silently did nothing, so the panel opened
+    // with no row selected and D-pad/OK went to a row the user couldn't see. The effect reruns
+    // when the Source row appears, since the channel's streams load after the panel opens.
+    val rootHasSource = view == OptionsView.ROOT && hasSourceRow(sources)
+    androidx.compose.runtime.LaunchedEffect(view, rootHasSource) {
+        val target = when (view) {
+            OptionsView.ROOT -> state.rootTarget(rootHasSource)?.let(rootRows::getValue) ?: return@LaunchedEffect
+            else -> firstRow
+        }
+        target.requestFocusOnceAttached()
     }
 }
+
+/**
+ * Focus this requester once its row is laid out, retrying for up to [FOCUS_ATTEMPTS] frames.
+ * `requestFocus(Enter)` returns false (older Compose throws) while no node is attached yet.
+ */
+private suspend fun FocusRequester.requestFocusOnceAttached() {
+    repeat(FOCUS_ATTEMPTS) {
+        androidx.compose.runtime.withFrameNanos { }
+        if (runCatching { requestFocus(FocusDirection.Enter) }.getOrDefault(false)) return
+    }
+}
+
+/** About half a second at 60 fps: past the panel's slide-in, so a row that never appears gives up. */
+private const val FOCUS_ATTEMPTS = 30
+
+/** The root list shows a Source row only when the channel has more than one stream to pick. */
+private fun hasSourceRow(sources: List<PoolSource>): Boolean = sources.size > 1
 
 @Composable
 private fun RootList(
     mediaInfo: MediaInfo,
     pictureMode: PictureMode,
     rows: Map<OptionsView, FocusRequester>,
+    onRowFocused: (OptionsView?) -> Unit,
     onReload: () -> Unit,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
@@ -170,45 +236,47 @@ private fun RootList(
     val subtitleValue = mediaInfo.textTracks.firstOrNull { it.id == mediaInfo.selectedTextId }?.label ?: "Off"
     val streamInfoValue = PlayerFormats.streamInfoSummary(mediaInfo.video)
 
+    // Keyed items: when the Source row appears above a focused row, that row keeps its focus.
     LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        item {
+        item(key = "favourite") {
             OptionRow(
                 iconRes = if (isFavorite) R.drawable.ic_fav_star_filled else R.drawable.ic_fav_star_outline,
                 label = com.livewire.tv.feature.favorites.ui.FavoritesUi.favouriteActionLabel(isFavorite),
                 value = null,
                 hasChevron = false,
+                onFocused = { onRowFocused(null) },
             ) { onToggleFavorite() }
         }
-        item { Separator() }
-        if (sources.size > 1) {
-            item {
+        item(key = "separator-top") { Separator() }
+        if (hasSourceRow(sources)) {
+            item(key = OptionsView.SOURCE) {
                 val current = sources.firstOrNull { it.current }?.label ?: "Automatic"
-                OptionRow(R.drawable.ic_opt_source, "Source", current, hasChevron = true, focusRequester = rows.getValue(OptionsView.SOURCE)) {
+                OptionRow(R.drawable.ic_opt_source, "Source", current, hasChevron = true, focusRequester = rows.getValue(OptionsView.SOURCE), onFocused = { onRowFocused(OptionsView.SOURCE) }) {
                     onOpen(OptionsView.SOURCE)
                 }
             }
         }
-        item {
-            OptionRow(R.drawable.ic_opt_audio, "Audio", audioValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.AUDIO)) {
+        item(key = OptionsView.AUDIO) {
+            OptionRow(R.drawable.ic_opt_audio, "Audio", audioValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.AUDIO), onFocused = { onRowFocused(OptionsView.AUDIO) }) {
                 onOpen(OptionsView.AUDIO)
             }
         }
-        item {
-            OptionRow(R.drawable.ic_opt_subtitles, "Subtitles", subtitleValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.SUBTITLES)) {
+        item(key = OptionsView.SUBTITLES) {
+            OptionRow(R.drawable.ic_opt_subtitles, "Subtitles", subtitleValue, hasChevron = true, focusRequester = rows.getValue(OptionsView.SUBTITLES), onFocused = { onRowFocused(OptionsView.SUBTITLES) }) {
                 onOpen(OptionsView.SUBTITLES)
             }
         }
-        item {
-            OptionRow(R.drawable.ic_opt_picture, "Picture", pictureMode.label, hasChevron = true, focusRequester = rows.getValue(OptionsView.PICTURE)) {
+        item(key = OptionsView.PICTURE) {
+            OptionRow(R.drawable.ic_opt_picture, "Picture", pictureMode.label, hasChevron = true, focusRequester = rows.getValue(OptionsView.PICTURE), onFocused = { onRowFocused(OptionsView.PICTURE) }) {
                 onOpen(OptionsView.PICTURE)
             }
         }
-        item { Separator() }
-        item {
-            OptionRow(R.drawable.ic_opt_reload, "Reload stream", value = null, hasChevron = false) { onReload() }
+        item(key = "separator-bottom") { Separator() }
+        item(key = "reload") {
+            OptionRow(R.drawable.ic_opt_reload, "Reload stream", value = null, hasChevron = false, onFocused = { onRowFocused(null) }) { onReload() }
         }
-        item {
-            OptionRow(R.drawable.ic_opt_info, "Stream info", streamInfoValue.ifBlank { null }, hasChevron = true, focusRequester = rows.getValue(OptionsView.STREAM_INFO)) {
+        item(key = OptionsView.STREAM_INFO) {
+            OptionRow(R.drawable.ic_opt_info, "Stream info", streamInfoValue.ifBlank { null }, hasChevron = true, focusRequester = rows.getValue(OptionsView.STREAM_INFO), onFocused = { onRowFocused(OptionsView.STREAM_INFO) }) {
                 onOpen(OptionsView.STREAM_INFO)
             }
         }
@@ -311,11 +379,13 @@ private fun OptionRow(
     value: String?,
     hasChevron: Boolean,
     focusRequester: FocusRequester? = null,
+    onFocused: () -> Unit = {},
     onClick: () -> Unit,
 ) {
     PlayerFlatRow(
         onClick = onClick,
-        modifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier,
+        modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            .onFocusChanged { if (it.isFocused) onFocused() },
     ) {
         Row(
             // ~32 dp content ≈ 64 px at 1080p (mockup option rows).
