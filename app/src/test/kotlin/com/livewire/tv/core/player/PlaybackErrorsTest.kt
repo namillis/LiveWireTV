@@ -11,7 +11,7 @@ class PlaybackErrorsTest {
 
     @Test
     fun `a refusal that outlasts the retries says the provider turned it down`() {
-        listOf(401, 403, 429, 456).forEach {
+        listOf(401, 403, 429, 456, 460).forEach {
             assertEquals("$it", PlaybackErrors.REFUSED, PlaybackErrors.messageFor(it, badStatus, archive = false))
         }
     }

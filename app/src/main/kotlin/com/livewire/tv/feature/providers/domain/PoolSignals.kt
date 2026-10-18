@@ -75,7 +75,8 @@ object PoolSignals {
 
     /**
      * [url] marked as attempt [attempt] of opening this stream: 0 on open, one more on each retry,
-     * with `why=refused` when the provider refused the connection (401/403/429/456).
+     * with `why=refused` when the provider refused the connection (one of the player's
+     * `RefusedCodes`, such as 403 or 456).
      */
     fun attemptUrl(url: String, attempt: Int, refused: Boolean = false): String {
         val sep = if ('?' in url) '&' else '?'

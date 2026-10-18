@@ -124,7 +124,7 @@ class ExoPlayerEngine(context: Context) : PlaybackEngine {
             }
             // Single-connection providers refuse a new stream for a moment after the old one
             // closes (a channel switch or a reopen-to-seek), answering 401/403/429, and a login
-            // at its connection limit answers 456 (RefusedCodes). Retry quietly a couple of
+            // at its connection limit answers 456 or 460 (RefusedCodes). Retry quietly a couple of
             // times before showing an error.
             if (isConnectionRefusal(error) && connectionRetries < MAX_CONNECTION_RETRIES) {
                 connectionRetries++
