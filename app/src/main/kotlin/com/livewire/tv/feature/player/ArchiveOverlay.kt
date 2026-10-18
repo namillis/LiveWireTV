@@ -70,6 +70,8 @@ fun ArchivePlayerOverlay(
     barFocused: Boolean,
     now: Long,
     modifier: Modifier = Modifier,
+    /** A seek is pending: [model]'s position is where it will land, and OK jumps there now. */
+    scrubbing: Boolean = false,
     /** Playing a paused-live stream behind live (not catch-up): TIME-SHIFTED pill and labels. */
     timeShift: Boolean = false,
     /** When live was first paused; the "paused at" label, fixed across reopens. */
@@ -143,15 +145,15 @@ fun ArchivePlayerOverlay(
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             if (barFocused) {
                 HintRow(
-                    HintSpec("◀ ▶", "Seek -10s / +30s"),
-                    HintSpec("OK", "Play / pause"),
+                    HintSpec("◀ ▶", "Seek · hold to go faster"),
+                    HintSpec("OK", if (scrubbing) "Jump now" else "Play / pause"),
                     HintSpec("▲", "Go live"),
                     HintSpec("▼ / BACK", "Release bar"),
                 )
             } else {
                 HintRow(
                     HintSpec("▼", "Focus scrub bar"),
-                    HintSpec("◀ ▶ (on bar)", "Seek -10s / +30s"),
+                    HintSpec("◀ ▶ (on bar)", "Seek"),
                     HintSpec("OK", "Play / pause"),
                     HintSpec("▲", "Go live"),
                 )

@@ -54,9 +54,9 @@ sealed interface PlayerAction {
     data object FocusScrubBar : PlayerAction
     /** ▼ or BACK with the scrub bar focused: let go of it (back to the resting overlay). */
     data object ReleaseScrubBar : PlayerAction
-    /** ◀ with the scrub bar focused: seek −10s (presses accumulate via the engine's debounce). */
+    /** ◀ with the scrub bar focused: move the seek target back ([CatchUpScrubber]). */
     data object SeekBack : PlayerAction
-    /** ▶ with the scrub bar focused: seek +30s. */
+    /** ▶ with the scrub bar focused: move the seek target forward. */
     data object SeekForward : PlayerAction
     /** OK while paused/time-shifted: resume playback from the archive at the pause point. */
     data object Resume : PlayerAction
@@ -98,7 +98,8 @@ sealed interface PlayerAction {
  * - ARCHIVE / PAUSED_LIVE, bar NOT focused: LEFT→Channels, RIGHT→Options (unchanged),
  *   UP→Go live, DOWN→focus the scrub bar, CENTER→play/pause (Resume in PAUSED_LIVE),
  *   BACK→exit. MEDIA_REW/FF→seek.
- * - ARCHIVE / PAUSED_LIVE, bar FOCUSED: LEFT→seek −10s, RIGHT→seek +30s, UP→Go live,
+ * - ARCHIVE / PAUSED_LIVE, bar FOCUSED: LEFT/RIGHT→seek back/forward (steps grow while the
+ *   key is pressed or held, see [CatchUpScrubber]), UP→Go live,
  *   DOWN/BACK→release the bar, CENTER→play/pause. MEDIA_REW/FF→seek.
  *
  * Contract, a panel open (any mode):

@@ -135,6 +135,47 @@ fun PlayerScreen(
         revealTick++
     }
 
+    // Catch-up seeking: ◀/▶ on the bar move a pending target at once; the stream is sought once,
+    // after the presses stop (CatchUpScrubber). scrubTick restarts the commit timer per press.
+    val scrubber = remember { CatchUpScrubber() }
+    var scrubTargetMs by remember { mutableStateOf<Long?>(null) }
+    var scrubTick by remember { mutableIntStateOf(0) }
+
+    fun scrub(forward: Boolean, repeat: Boolean) {
+        // Only an open archive can seek; paused live TV has nothing to seek yet.
+        if (mode != PlayerMode.ARCHIVE) return
+        scrubber.press(
+            forward = forward,
+            repeat = repeat,
+            nowMs = android.os.SystemClock.elapsedRealtime(),
+            positionMs = position.takeIf { it > 0 } ?: archive.startMs,
+            windowStartMs = archive.startMs,
+            windowEndMs = archive.endMs,
+        )
+        scrubTargetMs = scrubber.targetMs
+        scrubTick++
+    }
+
+    /** Seek to the pending target now. Returns false when nothing was pending. */
+    fun commitScrub(): Boolean {
+        val t = scrubber.take()
+        scrubTargetMs = null
+        if (t == null) return false
+        engine.seekTo(t)
+        return true
+    }
+
+    fun cancelScrub() {
+        scrubber.cancel()
+        scrubTargetMs = null
+    }
+
+    LaunchedEffect(scrubTick) {
+        if (scrubTargetMs == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(CatchUpScrubber.COMMIT_DELAY_MS)
+        commitScrub()
+    }
+
     LaunchedEffect(target) { viewModel.resolve(target, title, fromFavorites) }
     // A Guide catch-up launch: ask the view model to resolve the archive window once.
     LaunchedEffect(archiveLaunch) {
@@ -155,6 +196,7 @@ fun PlayerScreen(
         val src = archive.source
         if (src != null && archive.token != openedArchiveToken) {
             openedArchiveToken = archive.token
+            cancelScrub()
             val reopen = archive.reopen
             val fallback = archive.fallback
             engine.openArchive(
@@ -196,6 +238,7 @@ fun PlayerScreen(
     fun goLive() {
         pausedLiveAtMs = 0L
         barFocused = false
+        cancelScrub()
         scope.launch {
             val live = viewModel.liveSource(source.currentStreamId ?: target.streamId)
             if (live != null) engine.open(live.url, headers = live.headers, retryUrl = live.retryUrl, onStop = live.onStop)
@@ -308,7 +351,7 @@ fun PlayerScreen(
         when {
             panel != PlayerPanel.NONE -> backInPanel()
             noRewind -> { noRewind = false; reveal() }
-            mode != PlayerMode.LIVE && barFocused -> { barFocused = false; reveal() }
+            mode != PlayerMode.LIVE && barFocused -> { commitScrub(); barFocused = false; reveal() }
             else -> onExit()
         }
     }
@@ -358,6 +401,8 @@ fun PlayerScreen(
                                 source.error != null -> viewModel.resolve(target, title, fromFavorites)
                                 status.state == PlaybackState.ERROR -> engine.retry()
                                 mode == PlayerMode.LIVE -> centerOnLive()
+                                // OK while a seek is pending jumps there now and plays.
+                                scrubTargetMs != null -> { commitScrub(); engine.play() }
                                 else -> engine.togglePlayPause()
                             }
                             true
@@ -367,9 +412,9 @@ fun PlayerScreen(
                         PlayerAction.ClosePanel -> { panel = PlayerPanel.NONE; focusRequester.requestFocus(); true }
                         PlayerAction.GoLive -> { goLive(); true }
                         PlayerAction.FocusScrubBar -> { barFocused = true; true }
-                        PlayerAction.ReleaseScrubBar -> { barFocused = false; focusRequester.requestFocus(); true }
-                        PlayerAction.SeekBack -> { engine.seekBy(-10_000L); true }
-                        PlayerAction.SeekForward -> { engine.seekBy(30_000L); true }
+                        PlayerAction.ReleaseScrubBar -> { commitScrub(); barFocused = false; focusRequester.requestFocus(); true }
+                        PlayerAction.SeekBack -> { scrub(forward = false, repeat = event.nativeKeyEvent.repeatCount > 0); true }
+                        PlayerAction.SeekForward -> { scrub(forward = true, repeat = event.nativeKeyEvent.repeatCount > 0); true }
                         PlayerAction.Resume -> { resumeTimeShift(); true }
                         PlayerAction.Handled -> true
                         PlayerAction.Ignored -> false
@@ -432,12 +477,14 @@ fun PlayerScreen(
                             number = channels.items.getOrNull(channels.playingIndex)?.number ?: "",
                             programmeTitle = archive.programmeTitle,
                             windowStartMs = archive.startMs,
-                            positionMs = position.takeIf { it > 0 } ?: archive.startMs,
+                            // A pending seek shows where it will land; playback catches up on commit.
+                            positionMs = scrubTargetMs ?: position.takeIf { it > 0 } ?: archive.startMs,
                             durationMs = (archive.endMs - archive.startMs).coerceAtLeast(0L),
                             mediaInfo = mediaInfo,
                         ),
                         state = status.state,
                         barFocused = barFocused,
+                        scrubbing = scrubTargetMs != null,
                         now = now,
                         timeShift = archive.timeShift,
                         pausedAtMs = archive.pausedAtMs,
