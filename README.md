@@ -1,3 +1,5 @@
+<img src="docs/branding/png/livewire-square-dark-512x512.png" width="96" alt="LiveWire icon">
+
 # LiveWire
 
 [![Latest release](https://img.shields.io/gitea/v/release/namillis/LiveWireTV?gitea_url=https%3A%2F%2Fgit.namillis.me&sort=semver)](https://git.namillis.me/namillis/LiveWireTV/releases/latest)
