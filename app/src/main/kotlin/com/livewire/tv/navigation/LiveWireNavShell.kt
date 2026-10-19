@@ -2,54 +2,60 @@ package com.livewire.tv.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.focus.onFocusChanged
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.foundation.focusGroup
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.os.ConfigurationCompat
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Border
-import androidx.tv.material3.DrawerValue
-import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
-import androidx.tv.material3.NavigationDrawerItemDefaults
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
 import com.livewire.tv.R
 import com.livewire.tv.ui.theme.LiveWireColors
-import com.livewire.tv.ui.theme.LiveWireTheme
 import com.livewire.tv.ui.theme.LiveWireDimens
+import com.livewire.tv.ui.theme.LiveWireFonts
+import com.livewire.tv.ui.theme.LiveWireSurface
+import com.livewire.tv.ui.theme.LiveWireTheme
+import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-/** The five top-level sections reachable from the drawer (design system section 8). */
+/** The five top-level sections in the top bar. */
 enum class TopLevel(val route: String, val label: String, @DrawableRes val icon: Int) {
     HOME(Routes.HOME, "Home", R.drawable.ic_nav_home),
     GUIDE(Routes.GUIDE, "Guide", R.drawable.ic_nav_guide),
@@ -62,197 +68,226 @@ enum class TopLevel(val route: String, val label: String, @DrawableRes val icon:
         fun of(route: String?): TopLevel? = entries.firstOrNull { it.route == route }
 
         /**
-         * The section whose rail icon lights up for [route]. Top-level routes map to
-         * themselves; sub-screens reached from a section (Providers, opened from Settings)
-         * borrow that section so the rail shows and the parent stays highlighted, even
-         * though they are not drawer-selectable destinations.
+         * The tab the top bar marks as current for [route], or null when the screen has no bar
+         * (onboarding, the player). Sub-screens reached from a section (Providers and
+         * Favourites, opened from Settings) keep the bar with their parent marked.
          */
-        fun railSectionOf(route: String?): TopLevel? = of(route) ?: when (route) {
+        fun barSectionOf(route: String?): TopLevel? = of(route) ?: when (route) {
             Routes.PROVIDERS -> SETTINGS
             Routes.FAVORITES -> SETTINGS
             else -> null
         }
+
+        /** Where Back goes while the bar has focus: Home, or null on Home so the app exits. */
+        fun backFromBar(current: TopLevel): TopLevel? = if (current == HOME) null else HOME
     }
 }
 
 /**
- * Left navigation drawer around the whole app.
+ * The top bar above the whole app, replacing the old left rail.
  *
- * - On a top-level section the collapsed icon rail is shown; D-pad Left from the first
- *   column moves focus into it, which opens it.
- * - Back from a section's content opens the drawer on the current section. Back from the
- *   open drawer goes to Home, and on Home it falls through so the app exits.
- * - Elsewhere (onboarding, player, providers) the drawer has no items and takes no space,
- *   so the NavHost stays in the same composition slot and keeps its state.
+ * - Up from the top row of content lands on the current tab ([focusProperties] enter).
+ * - Left and Right move between tabs; only OK switches section, so moving never reloads.
+ * - Down returns to the item you left ([focusRestorer] on the content).
+ * - Back from a section's content moves focus to the bar. Back from the bar goes to Home,
+ *   and on Home it falls through so the app exits.
+ * - Sub-screens (Providers, Favourites) keep the bar but their Back pops to Settings.
+ * - The player and onboarding have no bar; the NavHost stays in the same composition slot
+ *   either way, so it keeps its state.
  */
-@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LiveWireNavShell(
     currentRoute: String?,
     onSelect: (TopLevel) -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val current = TopLevel.railSectionOf(currentRoute)
-    // A true drawer section (Home/Guide/…): its content's Back opens the drawer. A
-    // sub-screen like Providers borrows the rail section for display but is NOT a section,
-    // so its Back must fall through to the NavHost (pop back to Settings), not open the drawer.
+    val current = TopLevel.barSectionOf(currentRoute)
     val isTopLevelSection = TopLevel.of(currentRoute) != null
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val requesters = remember { TopLevel.entries.associateWith { FocusRequester() } }
-    val focusManager = LocalFocusManager.current
-    val scope = rememberCoroutineScope()
-    // The drawer is open exactly when it holds focus. NavigationDrawer only tracks this for
-    // D-pad entry, so programmatic focus (Back from content) is mirrored here too.
-    var drawerFocused by remember { mutableStateOf(false) }
-    val open = drawerFocused
-    var focusedItem by remember { mutableStateOf<TopLevel?>(null) }
-    var handoff by remember { mutableStateOf<Job?>(null) }
+    val contentFocus = remember { FocusRequester() }
+    var barFocused by remember { mutableStateOf(false) }
 
-    NavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = { value ->
-            if (current == null) return@NavigationDrawer
-            Column(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .background(if (value == DrawerValue.Open) LiveWireColors.Surface else LiveWireColors.Canvas)
-                    // Keep drawer content inside the overscan-safe area (section 4): open, the
-                    // focus ring's edge sits on the 48dp line; collapsed, the icons do (items
-                    // inset their icon by 16dp), so the rail stays narrow.
-                    .padding(
-                        start = if (value == DrawerValue.Open) LiveWireDimens.SafeHorizontal
-                        else LiveWireDimens.SafeHorizontal - 16.dp,
-                        end = 12.dp,
-                        top = LiveWireDimens.SafeVertical,
-                        bottom = LiveWireDimens.SafeVertical,
-                    )
-                    .onFocusChanged { f ->
-                        drawerFocused = f.hasFocus
-                        if (!f.hasFocus) focusedItem = null
-                        drawerState.setValue(if (f.hasFocus) DrawerValue.Open else DrawerValue.Closed)
+    Column(Modifier.fillMaxSize().background(LiveWireColors.Canvas)) {
+        if (current != null) {
+            TopBar(
+                current = current,
+                requesters = requesters,
+                onFocusChanged = { barFocused = it },
+                onSelect = { item ->
+                    // OK on the current tab of a sub-screen (Settings while on Providers)
+                    // returns to that section; on a real section it just goes back down.
+                    if (item != current || !isTopLevelSection) {
+                        onSelect(item)
+                    } else {
+                        runCatching { contentFocus.requestFocus() }
                     }
-                    .selectableGroup()
-                    // Entering the drawer by D-pad lands on the CURRENT section, not on whichever
-                    // item is geometrically level with the focused card (Left from Home's rail
-                    // otherwise lands on Search, and OK then switches section by surprise).
-                    .focusProperties { enter = { requesters.getValue(current ?: TopLevel.HOME) } }
+                },
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .focusRequester(contentFocus)
+                .focusRestorer(),
+        ) {
+            content()
+        }
+    }
+
+    // Registered after content so they win over the NavHost's own Back handling.
+    BackHandler(enabled = isTopLevelSection && current != null && !barFocused) {
+        runCatching { requesters.getValue(current!!).requestFocus() }
+    }
+    BackHandler(enabled = barFocused && current != null && TopLevel.backFromBar(current) != null) {
+        onSelect(TopLevel.backFromBar(current!!)!!)
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun TopBar(
+    current: TopLevel,
+    requesters: Map<TopLevel, FocusRequester>,
+    onFocusChanged: (Boolean) -> Unit,
+    onSelect: (TopLevel) -> Unit,
+) {
+    Column {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(LiveWireDimens.TopBarHeight)
+                .padding(horizontal = LiveWireDimens.SafeHorizontal),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Lockup()
+            Spacer(Modifier.width(45.dp))
+            Row(
+                Modifier
+                    .onFocusChanged { onFocusChanged(it.hasFocus) }
+                    .focusProperties { enter = { requesters.getValue(current) } }
                     .focusGroup(),
-                horizontalAlignment = Alignment.Start,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                BrandMark(expanded = value == DrawerValue.Open)
-                Spacer(Modifier.height(LiveWireDimens.SpaceXl))
                 TopLevel.entries.forEach { item ->
-                    val selected = item == current
-                    NavigationDrawerItem(
-                        selected = selected,
-                        onClick = {
-                            // Navigate when picking a different section, OR when this section is
-                            // only highlighted because we are on one of its sub-screens (e.g.
-                            // Providers highlights Settings): choosing it should return there.
-                            if (!selected || !isTopLevelSection) onSelect(item)
-                            handoff?.cancel()
-                            handoff = scope.launch {
-                                // Wait for the new section to replace the old one; handing focus
-                                // over earlier lands on the outgoing screen and is then lost.
-                                delay(300)
-                                // A section may still be loading with nothing focusable. Stay on
-                                // the chosen item and retry until it has content, unless the user
-                                // moves somewhere else in the meantime.
-                                repeat(120) {
-                                    if (focusedItem != item) return@launch
-                                    if (focusManager.moveFocus(FocusDirection.Right)) return@launch
-                                    delay(500)
-                                }
-                            }
-                        },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(item.icon),
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                        modifier = Modifier
-                            .padding(vertical = 3.dp)
-                            .focusRequester(requesters.getValue(item))
-                            .onFocusChanged { if (it.isFocused) focusedItem = item },
-                        colors = drawerItemColors(),
-                        border = drawerItemBorder(),
-                        shape = NavigationDrawerItemDefaults.shape(RoundedCornerShape(LiveWireDimens.RadiusCard)),
-                        scale = NavigationDrawerItemDefaults.scale(focusedScale = LiveWireDimens.FocusScaleWide),
-                    ) {
-                        Text(item.label, style = MaterialTheme.typography.titleMedium)
-                    }
+                    Tab(
+                        item = item,
+                        selected = item == current,
+                        onClick = { onSelect(item) },
+                        modifier = Modifier.focusRequester(requesters.getValue(item)),
+                    )
                 }
             }
-        },
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            content()
-            // Content behind the open drawer is dimmed, never blurred (section 8).
-            if (open) Box(Modifier.fillMaxSize().background(LiveWireColors.Scrim))
+            Spacer(Modifier.weight(1f))
+            Clock()
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(LiveWireColors.Border))
+    }
+}
 
-            // Registered AFTER content so they take priority over the NavHost's own Back
-            // handling (the most recently composed enabled callback wins).
-            // Back from a section's content → into the drawer on that section. A sub-screen
-            // (Providers) is not a section: its Back is left to the NavHost, which pops back
-            // to Settings — the mockup's "Back Settings" hint.
-            BackHandler(enabled = isTopLevelSection && current != null && !open) {
-                runCatching { requesters.getValue(current!!).requestFocus() }
-            }
-            // Back from the open drawer → Home, where Home focuses its last card. On Home this
-            // is disabled and so is the NavHost's handler (nothing to pop), so the app exits.
-            BackHandler(enabled = open && current != null && current != TopLevel.HOME) {
-                onSelect(TopLevel.HOME)
-            }
+/** "LiveWire / LIVE TV" with the mark. */
+@Composable
+fun Lockup(modifier: Modifier = Modifier, markSize: Int = 25) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(R.drawable.ic_brand_mark),
+            contentDescription = null,
+            modifier = Modifier.size(width = markSize.dp, height = (markSize * 0.914f).dp),
+        )
+        Spacer(Modifier.width((markSize * 0.35f).dp))
+        Column {
+            Text(
+                "LiveWire",
+                style = TextStyle(
+                    fontFamily = LiveWireFonts.Display, fontWeight = FontWeight.Bold,
+                    fontSize = 16.5.sp, lineHeight = 16.5.sp, letterSpacing = (-0.02).em,
+                ),
+                color = LiveWireColors.OnSurface,
+            )
+            Text(
+                "LIVE TV",
+                style = TextStyle(
+                    fontFamily = LiveWireFonts.Mono, fontWeight = FontWeight.Medium,
+                    fontSize = 7.sp, lineHeight = 9.sp, letterSpacing = 0.32.em,
+                ),
+                color = LiveWireColors.OnSurfaceMuted,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
 
+/**
+ * A pill tab. Current = raised fill with a red on-air dot after the label; focused = the
+ * light focus fill (the current tab keeps its dot, dark on the fill).
+ */
 @Composable
-private fun BrandMark(expanded: Boolean) {
-    Box(
-        modifier = Modifier.padding(start = 16.dp).height(24.dp),
-        contentAlignment = Alignment.CenterStart,
+private fun Tab(item: TopLevel, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    LiveWireSurface(
+        onClick = onClick,
+        modifier = modifier.height(LiveWireDimens.TabHeight),
+        shape = RoundedCornerShape(50),
+        restingColor = if (selected) LiveWireColors.SurfaceRaised else androidx.compose.ui.graphics.Color.Transparent,
+        restingBorder = false,
     ) {
-        androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).background(LiveWireColors.Live, RoundedCornerShape(50)))
-            if (expanded) {
-                Spacer(Modifier.size(LiveWireDimens.SpaceS))
-                Text("LiveWire", style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
-            }
+        val color = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted
+        Row(
+            Modifier.fillMaxHeight().padding(horizontal = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            NavIcon(item, color)
+            Text(
+                item.label,
+                style = TextStyle(fontFamily = LiveWireFonts.Text, fontWeight = FontWeight.SemiBold, fontSize = 11.25.sp),
+                color = color,
+            )
+            if (selected) Box(Modifier.size(5.dp).background(LiveWireColors.Live, CircleShape))
         }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+/** The tab icon. The Guide mark's red now-line is a second, untinted layer. */
 @Composable
-private fun drawerItemColors() = NavigationDrawerItemDefaults.colors(
-    containerColor = androidx.compose.ui.graphics.Color.Transparent,
-    contentColor = LiveWireColors.OnSurface,
-    inactiveContentColor = LiveWireColors.OnSurfaceMuted,
-    focusedContainerColor = LiveWireColors.Focus,
-    focusedContentColor = LiveWireColors.OnFocus,
-    pressedContainerColor = LiveWireColors.Focus,
-    pressedContentColor = LiveWireColors.OnFocus,
-    // Current section: amber content, never a fill (section 8).
-    selectedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-    selectedContentColor = LiveWireColors.OnSurface,
-    focusedSelectedContainerColor = LiveWireColors.Focus,
-    focusedSelectedContentColor = LiveWireColors.OnFocus,
-    pressedSelectedContainerColor = LiveWireColors.Focus,
-    pressedSelectedContentColor = LiveWireColors.OnFocus,
-)
+private fun NavIcon(item: TopLevel, tint: androidx.compose.ui.graphics.Color) {
+    Box(Modifier.size(15.dp)) {
+        Icon(painterResource(item.icon), contentDescription = null, tint = tint, modifier = Modifier.fillMaxSize())
+        if (item == TopLevel.GUIDE) {
+            Image(painterResource(R.drawable.ic_nav_guide_now), contentDescription = null, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+/** "9:24 PM" over "SUN 19 OCT", updated on the minute. */
 @Composable
-private fun drawerItemBorder(): androidx.tv.material3.NavigationDrawerItemBorder {
-    val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
-    val ring = Border.None
-    return NavigationDrawerItemDefaults.border(
-        focusedBorder = ring,
-        pressedBorder = ring,
-        focusedSelectedBorder = ring,
-        pressedSelectedBorder = ring,
-    )
+private fun Clock() {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(60_000L - value % 60_000L)
+        }
+    }
+    val locale = ConfigurationCompat.getLocales(LocalConfiguration.current)[0] ?: Locale.ROOT
+    val clockFormat = remember(locale) { DateTimeFormatter.ofPattern("h:mm a", locale) }
+    val dateFormat = remember(locale) { DateTimeFormatter.ofPattern("EEE d MMM", locale) }
+    val t = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
+    Column(horizontalAlignment = Alignment.End) {
+        Text(
+            clockFormat.format(t),
+            style = TextStyle(
+                fontFamily = LiveWireFonts.Mono, fontWeight = FontWeight.SemiBold,
+                fontSize = 13.5.sp, fontFeatureSettings = "tnum",
+            ),
+            color = LiveWireColors.OnSurface,
+        )
+        Text(
+            dateFormat.format(t).uppercase(locale),
+            style = TextStyle(
+                fontFamily = LiveWireFonts.Mono, fontWeight = FontWeight.Medium,
+                fontSize = 8.sp, letterSpacing = 0.14.em, fontFeatureSettings = "tnum",
+            ),
+            color = LiveWireColors.OnSurfaceMuted,
+        )
+    }
 }

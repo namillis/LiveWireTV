@@ -154,17 +154,17 @@ private val scheme = darkColorScheme(
 // AOSP TV images have no Play Services). Display = Space Grotesk (hero titles, big
 // numbers), Text = Inter (everything else), Mono = JetBrains Mono (times, channel
 // numbers, "N min left", section labels, tags — always tabular figures).
-private val Display = FontFamily(
+private val DisplayFamily = FontFamily(
     Font(R.font.space_grotesk_semibold, FontWeight.SemiBold),
     Font(R.font.space_grotesk_bold, FontWeight.Bold),
 )
-private val Text = FontFamily(
+private val TextFamily = FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
     Font(R.font.inter_medium, FontWeight.Medium),
     Font(R.font.inter_semibold, FontWeight.SemiBold),
     Font(R.font.inter_bold, FontWeight.Bold),
 )
-private val Mono = FontFamily(
+private val MonoFamily = FontFamily(
     Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
     Font(R.font.jetbrains_mono_semibold, FontWeight.SemiBold),
     // tag (labelSmall) asks for weight 700; JetBrains Mono ships 500/600, so the
@@ -172,17 +172,27 @@ private val Mono = FontFamily(
     Font(R.font.jetbrains_mono_semibold, FontWeight.Bold),
 )
 
+/**
+ * The bundled families, for the few B · Grid styles TV Material has no slot for (the top
+ * bar's tab labels and lockup, the clock).
+ */
+object LiveWireFonts {
+    val Display: FontFamily get() = DisplayFamily
+    val Text: FontFamily get() = TextFamily
+    val Mono: FontFamily get() = MonoFamily
+}
+
 private val typography = Typography(
-    displaySmall = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 33.sp),
-    headlineSmall = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 26.sp),
-    titleMedium = TextStyle(fontFamily = Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp),
-    bodyMedium = TextStyle(fontFamily = Text, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 17.sp),
-    labelMedium = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 13.sp, fontFeatureSettings = "tnum"),
-    labelSmall = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 9.sp, lineHeight = 9.sp, letterSpacing = 0.12.em, fontFeatureSettings = "tnum"),
+    displaySmall = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 33.sp),
+    headlineSmall = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.Bold, fontSize = 23.sp, lineHeight = 26.sp),
+    titleMedium = TextStyle(fontFamily = TextFamily, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp),
+    bodyMedium = TextStyle(fontFamily = TextFamily, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 17.sp),
+    labelMedium = TextStyle(fontFamily = MonoFamily, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 13.sp, fontFeatureSettings = "tnum"),
+    labelSmall = TextStyle(fontFamily = MonoFamily, fontWeight = FontWeight.Bold, fontSize = 9.sp, lineHeight = 9.sp, letterSpacing = 0.12.em, fontFeatureSettings = "tnum"),
 )
 
 private val overline = TextStyle(
-    fontFamily = Mono, fontWeight = FontWeight.SemiBold, fontSize = 10.sp,
+    fontFamily = MonoFamily, fontWeight = FontWeight.SemiBold, fontSize = 10.sp,
     lineHeight = 12.sp, letterSpacing = 0.12.em, fontFeatureSettings = "tnum",
 )
 
