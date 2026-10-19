@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LiveWire themed-icon layer (Android 13+). The system tints it; only alpha matters. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.38"
+        android:scaleY="0.38"
+        android:translateX="19.8"
+        android:translateY="21.966">
+        <path android:pathData="M46,38H134A18,18,0,0,1,152,56V108A18,18,0,0,1,134,126H46A18,18,0,0,1,28,108V56A18,18,0,0,1,46,38Z" android:strokeColor="#FFFFFF" android:strokeWidth="8" />
+        <path android:pathData="M56,126L50,142M124,126L130,142" android:strokeColor="#FFFFFF" android:strokeWidth="8" android:strokeLineCap="round" />
+        <path android:pathData="M50,82h8l8,-20l12,40l9,-30l6,10h12" android:strokeColor="#FFFFFF" android:strokeWidth="7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M113,82a10,10,0,1,0,20,0a10,10,0,1,0,-20,0Z" android:fillColor="#FFFFFF" />
+    </group>
+</vector>
