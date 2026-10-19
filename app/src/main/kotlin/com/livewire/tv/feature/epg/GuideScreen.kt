@@ -65,7 +65,6 @@ import com.livewire.tv.feature.epg.domain.CatchupGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.epg.domain.GuidePastCellStyle
-import com.livewire.tv.feature.home.brandTint
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
@@ -620,18 +619,18 @@ private fun GuideContent(
 private fun FavoritesGuideEmpty() {
     Box(Modifier.fillMaxSize().padding(LiveWireDimens.SpaceL), Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 56.dp, tint = LiveWireColors.OnSurfaceMuted)
+            com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 56.dp, tint = LiveWireTheme.onSurfaceMuted)
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             Text(
                 "No favourites yet",
                 style = MaterialTheme.typography.headlineSmall,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Text(
                 "Long-press OK on any channel to add it to Favourites",
                 style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
             )
         }
     }
@@ -645,7 +644,7 @@ private fun NoMatches(query: String, categoryName: String) {
             if (query.isNotBlank()) "No channels in $categoryName match “${query.trim()}”."
             else "No channels in $categoryName.",
             style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            color = LiveWireTheme.onSurfaceMuted,
         )
     }
 }
@@ -662,7 +661,6 @@ private fun GuideDetailsBand(
     onDismissActions: () -> Unit,
 ) {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
-    val brand = brandTint(focus.channel.name)
     val prog = focus.programme
     val onNow = prog != null && prog.airsAt(now)
     // Catch-up affordances: a focused archived-past programme offers "Watch from start"; the now
@@ -675,7 +673,6 @@ private fun GuideDetailsBand(
             .height(DETAILS_BAND_HEIGHT)
             .clip(shape)
             .background(LiveWireColors.Surface)
-            .background(brand.copy(alpha = if (LiveWireTheme.tokens.tier == com.livewire.tv.ui.theme.PerformanceTier.LOW) 0.16f else 0.20f))
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape),
     ) {
         // The muted preview sits behind the text, fading in from the right.
@@ -685,7 +682,7 @@ private fun GuideDetailsBand(
             Text(
                 clockLabel(now),
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.align(Alignment.TopEnd),
             )
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
@@ -698,13 +695,13 @@ private fun GuideDetailsBand(
                             Spacer(Modifier.width(LiveWireDimens.SpaceS))
                         } else if (focus.programmeArchived) {
                             // Archived past: a neutral ⟲ marks the "in archive" state (never amber).
-                            Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                            Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
                             Spacer(Modifier.width(LiveWireDimens.SpaceS))
                         }
                         Text(
                             focus.channel.name,
                             style = MaterialTheme.typography.labelMedium,
-                            color = LiveWireColors.OnSurfaceMuted,
+                            color = LiveWireTheme.onSurfaceMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -715,7 +712,7 @@ private fun GuideDetailsBand(
                     Text(
                         prog?.title ?: "No programme information",
                         style = MaterialTheme.typography.titleLarge,
-                        color = LiveWireColors.OnSurface,
+                        color = LiveWireTheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -733,7 +730,7 @@ private fun GuideDetailsBand(
                                 synopsis ?: (range + (prog.category?.let { " · $it" } ?: ""))
                             },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = LiveWireColors.OnSurfaceMuted,
+                            color = LiveWireTheme.onSurfaceMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -788,9 +785,9 @@ private fun BandActionButton(key: String, label: String, onClick: () -> Unit, mo
             Box(
                 Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.Canvas.copy(alpha = 0.5f)).padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
-                Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+                Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
             }
-            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
         }
     }
 }
@@ -810,9 +807,9 @@ private fun BandHintChip(key: String, label: String) {
         Box(
             Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
         }
-        Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+        Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
     }
 }
 
@@ -850,7 +847,7 @@ private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long, windowStartMs:
                 Text(
                     day,
                     style = LiveWireTheme.tokens.tag,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 6.dp),
                 )
@@ -885,7 +882,7 @@ private fun AxisRow(windowStartMs: Long, spanMinutes: Int, scrollPx: () -> Int) 
             Modifier.width(CHANNEL_COL).fillMaxHeight().padding(start = LiveWireDimens.SpaceM),
             contentAlignment = Alignment.CenterStart,
         ) {
-            Text("CHANNEL", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+            Text("CHANNEL", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
         }
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp))) {
             var m = 0
@@ -894,7 +891,7 @@ private fun AxisRow(windowStartMs: Long, spanMinutes: Int, scrollPx: () -> Int) 
                 Text(
                     clockLabel(windowStartMs + TimeUnit.MINUTES.toMillis(m.toLong())),
                     style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurface,
+                    color = LiveWireTheme.onSurface,
                     modifier = Modifier
                         .offset { IntOffset(minutesToDp(tick).roundToPx() - scrollPx(), 0) }
                         .padding(start = 6.dp),
@@ -962,12 +959,12 @@ private fun GuideRowView(
                 com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 11.dp)
             }
             if (row.channel.hasArchive) {
-                Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
             }
             Text(
                 row.channel.name,
                 style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1078,7 +1075,7 @@ private fun ProgrammeCell(
                     Text(
                         programme.title,
                         style = MaterialTheme.typography.titleMedium,
-                        color = LiveWireColors.OnSurface.copy(alpha = contentAlpha),
+                        color = LiveWireTheme.onSurface.copy(alpha = contentAlpha),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         // The title truncates before the badge: it takes the row's width minus
@@ -1087,14 +1084,14 @@ private fun ProgrammeCell(
                     )
                     if (showBadge) {
                         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                        Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                        Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
                     }
                 }
                 Text(
                     if (programme.endIsEstimate) EventTimes.label(programme, now)
                     else "${clockLabel(programme.startMs)} – ${clockLabel(programme.stopMs)}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurfaceMuted.copy(alpha = contentAlpha),
+                    color = LiveWireTheme.onSurfaceMuted.copy(alpha = contentAlpha),
                     maxLines = 1,
                 )
             }
@@ -1134,7 +1131,7 @@ private fun EmptyCell(scrollPx: () -> Int, widthDp: Dp, focusRequester: FocusReq
             Text(
                 "No programme information",
                 style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 modifier = Modifier.offset { IntOffset(scrollPx(), 0) },
             )

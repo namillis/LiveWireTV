@@ -32,7 +32,6 @@ import com.livewire.tv.core.player.PlayerFormats
 import com.livewire.tv.core.player.VideoFormat
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EventTimes
-import com.livewire.tv.feature.home.brandTint
 import com.livewire.tv.feature.home.wordmark
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
@@ -122,7 +121,7 @@ private fun TopBug(channelNumber: String, status: PlaybackStatus) {
                     .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(5.dp))
                     .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
             ) {
-                Text("CH $channelNumber", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+                Text("CH $channelNumber", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface)
             }
         }
         if (status.isLive && status.state != PlaybackState.PAUSED) LivePill()
@@ -154,7 +153,7 @@ private fun PausedPill() {
             .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, RoundedCornerShape(50))
             .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
     ) {
-        Text("❚❚ PAUSED", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+        Text("❚❚ PAUSED", style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
     }
 }
 
@@ -163,7 +162,7 @@ private fun Clock(now: Long, modifier: Modifier) {
     Text(
         PlayerFormats.clockMeridiem(now),
         style = MaterialTheme.typography.labelMedium,
-        color = LiveWireColors.OnSurface,
+        color = LiveWireTheme.onSurface,
         modifier = modifier.padding(end = LiveWireDimens.SafeHorizontal, top = LiveWireDimens.SafeVertical),
     )
 }
@@ -180,11 +179,11 @@ private fun EdgeHint(arrow: String, label: String, start: Boolean, modifier: Mod
         horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
     ) {
         if (start) {
-            Text(arrow, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-            Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(arrow, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
         } else {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-            Text(arrow, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+            Text(arrow, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
         }
     }
 }
@@ -201,14 +200,14 @@ private fun BottomBlock(model: RestingOverlayModel, status: PlaybackStatus, now:
             Text(
                 wordmark(model.channelName),
                 style = MaterialTheme.typography.headlineSmall,
-                color = brandTint(model.channelName).brightenForText(),
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
             )
             Column {
                 Text(
                     model.channelName,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = LiveWireColors.OnSurface,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -219,7 +218,7 @@ private fun BottomBlock(model: RestingOverlayModel, status: PlaybackStatus, now:
                     hasSubtitles = model.hasSubtitles,
                 )
                 if (subline.isNotBlank()) {
-                    Text(subline, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
+                    Text(subline, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
                 }
             }
         }
@@ -235,8 +234,8 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paus
     if (nowPlaying == null) {
         // No EPG: show the "on now" label with a clear no-info line, no empty gaps (requirement 1).
         Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-            Text("ON NOW", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
-            Text("No programme information", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
+            Text("ON NOW", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.alignByBaseline())
+            Text("No programme information", style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.alignByBaseline())
         }
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
         HintRow(failed, paused)
@@ -246,17 +245,17 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paus
     Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
         // A Live Now event shows here before it starts too, so say which it is.
         val overline = if (EventTimes.isUpcoming(nowPlaying, now)) "UP NEXT" else "ON NOW"
-        Text(overline, style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
+        Text(overline, style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.alignByBaseline())
         Text(
             nowPlaying.title,
             style = MaterialTheme.typography.headlineSmall,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.alignByBaseline(),
         )
         nowPlaying.category?.takeIf { it.isNotBlank() }?.let {
-            Text("· $it", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1, modifier = Modifier.alignByBaseline())
+            Text("· $it", style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted, maxLines = 1, modifier = Modifier.alignByBaseline())
         }
     }
 
@@ -265,7 +264,7 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paus
         Text(
             it,
             style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            color = LiveWireTheme.onSurfaceMuted,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 900.dp),
@@ -275,12 +274,12 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paus
     Spacer(Modifier.height(LiveWireDimens.SpaceM))
     if (nowPlaying.endIsEstimate) {
         // The end is the pool's guess: no end clock and no progress bar.
-        Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
     } else {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-            Text(PlayerFormats.clockMeridiem(nowPlaying.startMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(PlayerFormats.clockMeridiem(nowPlaying.startMs), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
             LiveWireProgress(nowPlaying.progressAt(now), Modifier.weight(1f), height = 4.dp)
-            Text(PlayerFormats.clockMeridiem(nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(PlayerFormats.clockMeridiem(nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
         }
     }
 
@@ -288,16 +287,16 @@ private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paus
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         model.upNext?.let { next ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-                Text("UP NEXT", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+                Text("UP NEXT", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
                 Text(
                     next.title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = LiveWireColors.OnSurface,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 520.dp),
                 )
-                Text("· ${PlayerFormats.clockMeridiem(next.startMs)}", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text("· ${PlayerFormats.clockMeridiem(next.startMs)}", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -330,14 +329,8 @@ private fun HintChip(key: String, label: String) {
                 .background(LiveWireColors.SurfaceRaised)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
     }
-}
-
-/** Lighten a dark brand colour so the wordmark stays legible over the gradient. */
-private fun Color.brightenForText(): Color {
-    val f = 0.45f
-    return Color(red + (1f - red) * f, green + (1f - green) * f, blue + (1f - blue) * f, 1f)
 }

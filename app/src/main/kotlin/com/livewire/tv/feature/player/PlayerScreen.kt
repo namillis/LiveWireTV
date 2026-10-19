@@ -668,19 +668,19 @@ private fun OptionsMiniInfo(
         Text(
             channelName,
             style = MaterialTheme.typography.titleMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            color = LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
         )
         Spacer(Modifier.height(6.dp))
         Text(
             nowPlaying?.title ?: channelName,
             style = MaterialTheme.typography.headlineSmall,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
             maxLines = 1,
         )
         if (nowPlaying != null && nowPlaying.endIsEstimate) {
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
         } else if (nowPlaying != null) {
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -689,7 +689,7 @@ private fun OptionsMiniInfo(
                 Text(
                     PlayerFormats.minutesLeft(nowPlaying.stopMs, now),
                     style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                 )
             }
         }

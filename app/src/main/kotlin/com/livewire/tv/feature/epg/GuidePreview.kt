@@ -185,7 +185,7 @@ internal fun BoxScope.GuidePreviewLayer(state: GuidePreviewState) {
                     .background(LiveWireColors.Canvas.copy(alpha = 0.7f))
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
-                Text("PREVIEW · MUTED", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+                Text("PREVIEW · MUTED", style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
             }
         }
     }

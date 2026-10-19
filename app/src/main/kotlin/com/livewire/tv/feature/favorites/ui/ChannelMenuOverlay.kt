@@ -87,7 +87,7 @@ fun ChannelMenuOverlay(
             Text(
                 channel.name,
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(
@@ -149,13 +149,13 @@ private fun MenuRow(
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = null,
-                tint = LiveWireColors.OnSurface,
+                tint = LiveWireTheme.onSurface,
                 modifier = Modifier.size(20.dp),
             )
             Text(
                 label,
                 style = MaterialTheme.typography.titleMedium,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

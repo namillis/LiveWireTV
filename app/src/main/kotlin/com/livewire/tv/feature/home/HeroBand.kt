@@ -57,42 +57,26 @@ data class HeroContent(
 fun HeroBand(content: HeroContent?, now: Long, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
     val tier = LiveWireTheme.tokens.tier
-    val brand = content?.let { brandTint(it.channel.name) } ?: NeutralBrand
     Box(
         modifier
             .fillMaxWidth()
             .height(150.dp)
             .clip(shape)
             .background(LiveWireColors.Surface)
-            .brandTint(brand, tier)
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
             .padding(horizontal = LiveWireDimens.SpaceXl, vertical = LiveWireDimens.SpaceL),
     ) {
         if (content == null) return@Box
         Row(verticalAlignment = Alignment.CenterVertically) {
-            HeroMark(content.channel, brand)
+            HeroMark(content.channel)
             Spacer(Modifier.width(LiveWireDimens.SpaceXl))
             HeroBody(content, now, Modifier.weight(1f))
         }
     }
 }
 
-/** Static brand tint: a solid wash on the LOW tier, a pre-baked radial gradient otherwise. */
-private fun Modifier.brandTint(brand: Color, tier: PerformanceTier): Modifier =
-    if (tier == PerformanceTier.LOW) {
-        background(brand.copy(alpha = 0.20f))
-    } else {
-        background(
-            Brush.radialGradient(
-                colors = listOf(brand.copy(alpha = 0.26f), brand.copy(alpha = 0.10f), Color.Transparent),
-                center = Offset(0.18f * 3000f, -0.10f * 1000f),
-                radius = 1400f,
-            ),
-        )
-    }
-
 @Composable
-private fun HeroMark(channel: LiveChannel, brand: Color) {
+private fun HeroMark(channel: LiveChannel) {
     Box(
         modifier = Modifier
             .width(200.dp)
@@ -117,7 +101,7 @@ private fun HeroMark(channel: LiveChannel, brand: Color) {
                 Text(
                     wordmark(channel.name),
                     style = MaterialTheme.typography.displaySmall,
-                    color = brand.brightenForText(),
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -125,7 +109,7 @@ private fun HeroMark(channel: LiveChannel, brand: Color) {
                 Text(
                     channel.name.uppercase(),
                     style = LiveWireTheme.tokens.overline,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -143,7 +127,7 @@ private fun HeroBody(content: HeroContent, now: Long, modifier: Modifier) {
             Text(
                 content.channel.name,
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -153,7 +137,7 @@ private fun HeroBody(content: HeroContent, now: Long, modifier: Modifier) {
         Text(
             nowPlaying?.title ?: content.channel.name,
             style = MaterialTheme.typography.displaySmall,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -163,7 +147,7 @@ private fun HeroBody(content: HeroContent, now: Long, modifier: Modifier) {
             Text(
                 listOfNotNull(EventTimes.label(nowPlaying, now), nowPlaying.category).joinToString(" · "),
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -174,18 +158,18 @@ private fun HeroBody(content: HeroContent, now: Long, modifier: Modifier) {
             Text(
                 "${minutesElapsedLabel(nowPlaying, now)} · ${minutesLeftLabel(nowPlaying, now)}",
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             content.upNext?.let { next ->
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-                    Text("UP NEXT", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+                    Text("UP NEXT", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
                     Text(
                         next.title,
                         style = MaterialTheme.typography.titleMedium,
-                        color = LiveWireColors.OnSurface,
+                        color = LiveWireTheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -208,16 +192,4 @@ private fun LiveBadge() {
         Spacer(Modifier.width(6.dp))
         Text("LIVE", style = LiveWireTheme.tokens.tag, color = Color.White)
     }
-}
-
-/** Lighten a dark brand colour so the wordmark stays legible on the raised mark tile. */
-private fun Color.brightenForText(): Color {
-    // Blend 45% toward white; deep navies/blacks stay readable, bright reds barely move.
-    val f = 0.45f
-    return Color(
-        red = red + (1f - red) * f,
-        green = green + (1f - green) * f,
-        blue = blue + (1f - blue) * f,
-        alpha = 1f,
-    )
 }

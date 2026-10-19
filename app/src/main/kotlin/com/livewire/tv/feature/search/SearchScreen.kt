@@ -209,7 +209,7 @@ fun SearchScreen(
                         else -> "Results for \"${state.query}\""
                     },
                     style = LiveWireTheme.tokens.overline,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
             }
@@ -226,7 +226,7 @@ fun SearchScreen(
                     Text(
                         "Indexing channels, guide, and games…",
                         style = LiveWireTheme.tokens.overline,
-                        color = LiveWireColors.OnSurfaceMuted,
+                        color = LiveWireTheme.onSurfaceMuted,
                         modifier = Modifier.padding(top = LiveWireDimens.SpaceXs),
                     )
                 }
@@ -346,7 +346,7 @@ private fun SearchField(
             .background(LiveWireColors.SurfaceRaised)
             .border(
                 width = if (focused) LiveWireDimens.FocusBorder else LiveWireDimens.RestBorder,
-                color = if (focused) LiveWireColors.Accent else LiveWireColors.Border,
+                color = if (focused) LiveWireColors.Focus else LiveWireColors.Border,
                 shape = shape,
             )
             .padding(horizontal = LiveWireDimens.SpaceM),
@@ -355,7 +355,7 @@ private fun SearchField(
         Icon(
             painter = painterResource(R.drawable.ic_nav_search),
             contentDescription = null,
-            tint = if (focused) LiveWireColors.Accent else LiveWireColors.OnSurfaceMuted,
+            tint = if (focused) LiveWireColors.OnSurface else LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.size(18.dp),
         )
         Spacer(Modifier.width(LiveWireDimens.SpaceS))
@@ -364,7 +364,7 @@ private fun SearchField(
                 Text(
                     "Search channels, guide, and sports",
                     style = MaterialTheme.typography.titleMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
             }
@@ -372,8 +372,8 @@ private fun SearchField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.titleMedium.copy(color = LiveWireColors.OnSurface),
-                cursorBrush = SolidColor(LiveWireColors.Accent),
+                textStyle = MaterialTheme.typography.titleMedium.copy(color = LiveWireTheme.onSurface),
+                cursorBrush = SolidColor(LiveWireColors.Live),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
                     keyboard?.hide()
@@ -418,7 +418,7 @@ private fun Results(
             Text(
                 SearchGrouping.countLine(grouped),
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
             )
         }
 
@@ -496,12 +496,12 @@ private fun SectionHeader(header: String, suffix: String) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(bottom = LiveWireDimens.SpaceS),
     ) {
-        Box(Modifier.width(2.dp).height(12.dp).background(LiveWireColors.OnSurfaceMuted))
+        Box(Modifier.width(2.dp).height(12.dp).background(LiveWireTheme.onSurfaceMuted))
         Spacer(Modifier.width(LiveWireDimens.SpaceS))
         Text(
             header.uppercase(),
             style = LiveWireTheme.tokens.overline,
-            color = LiveWireColors.OnSurfaceMuted,
+            color = LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
         )
         if (suffix.isNotBlank()) {
@@ -509,7 +509,7 @@ private fun SectionHeader(header: String, suffix: String) {
             Text(
                 suffix.uppercase(),
                 style = LiveWireTheme.tokens.overline,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
         }
@@ -593,21 +593,21 @@ private fun ProgrammeRow(
                 if (airing) NowPill() else Text(
                     SearchGrouping.programmePill(programme, now),
                     style = LiveWireTheme.tokens.tag,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
             }
             Text(
                 SearchGrouping.programmeTimeRange(programme),
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 modifier = Modifier.width(132.dp),
             )
             Text(
                 result.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -615,7 +615,7 @@ private fun ProgrammeRow(
             Text(
                 channelName,
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 260.dp),
@@ -660,7 +660,7 @@ private fun GameRow(
             Text(
                 game.leagueId.uppercase(),
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 modifier = Modifier.width(52.dp),
             )
@@ -668,15 +668,15 @@ private fun GameRow(
                 Text(
                     "${game.away.name} ",
                     style = MaterialTheme.typography.titleMedium,
-                    color = LiveWireColors.OnSurface,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text("@", style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text("@", style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurfaceMuted)
                 Text(
                     " ${game.home.name}",
                     style = MaterialTheme.typography.titleMedium,
-                    color = LiveWireColors.OnSurface,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -684,7 +684,7 @@ private fun GameRow(
                     Text(
                         "  on ${game.broadcastNetworks.joinToString(", ")}",
                         style = MaterialTheme.typography.labelMedium,
-                        color = LiveWireColors.OnSurfaceMuted,
+                        color = LiveWireTheme.onSurfaceMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -695,7 +695,7 @@ private fun GameRow(
                     "${SportsFormat.scoreLabel(game.away.score)} – ${SportsFormat.scoreLabel(game.home.score)}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = LiveWireColors.OnSurface,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                 )
             }
@@ -705,7 +705,7 @@ private fun GameRow(
                 Text(
                     SearchGrouping.gameStatus(game, System.currentTimeMillis()),
                     style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
             }
@@ -836,7 +836,7 @@ private fun EmptyState(
                 "Search finds live channels, what's on now and later in the guide, and today's games — " +
                     "all at once. Type a channel name like FOX, a show, or a team, then press Search.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.widthIn(max = 560.dp),
             )
         }
@@ -868,14 +868,14 @@ private fun RecentSearchChip(
             Icon(
                 painter = painterResource(R.drawable.ic_clock),
                 contentDescription = null,
-                tint = LiveWireColors.OnSurfaceMuted,
+                tint = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.size(16.dp),
             )
             Spacer(Modifier.width(LiveWireDimens.SpaceS))
             Text(
                 term,
                 style = MaterialTheme.typography.titleMedium,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -901,7 +901,7 @@ private fun ClearChip(onClick: () -> Unit) {
                 // Same text style as the search chips so the row lines up; muted colour marks
                 // it as secondary.
                 style = MaterialTheme.typography.titleMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
         }
@@ -946,13 +946,13 @@ private fun RecentChannelCard(
                 Text(
                     "Unavailable",
                     style = LiveWireTheme.tokens.overline,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                 )
             }
             Text(
                 recent.watched.name,
                 style = MaterialTheme.typography.titleMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = LiveWireDimens.SpaceS),
@@ -968,13 +968,13 @@ private fun NoResults(query: String) {
         Text(
             "No results for \"$query\".",
             style = MaterialTheme.typography.titleMedium,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             "Try a channel name, a show, or a team.",
             style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            color = LiveWireTheme.onSurfaceMuted,
         )
     }
 }

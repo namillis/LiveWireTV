@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -22,53 +24,45 @@ import androidx.tv.material3.darkColorScheme
 import com.livewire.tv.R
 
 /**
- * Colour tokens from the LiveWire design system (design/LIVEWIRE_DESIGN_SYSTEM.md, section 3; kept outside the repo).
+ * B · Grid colour tokens. This file is the source of truth for the design system.
  *
- * Two rules matter more than any single value:
- * - [Accent] (amber) means focus / "you are here" and nothing else.
- * - [Live] (red) means live / now and nothing else. Progress bars use [ProgressFill].
+ * Rules:
+ * - Focus is the light inverted fill ([Focus] with [OnFocus] text). It is the only focus
+ *   cue: no amber, no ring, no glow. Text fields are the one exception and show focus as a
+ *   2dp [Focus] ring so typed text stays readable.
+ * - [Live] red marks what is live or now (LIVE badge, progress dots, the Guide now-line,
+ *   live game clocks, the channel you are watching, the current tab's on-air dot) and is
+ *   the brand accent (the short rule before section overlines, the top edge of panels and
+ *   dialogs, buttons that are not focused). It is never used for focus or for errors.
+ * - "Selected but not focused" (the current tab, the row behind an open menu) uses
+ *   [SurfaceRaised].
  */
 object LiveWireColors {
-    val Canvas = Color(0xFF0B0C10)
-    val Surface = Color(0xFF15171D)
-    val SurfaceRaised = Color(0xFF1F222A)
-    val SurfaceFocused = Color(0xFF262A34)
-    val OnSurface = Color(0xFFFAFAFA)
-    val OnSurfaceMuted = Color(0xFFA8ACB6)
-    val Accent = Color(0xFFF5A524)
-    val OnAccent = Color(0xFF0B0C10)
-    val Live = Color(0xFFFF5A5F)
-    val ProgressFill = Color(0xFFD4D6DC)
-    val ProgressTrack = Color.White.copy(alpha = 0.14f)
-    val Border = Color.White.copy(alpha = 0.12f)
-    val BorderStrong = Color.White.copy(alpha = 0.18f)
-    val Scrim = Color.Black.copy(alpha = 0.55f)
-}
-
-/**
- * Static channel-brand tint colours (section 3.2). Used only as the hero-band / player
- * backdrop wash — never as focus (amber) or live (red). The name-matching logic that picks
- * one of these lives in feature/home/HeroModels.kt; the colour VALUES live here so no hex
- * sits outside this file. [Neutral] is the fallback for channels not in the map.
- */
-object LiveWireBrandColors {
-    val Neutral = Color(0xFF2A2F3A)
-    val Cnn = Color(0xFFE01A1A)
-    val FoxNews = Color(0xFF0A3D91)
-    val Fox = Color(0xFF0A3D91)
-    val Espn = Color(0xFFD50A0A)
-    val Bbc = Color(0xFFB4000A)
-    val Nbc = Color(0xFF6C5CE7)
-    val Cbs = Color(0xFF0A84D1)
-    val Abc = Color(0xFF111111)
-    val Sky = Color(0xFF0072C9)
-    val Hbo = Color(0xFF3A1A6B)
-    val Tnt = Color(0xFFE0102A)
-    val Discovery = Color(0xFF0A6CC9)
-    val NatGeo = Color(0xFFF5C518)
-    val Amc = Color(0xFFD30000)
-    val Usa = Color(0xFF0A4DA1)
-    val Weather = Color(0xFF0A84D1)
+    val Canvas = Color(0xFF0A0F1A)
+    val Surface = Color(0xFF111A2B)
+    val SurfaceRaised = Color(0xFF18233A)
+    /** Past programmes with no recording in the Guide. */
+    val SurfaceSunken = Color(0xFF0D1422)
+    val OnSurface = Color(0xFFEEF2FA)
+    val OnSurfaceSoft = Color(0xFFB9C3D6)
+    val OnSurfaceMuted = Color(0xFF8A97B0)
+    val OnSurfaceFaint = Color(0xFF5B6884)
+    val Focus = Color(0xFFF4F7FF)
+    val OnFocus = Color(0xFF0A0F1A)
+    val OnFocusMuted = Color(0xFF4A5670)
+    val Live = Color(0xFFFF3B30)
+    val OnLive = Color(0xFFFFFFFF)
+    /** The main progress line; mini bars in lists use [ProgressFillSoft]. */
+    val ProgressFill = Color(0xFFEEF2FA)
+    val ProgressFillSoft = Color(0xFFC9D2E3)
+    val ProgressTrack = Color(0xFFEEF2FA).copy(alpha = 0.16f)
+    val ProgressTrackOnFocus = Color(0xFF0A0F1A).copy(alpha = 0.18f)
+    /** Grid lines, dividers and borders. */
+    val Border = Color(0xFF1E2A42)
+    /** The Guide's half-hour verticals. */
+    val LineFaint = Color(0xFF1A2439)
+    val BorderStrong = Color(0xFF2A3756)
+    val Scrim = Color(0xFF05080E).copy(alpha = 0.72f)
 }
 
 /** Spacing and shape tokens (section 5). */
@@ -90,14 +84,21 @@ object LiveWireDimens {
     val RailGap = 10.dp
     val RailSpacing = 16.dp
 
+    /** Text-field focus ring, the one place focus is a ring instead of the fill. */
     val FocusBorder = 2.dp
-    val RestBorder = 0.5.dp
-    const val FocusScale = 1.04f
-    const val FocusScaleWide = 1.02f
-    val FocusGlow = 18.dp
+    val RestBorder = 1.dp
+    /** B · Grid does not scale focused items; the fill is the cue. Kept at 1 so callers stay simple. */
+    const val FocusScale = 1f
+    const val FocusScaleWide = 1f
+
+    /** The top bar: 78px in the mockups = 58.5dp. */
+    val TopBarHeight = 58.dp
+    val TabHeight = 33.dp
+    /** The red top edge on panels and dialogs. */
+    val BrandEdge = 2.dp
 }
 
-/** Render tier (section 10). LOW drops glows and animated focus on weak sticks. */
+/** Render tier. LOW skips the muted channel preview and any animation on weak sticks. */
 enum class PerformanceTier { LOW, STANDARD }
 
 /** Tokens TV Material has no slot for. Read with `LiveWireTheme.tokens`. */
@@ -114,8 +115,7 @@ private val LocalLiveWireTokens = staticCompositionLocalOf {
 
 /**
  * Phone Material3 components still used on TV screens (spinners, LinearProgressIndicator)
- * read this scheme. Primary is the neutral progress colour so they never turn amber
- * (focus) or red (live).
+ * read this scheme. Primary is the neutral progress colour so they never turn red.
  */
 private val m3Scheme = androidx.compose.material3.darkColorScheme(
     primary = LiveWireColors.ProgressFill,
@@ -132,8 +132,8 @@ private val m3Scheme = androidx.compose.material3.darkColorScheme(
 )
 
 private val scheme = darkColorScheme(
-    primary = LiveWireColors.Accent,
-    onPrimary = LiveWireColors.OnAccent,
+    primary = LiveWireColors.Focus,
+    onPrimary = LiveWireColors.OnFocus,
     secondary = LiveWireColors.OnSurfaceMuted,
     onSecondary = LiveWireColors.Canvas,
     background = LiveWireColors.Canvas,
@@ -145,12 +145,12 @@ private val scheme = darkColorScheme(
     onSurfaceVariant = LiveWireColors.OnSurfaceMuted,
     border = LiveWireColors.Border,
     borderVariant = LiveWireColors.BorderStrong,
-    // Errors are not red in browse screens; red is reserved for live (section 3.3).
+    // Errors are never red; red is live and brand only.
     error = LiveWireColors.OnSurface,
     onError = LiveWireColors.Canvas,
 )
 
-// Section 4. Bundled families, subset to Latin in res/font/ (no downloadable fonts:
+// Bundled families, subset to Latin in res/font/ (no downloadable fonts:
 // AOSP TV images have no Play Services). Display = Space Grotesk (hero titles, big
 // numbers), Text = Inter (everything else), Mono = JetBrains Mono (times, channel
 // numbers, "N min left", section labels, tags — always tabular figures).
@@ -208,7 +208,42 @@ fun LiveWireTheme(content: @Composable () -> Unit) {
     }
 }
 
+/**
+ * True inside a focused [LiveWireSurface], or inside any caller that draws the focus fill
+ * itself and wraps its content in [ProvideOnFocus]. Text and icons read
+ * [LiveWireTheme.onSurface] / [LiveWireTheme.onSurfaceMuted], which flip to dark ink on the fill.
+ */
+val LocalOnFocus = compositionLocalOf { false }
+
+@Composable
+fun ProvideOnFocus(focused: Boolean, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalOnFocus provides focused, content = content)
+}
+
 object LiveWireTheme {
     val tokens: LiveWireTokens
         @Composable get() = LocalLiveWireTokens.current
+
+    /** [LiveWireColors.OnSurface], or [LiveWireColors.OnFocus] on the focus fill. */
+    val onSurface: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.OnFocus else LiveWireColors.OnSurface
+
+    /** [LiveWireColors.OnSurfaceMuted], or [LiveWireColors.OnFocusMuted] on the focus fill. */
+    val onSurfaceMuted: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.OnFocusMuted else LiveWireColors.OnSurfaceMuted
+
+    /** [LiveWireColors.OnSurfaceSoft], or [LiveWireColors.OnFocus] on the focus fill. */
+    val onSurfaceSoft: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.OnFocus else LiveWireColors.OnSurfaceSoft
+
+    val progressFill: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.OnFocus else LiveWireColors.ProgressFill
+
+    val progressTrack: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.ProgressTrackOnFocus else LiveWireColors.ProgressTrack
 }

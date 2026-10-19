@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import com.livewire.tv.R
 import com.livewire.tv.ui.theme.LiveWireColors
+import com.livewire.tv.ui.theme.LiveWireTheme
 
 /**
  * The favourite marker (design system §3.3, task §4): a small OUTLINE star shown after a
@@ -21,7 +22,7 @@ import com.livewire.tv.ui.theme.LiveWireColors
 fun FavoriteStar(
     modifier: Modifier = Modifier,
     size: Dp = 12.dp,
-    tint: androidx.compose.ui.graphics.Color = LiveWireColors.OnSurfaceMuted,
+    tint: androidx.compose.ui.graphics.Color = LiveWireTheme.onSurfaceMuted,
 ) {
     Icon(
         painter = painterResource(R.drawable.ic_fav_star_outline),

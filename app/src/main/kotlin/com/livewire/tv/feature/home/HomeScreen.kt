@@ -202,7 +202,7 @@ fun HomeScreen(
                             Text(
                                 rail.title.uppercase(),
                                 style = LiveWireTheme.tokens.overline,
-                                color = LiveWireColors.OnSurfaceMuted,
+                                color = LiveWireTheme.onSurfaceMuted,
                                 modifier = Modifier.padding(top = LiveWireDimens.RailSpacing, bottom = 2.dp),
                             )
                             // Vertical padding leaves room for the focused card's scale and ring (section 9.3).
@@ -333,7 +333,7 @@ private fun UpdatedNote(version: String?, onDone: () -> Unit) {
         Text(
             com.livewire.tv.feature.update.UpdateFormat.updatedNote(version),
             style = LiveWireTheme.tokens.tag,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(LiveWireColors.SurfaceRaised)

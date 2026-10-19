@@ -116,7 +116,7 @@ private fun TopBar(showBrand: Boolean = true) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         if (showBrand) Wordmark()
         Spacer(Modifier.weight(1f))
-        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
@@ -124,8 +124,8 @@ private fun TopBar(showBrand: Boolean = true) {
 @Composable
 private fun Wordmark() {
     Row {
-        Text("Live", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface)
-        Text("Wire", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.Accent)
+        Text("Live", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
+        Text("Wire", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
     }
 }
 
@@ -135,7 +135,7 @@ private fun BrandHeader() {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Wordmark()
         Spacer(Modifier.weight(1f))
-        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
@@ -173,10 +173,10 @@ private fun StepDot(index: Int, label: String, done: Boolean, current: Boolean) 
             modifier = Modifier
                 .size(15.dp)
                 .clip(CircleShape)
-                .background(if (filled) LiveWireColors.OnSurface else LiveWireColors.SurfaceRaised)
+                .background(if (filled) LiveWireTheme.onSurface else LiveWireColors.SurfaceRaised)
                 .border(
                     LiveWireDimens.RestBorder,
-                    if (done) LiveWireColors.BorderStrong else if (current) LiveWireColors.OnSurface else LiveWireColors.Border,
+                    if (done) LiveWireColors.BorderStrong else if (current) LiveWireTheme.onSurface else LiveWireColors.Border,
                     CircleShape,
                 ),
             contentAlignment = Alignment.Center,
@@ -184,14 +184,14 @@ private fun StepDot(index: Int, label: String, done: Boolean, current: Boolean) 
             Text(
                 if (done) "✓" else index.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (filled) LiveWireColors.Canvas else LiveWireColors.OnSurfaceMuted,
+                color = if (filled) LiveWireColors.Canvas else LiveWireTheme.onSurfaceMuted,
             )
         }
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (current) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+            color = if (current) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
             fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
@@ -203,9 +203,9 @@ private fun HintLine(vararg hints: Pair<String, String>) {
     Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXl)) {
         hints.forEach { (k, v) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(k, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+                Text(k, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                Text(v, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text(v, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -265,23 +265,23 @@ private fun WelcomeScreen(onAdd: () -> Unit) {
                     .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.size(12.dp).clip(CircleShape).background(LiveWireColors.Accent))
+                Box(Modifier.size(12.dp).clip(CircleShape).background(LiveWireColors.Live))
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
             Row {
-                Text("Live", style = MaterialTheme.typography.displaySmall, color = LiveWireColors.OnSurface)
-                Text("Wire", style = MaterialTheme.typography.displaySmall, color = LiveWireColors.Accent)
+                Text("Live", style = MaterialTheme.typography.displaySmall, color = LiveWireTheme.onSurface)
+                Text("Wire", style = MaterialTheme.typography.displaySmall, color = LiveWireTheme.onSurface)
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             Text(
                 "A player for your own IPTV provider.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
             )
             Text(
                 "No account, nothing leaves this device.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceXl))
             PrimaryButton(
@@ -315,9 +315,9 @@ private fun TypeScreen(
         Column {
             StepIndicator(OnboardingStep.TYPE)
             Spacer(Modifier.height(LiveWireDimens.SpaceXl))
-            Text("What kind of provider?", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface)
+            Text("What kind of provider?", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-            Text("Pick the format your provider gave you.", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text("Pick the format your provider gave you.", style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted)
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL), modifier = Modifier.widthIn(max = TypeCardsMaxWidth)) {
                 TypeCard(
@@ -372,11 +372,11 @@ private fun TypeCard(
             .touchClickable(onClick),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(LiveWireDimens.SpaceL)) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface)
+            Text(title, style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted)
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text(meta, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(meta, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
         }
     }
 }
@@ -451,7 +451,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
             Text(
                 if (isM3u) "M3U playlist details" else "Xtream Codes details",
                 style = MaterialTheme.typography.headlineSmall,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
             )
             // The error banner replaces the subtitle, so the page still fits at 1080p
             // without scrolling the step indicator off the top.
@@ -460,7 +460,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                 Text(
                     "Enter what your provider sent you.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                 )
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
@@ -575,9 +575,9 @@ private fun ConnectErrorBanner(error: ConnectError) {
         }
         Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Column {
-            Text(error.message, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+            Text(error.message, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
             error.detail?.let {
-                Text(it, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text(it, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -616,7 +616,7 @@ private fun ConnectingDoneScreen(
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
             if (!done) {
                 // Connecting: only the step list.
-                Text("Setting up your provider", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface)
+                Text("Setting up your provider", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.height(LiveWireDimens.SpaceL))
                 ConnectSteps(phase = state.connectPhase, compact = false)
             } else {
@@ -661,21 +661,21 @@ private fun ConnectSteps(phase: ConnectPhase, compact: Boolean) {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (muted) LiveWireColors.OnSurfaceMuted else LiveWireColors.OnSurface,
+                    color = if (muted) LiveWireTheme.onSurfaceMuted else LiveWireTheme.onSurface,
                 )
                 if (guideBg) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
                     Text(
                         "continues in the background",
                         style = MaterialTheme.typography.labelMedium,
-                        color = LiveWireColors.OnSurfaceMuted,
+                        color = LiveWireTheme.onSurfaceMuted,
                     )
                 } else if (i == currentIndex && !compact) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                    Text("In progress…", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                    Text("In progress…", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
                 } else if (i < currentIndex && !compact) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                    Text("Done", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                    Text("Done", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
                 }
             }
         }
@@ -689,14 +689,14 @@ private fun StepGlyph(done: Boolean, current: Boolean, muted: Boolean) {
         modifier = Modifier
             .size(20.dp)
             .clip(CircleShape)
-            .background(if (filled) LiveWireColors.OnSurface else LiveWireColors.SurfaceRaised)
-            .border(LiveWireDimens.RestBorder, if (filled) LiveWireColors.OnSurface else LiveWireColors.Border, CircleShape),
+            .background(if (filled) LiveWireTheme.onSurface else LiveWireColors.SurfaceRaised)
+            .border(LiveWireDimens.RestBorder, if (filled) LiveWireTheme.onSurface else LiveWireColors.Border, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             if (done) "✓" else if (current) "…" else "•",
             style = MaterialTheme.typography.labelSmall,
-            color = if (filled) LiveWireColors.Canvas else LiveWireColors.OnSurfaceMuted,
+            color = if (filled) LiveWireColors.Canvas else LiveWireTheme.onSurfaceMuted,
         )
     }
 }
@@ -725,22 +725,22 @@ private fun SuccessCard(summary: ProviderSummary, startFocus: FocusRequester, on
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(LiveWireColors.SurfaceFocused)
+                    .background(LiveWireColors.SurfaceRaised)
                     .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, RoundedCornerShape(50))
                     .padding(horizontal = LiveWireDimens.SpaceM, vertical = 4.dp),
             ) {
-                Text("✓", style = MaterialTheme.typography.labelSmall, color = LiveWireColors.OnSurface)
+                Text("✓", style = MaterialTheme.typography.labelSmall, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                Text(status.uppercase(), style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+                Text(status.uppercase(), style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
         }
         Text(
             formatCount(summary.liveChannels),
             style = MaterialTheme.typography.displaySmall,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
         )
-        Text("live channels ready to watch", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text("live channels ready to watch", style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted)
 
         val facts = buildList {
             summary.expiryEpochSeconds?.let { add("Expires" to formatExpiry(it)) }
@@ -751,9 +751,9 @@ private fun SuccessCard(summary: ProviderSummary, startFocus: FocusRequester, on
             Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXl)) {
                 facts.forEach { (k, v) ->
                     Column {
-                        Text(k.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+                        Text(k.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
                         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-                        Text(v, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+                        Text(v, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface)
                     }
                 }
             }
@@ -789,7 +789,7 @@ private fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier
                 .padding(horizontal = LiveWireDimens.SpaceXl, vertical = LiveWireDimens.SpaceM),
             contentAlignment = Alignment.Center,
         ) {
-            Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LiveWireColors.OnSurface)
+            Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
         }
     }
 }

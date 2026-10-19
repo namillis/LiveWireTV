@@ -166,7 +166,7 @@ private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
                 text,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                color = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
             Spacer(Modifier.height(4.dp))
@@ -174,7 +174,7 @@ private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
                 Modifier
                     .width(20.dp)
                     .height(1.5.dp)
-                    .background(if (selected) LiveWireColors.Accent else androidx.compose.ui.graphics.Color.Transparent),
+                    .background(if (selected) LiveWireColors.Live else androidx.compose.ui.graphics.Color.Transparent),
             )
         }
     }
@@ -234,7 +234,7 @@ private fun GameCard(game: SportsGame, onClick: () -> Unit) {
                 Text(
                     SportsFormat.statusLine(game),
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (live) LiveWireColors.Live else LiveWireColors.OnSurfaceMuted,
+                    color = if (live) LiveWireColors.Live else LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
@@ -243,7 +243,7 @@ private fun GameCard(game: SportsGame, onClick: () -> Unit) {
                     Text(
                         game.broadcastNetworks.joinToString(", "),
                         style = MaterialTheme.typography.labelMedium,
-                        color = LiveWireColors.OnSurfaceMuted,
+                        color = LiveWireTheme.onSurfaceMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -265,7 +265,7 @@ private fun TeamLine(abbr: String, name: String, score: Int?, reserveScore: Bool
             Text(
                 abbr,
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 modifier = Modifier.width(52.dp),
             )
@@ -274,7 +274,7 @@ private fun TeamLine(abbr: String, name: String, score: Int?, reserveScore: Bool
         Text(
             name,
             style = MaterialTheme.typography.titleMedium,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -285,7 +285,7 @@ private fun TeamLine(abbr: String, name: String, score: Int?, reserveScore: Bool
                 score?.let(SportsFormat::scoreLabel) ?: "",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 modifier = Modifier.widthIn(min = 32.dp),
                 textAlign = TextAlign.End,
@@ -312,17 +312,17 @@ private fun StandingsList(viewModel: SportsViewModel) {
         item {
             Row(Modifier.fillMaxWidth().padding(vertical = LiveWireDimens.SpaceS)) {
                 HeaderCell("#", 40.dp)
-                Text("TEAM", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.weight(1f))
+                Text("TEAM", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.weight(1f))
                 HeaderCell("W", 48.dp)
                 HeaderCell("L", 48.dp)
             }
         }
         items(rows) { r ->
             Row(Modifier.fillMaxWidth().padding(vertical = LiveWireDimens.SpaceS), verticalAlignment = Alignment.CenterVertically) {
-                Text(r.rank ?: "", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.width(40.dp))
-                Text(r.teamAbbrev, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${r.wins}", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface, modifier = Modifier.width(48.dp))
-                Text("${r.losses}", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface, modifier = Modifier.width(48.dp))
+                Text(r.rank ?: "", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.width(40.dp))
+                Text(r.teamAbbrev, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${r.wins}", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface, modifier = Modifier.width(48.dp))
+                Text("${r.losses}", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface, modifier = Modifier.width(48.dp))
             }
         }
     }
@@ -330,7 +330,7 @@ private fun StandingsList(viewModel: SportsViewModel) {
 
 @Composable
 private fun HeaderCell(text: String, width: androidx.compose.ui.unit.Dp) {
-    Text(text, style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.width(width))
+    Text(text, style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.width(width))
 }
 
 @Composable
@@ -341,7 +341,7 @@ private fun Loading() {
             Text(
                 "Loading scores from the sports service. This can take a moment.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.padding(top = LiveWireDimens.SpaceL),
             )
         }
@@ -351,6 +351,6 @@ private fun Loading() {
 @Composable
 private fun CenterMessage(text: String) {
     Box(Modifier.fillMaxSize(), Alignment.Center) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.padding(LiveWireDimens.SpaceXl))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.padding(LiveWireDimens.SpaceXl))
     }
 }

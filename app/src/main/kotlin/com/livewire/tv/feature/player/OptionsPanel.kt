@@ -169,7 +169,7 @@ fun OptionsPanel(
             Text(
                 header,
                 style = LiveWireTheme.tokens.overline,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
@@ -363,9 +363,9 @@ private fun StreamInfoList(mediaInfo: MediaInfo) {
                 Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceM),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+                Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.weight(1f))
-                Text(value, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text(value, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -393,14 +393,14 @@ private fun OptionRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
         ) {
-            Icon(painterResource(iconRes), contentDescription = null, tint = LiveWireColors.OnSurfaceMuted, modifier = Modifier.size(22.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, modifier = Modifier.weight(1f))
+            Icon(painterResource(iconRes), contentDescription = null, tint = LiveWireTheme.onSurfaceMuted, modifier = Modifier.size(22.dp))
+            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface, modifier = Modifier.weight(1f))
             if (value != null) {
-                Text(value, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(value, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (hasChevron) {
                 Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                Text("›", style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text("›", style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -417,8 +417,8 @@ private fun ChoiceRow(label: String, selected: Boolean, focusRequester: FocusReq
             Modifier.fillMaxWidth().heightIn(min = 32.dp).padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, modifier = Modifier.weight(1f))
-            if (selected) Text("✓", style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface, modifier = Modifier.weight(1f))
+            if (selected) Text("✓", style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
         }
     }
 }
@@ -436,7 +436,7 @@ private fun EmptyNote(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.bodyMedium,
-        color = LiveWireColors.OnSurfaceMuted,
+        color = LiveWireTheme.onSurfaceMuted,
         modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceM),
     )
 }
@@ -461,8 +461,8 @@ private fun KeyHint(key: String, label: String) {
         Box(
             Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
     }
 }

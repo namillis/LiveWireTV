@@ -46,6 +46,7 @@ import androidx.tv.material3.Text
 import androidx.tv.material3.rememberDrawerState
 import com.livewire.tv.R
 import com.livewire.tv.ui.theme.LiveWireColors
+import com.livewire.tv.ui.theme.LiveWireTheme
 import com.livewire.tv.ui.theme.LiveWireDimens
 
 /** The five top-level sections reachable from the drawer (design system section 8). */
@@ -215,10 +216,10 @@ private fun BrandMark(expanded: Boolean) {
         contentAlignment = Alignment.CenterStart,
     ) {
         androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).background(LiveWireColors.Accent, RoundedCornerShape(50)))
+            Box(Modifier.size(8.dp).background(LiveWireColors.Live, RoundedCornerShape(50)))
             if (expanded) {
                 Spacer(Modifier.size(LiveWireDimens.SpaceS))
-                Text("LiveWire", style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+                Text("LiveWire", style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
             }
         }
     }
@@ -230,24 +231,24 @@ private fun drawerItemColors() = NavigationDrawerItemDefaults.colors(
     containerColor = androidx.compose.ui.graphics.Color.Transparent,
     contentColor = LiveWireColors.OnSurface,
     inactiveContentColor = LiveWireColors.OnSurfaceMuted,
-    focusedContainerColor = LiveWireColors.SurfaceFocused,
-    focusedContentColor = LiveWireColors.OnSurface,
-    pressedContainerColor = LiveWireColors.SurfaceFocused,
-    pressedContentColor = LiveWireColors.OnSurface,
+    focusedContainerColor = LiveWireColors.Focus,
+    focusedContentColor = LiveWireColors.OnFocus,
+    pressedContainerColor = LiveWireColors.Focus,
+    pressedContentColor = LiveWireColors.OnFocus,
     // Current section: amber content, never a fill (section 8).
     selectedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-    selectedContentColor = LiveWireColors.Accent,
-    focusedSelectedContainerColor = LiveWireColors.SurfaceFocused,
-    focusedSelectedContentColor = LiveWireColors.OnSurface,
-    pressedSelectedContainerColor = LiveWireColors.SurfaceFocused,
-    pressedSelectedContentColor = LiveWireColors.OnSurface,
+    selectedContentColor = LiveWireColors.OnSurface,
+    focusedSelectedContainerColor = LiveWireColors.Focus,
+    focusedSelectedContentColor = LiveWireColors.OnFocus,
+    pressedSelectedContainerColor = LiveWireColors.Focus,
+    pressedSelectedContentColor = LiveWireColors.OnFocus,
 )
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun drawerItemBorder(): androidx.tv.material3.NavigationDrawerItemBorder {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
-    val ring = Border(BorderStroke(LiveWireDimens.FocusBorder, LiveWireColors.Accent), shape = shape)
+    val ring = Border.None
     return NavigationDrawerItemDefaults.border(
         focusedBorder = ring,
         pressedBorder = ring,

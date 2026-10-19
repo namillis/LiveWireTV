@@ -96,12 +96,12 @@ internal fun ChannelPicker(
                 Text(
                     "${game.away.abbreviation} @ ${game.home.abbreviation}",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = LiveWireColors.OnSurface,
+                    color = LiveWireTheme.onSurface,
                 )
                 Text(
                     SportsFormat.networksLine(game),
                     style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     modifier = Modifier.padding(bottom = LiveWireDimens.SpaceS),
                 )
 
@@ -149,7 +149,7 @@ private fun MatchRow(match: ChannelMatch, onPick: () -> Unit, focusRequester: Fo
             Text(
                 match.channel.name,
                 style = MaterialTheme.typography.titleMedium,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -157,7 +157,7 @@ private fun MatchRow(match: ChannelMatch, onPick: () -> Unit, focusRequester: Fo
             Text(
                 "MATCHED ${match.matchedNetwork.uppercase()}",
                 style = LiveWireTheme.tokens.overline,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
         }
@@ -168,11 +168,11 @@ private fun MatchRow(match: ChannelMatch, onPick: () -> Unit, focusRequester: Fo
 @Composable
 private fun EmptyPickerState(message: String, focusRequester: FocusRequester, onDismiss: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-        Text(message, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+        Text(message, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
         Text(
             "Open the guide to find it manually.",
             style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            color = LiveWireTheme.onSurfaceMuted,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         CloseButton(onDismiss, focusRequester)
@@ -192,7 +192,7 @@ private fun CloseButton(onDismiss: () -> Unit, focusRequester: FocusRequester?) 
         Text(
             "✕  Close",
             style = MaterialTheme.typography.titleMedium,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
             modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceXl, vertical = LiveWireDimens.SpaceM),
         )
     }

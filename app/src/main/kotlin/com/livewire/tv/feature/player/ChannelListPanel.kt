@@ -98,9 +98,9 @@ fun ChannelListPanel(
                 Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceS, vertical = LiveWireDimens.SpaceS),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(state.categoryName.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+                Text(state.categoryName.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
                 Spacer(Modifier.weight(1f))
-                Text("${state.items.size} channels", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text("${state.items.size} channels", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -174,7 +174,7 @@ private fun GroupHeader(title: String) {
     Text(
         title.uppercase(),
         style = LiveWireTheme.tokens.overline,
-        color = LiveWireColors.OnSurfaceMuted,
+        color = LiveWireTheme.onSurfaceMuted,
         modifier = Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
     )
 }
@@ -203,7 +203,7 @@ private fun ChannelRow(
             Text(
                 item.number,
                 style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                color = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.width(34.dp),
             )
             Column(Modifier.weight(1f)) {
@@ -211,7 +211,7 @@ private fun ChannelRow(
                     Text(
                         item.channel.name,
                         style = MaterialTheme.typography.titleMedium,
-                        color = LiveWireColors.OnSurface,
+                        color = LiveWireTheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -223,7 +223,7 @@ private fun ChannelRow(
                 Text(
                     programmeLine(item.nowPlaying, now),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -244,7 +244,7 @@ private fun WatchingTag() {
             .background(LiveWireColors.SurfaceRaised)
             .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
-        Text("WATCHING", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurfaceMuted)
+        Text("WATCHING", style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
@@ -259,23 +259,23 @@ private fun Preview(item: ChannelListItem, now: Long, modifier: Modifier) {
             .padding(LiveWireDimens.SpaceL),
         horizontalAlignment = Alignment.Start,
     ) {
-        Text("PREVIEW · CH ${item.number}", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+        Text("PREVIEW · CH ${item.number}", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             item.nowPlaying?.title ?: item.channel.name,
             style = MaterialTheme.typography.headlineSmall,
-            color = LiveWireColors.OnSurface,
+            color = LiveWireTheme.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         val meta = previewMeta(item.nowPlaying, now)
         if (meta.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
-            Text(meta, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
+            Text(meta, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
         }
         item.nowPlaying?.description?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -295,9 +295,9 @@ private fun HintRow() {
 private fun KeyHint(key: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp)) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
