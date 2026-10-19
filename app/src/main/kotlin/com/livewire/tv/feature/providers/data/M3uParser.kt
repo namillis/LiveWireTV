@@ -17,6 +17,8 @@ data class M3uEntry(
     val catchupSource: String? = null,
     /** Days of catch-up the channel advertises (`catchup-days`), 0 when absent. */
     val catchupDays: Int = 0,
+    /** `tvg-chno`, the channel number, or null. */
+    val number: Int? = null,
 )
 
 data class M3uPlaylist(
@@ -152,6 +154,7 @@ object M3uParser {
             catchupSource = catchupSource,
             // Only carry days when this channel actually has catch-up.
             catchupDays = if (catchupType != null) catchupDays else 0,
+            number = attrs["tvg-chno"]?.trim()?.toIntOrNull()?.takeIf { it > 0 },
         )
     }
 

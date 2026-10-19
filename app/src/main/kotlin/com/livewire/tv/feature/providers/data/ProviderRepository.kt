@@ -91,6 +91,7 @@ class ProviderRepository @Inject constructor(
                         categoryId = entry.groupName(),
                         archiveDays = spec?.days ?: 0,
                         catchup = spec,
+                        number = entry.number,
                     )
                 }
         }.filterNot { ChannelNames.isPlaceholder(it.name) }

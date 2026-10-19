@@ -103,6 +103,7 @@ class XtreamClient @Inject constructor(
                     epgChannelId = o["epg_channel_id"].str()?.ifBlank { null },
                     categoryId = o["category_id"].str().orEmpty(),
                     archiveDays = archiveDays,
+                    number = o["num"].str()?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
                     // Kept only for a pool that lists event_info (ProviderRepository applies the gate).
                     poolEvent = PoolSignals.parseEvent(o["pool_event"], streamId),
                 )
