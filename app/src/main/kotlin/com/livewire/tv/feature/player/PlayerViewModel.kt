@@ -49,6 +49,7 @@ data class PlayerSourceState(
  * entry fetched up front) so it needs no suspension at seek time. [token] changes on every
  * new [playArchive] so the screen can tell a fresh request from a stale recomposition.
  * [timeShift] marks a request that came from pausing live TV (PAUSED_LIVE), not catch-up.
+ * [renewal] marks time-shift renewing its own window ([TimeShiftRenewal]), not a user request.
  */
 data class ArchiveState(
     val loading: Boolean = false,
@@ -60,6 +61,7 @@ data class ArchiveState(
     val title: String = "",
     val programmeTitle: String? = null,
     val timeShift: Boolean = false,
+    val renewal: Boolean = false,
     /** Wall-clock ms when live was paused; stays fixed across time-shift reopens. */
     val pausedAtMs: Long = 0,
     val token: Int = 0,
@@ -205,7 +207,8 @@ class PlayerViewModel @Inject constructor(
      * seek that reopens the stream needs no suspension. Fails soft — an unavailable window
      * sets [ArchiveState.error] ("This programme isn't in the archive") rather than throwing.
      *
-     * [timeShift] distinguishes a pause-live request (PAUSED_LIVE) from catch-up playback.
+     * [timeShift] distinguishes a pause-live request (PAUSED_LIVE) from catch-up playback, and
+     * [renewal] a time-shift renewing its own window from one the user asked for.
      * [programmeTitle] is the past programme's title for the overlay ("CATCH-UP <title>").
      */
     fun playArchive(
@@ -215,6 +218,7 @@ class PlayerViewModel @Inject constructor(
         timeShift: Boolean = false,
         programmeTitle: String? = null,
         pausedAtMs: Long = 0,
+        renewal: Boolean = false,
     ) {
         val token = archiveToken++
         _archive.update {
@@ -226,6 +230,7 @@ class PlayerViewModel @Inject constructor(
                 title = channel.name,
                 programmeTitle = programmeTitle,
                 timeShift = timeShift,
+                renewal = renewal,
                 pausedAtMs = pausedAtMs,
                 token = token,
             )

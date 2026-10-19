@@ -148,7 +148,7 @@ fun PlayerScreen(
             forward = forward,
             repeat = repeat,
             nowMs = android.os.SystemClock.elapsedRealtime(),
-            positionMs = position.takeIf { it > 0 } ?: archive.startMs,
+            positionMs = TimeShiftRenewal.playheadMs(archive, openedArchiveToken, position),
             windowStartMs = archive.startMs,
             windowEndMs = archive.endMs,
         )
@@ -156,8 +156,10 @@ fun PlayerScreen(
         scrubTick++
     }
 
-    /** Seek to the pending target now. Returns false when nothing was pending. */
+    /** Seek to the pending target now. Returns false when nothing was sought. */
     fun commitScrub(): Boolean {
+        // A renewal is opening: keep the target, and seek once the new stream is open (below).
+        if (TimeShiftRenewal.isOpening(archive, openedArchiveToken)) return false
         val t = scrubber.take()
         scrubTargetMs = null
         if (t == null) return false
@@ -190,13 +192,16 @@ fun PlayerScreen(
             source.source?.let { engine.open(it.url, headers = it.headers, retryUrl = it.retryUrl, onStop = it.onStop) }
         }
     }
-    // Open an ARCHIVE source (catch-up launch, Start over, or resume from time-shift) exactly
-    // once per request token, wiring the engine's reopen-to-seek to the view model's builder.
+    // Open an ARCHIVE source (catch-up launch, Start over, resume from time-shift, or a
+    // time-shift renewal) exactly once per request token, wiring the engine's reopen-to-seek to
+    // the view model's builder. A request the user made resets the scrub bar; a renewal leaves
+    // its focus and any seek still being chosen alone (TimeShiftRenewal).
     LaunchedEffect(archive.token, archive.source) {
         val src = archive.source
         if (src != null && archive.token != openedArchiveToken) {
             openedArchiveToken = archive.token
-            cancelScrub()
+            val renewal = archive.renewal
+            if (!renewal) cancelScrub()
             val reopen = archive.reopen
             val fallback = archive.fallback
             engine.openArchive(
@@ -208,7 +213,12 @@ fun PlayerScreen(
                 fallback = { fallback(it) },
                 onStop = src.onStop,
             )
-            barFocused = false
+            if (renewal) {
+                // Presses made while the renewal opened: seek once they stop.
+                if (scrubTargetMs != null) scrubTick++
+            } else {
+                barFocused = false
+            }
             reveal()
         }
     }
@@ -299,17 +309,25 @@ fun PlayerScreen(
     // dry and the engine reports ERROR (or ENDED). Keep the delay by reopening from the current
     // position up to the new "now" shortly BEFORE that point, and again if it fails anyway.
     // Within TIME_SHIFT_LIVE_SNAP_MS of live there is too little to reopen, so go live instead.
+    // One renewal at a time: the effects below fire again while the first is still opening.
     fun continueTimeShift(allowLive: Boolean) {
+        if (TimeShiftRenewal.isOpening(archive, openedArchiveToken)) return
         val channel = viewModel.currentChannel()
         if (channel == null) {
             goLive()
             return
         }
         val wallNow = System.currentTimeMillis()
-        val pos = position.takeIf { it > 0 } ?: archive.endMs
+        val pending = scrubTargetMs
+        val pos = TimeShiftRenewal.startAt(pending, position, archive.endMs)
         if (wallNow - pos <= TIME_SHIFT_LIVE_SNAP_MS) {
             if (allowLive) goLive()
             return
+        }
+        // The renewal takes a pending seek: the new stream opens at its target.
+        if (pending != null) {
+            scrubber.take()
+            scrubTargetMs = null
         }
         viewModel.playArchive(
             channel,
@@ -318,6 +336,7 @@ fun PlayerScreen(
             timeShift = true,
             programmeTitle = viewModel.programmeAt(channel, pos)?.title ?: archive.programmeTitle,
             pausedAtMs = archive.pausedAtMs,
+            renewal = true,
         )
     }
     val timeShifting = mode == PlayerMode.ARCHIVE && archive.timeShift
@@ -478,7 +497,7 @@ fun PlayerScreen(
                             programmeTitle = archive.programmeTitle,
                             windowStartMs = archive.startMs,
                             // A pending seek shows where it will land; playback catches up on commit.
-                            positionMs = scrubTargetMs ?: position.takeIf { it > 0 } ?: archive.startMs,
+                            positionMs = scrubTargetMs ?: TimeShiftRenewal.playheadMs(archive, openedArchiveToken, position),
                             durationMs = (archive.endMs - archive.startMs).coerceAtLeast(0L),
                             mediaInfo = mediaInfo,
                         ),
