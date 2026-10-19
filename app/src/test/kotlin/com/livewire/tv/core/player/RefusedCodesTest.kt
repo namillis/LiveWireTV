@@ -8,7 +8,7 @@ class RefusedCodesTest {
 
     @Test
     fun `auth churn, rate limit and connection limit count as refused`() {
-        listOf(401, 403, 429, 456).forEach { assertTrue("$it", RefusedCodes.isRefusal(it)) }
+        listOf(401, 403, 429, 456, 460).forEach { assertTrue("$it", RefusedCodes.isRefusal(it)) }
     }
 
     @Test

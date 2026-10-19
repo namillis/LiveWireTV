@@ -105,8 +105,9 @@ data class PlaybackSource(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     /**
-     * The URL for retry number `attempt` (1, 2, ...), `refused` when the provider answered
-     * 401/403/429/456. Null means retries reopen [url] unchanged, as for any plain provider.
+     * The URL for retry number `attempt` (1, 2, ...), `refused` when the provider refused the
+     * connection (one of the player's `RefusedCodes`). Null means retries reopen [url]
+     * unchanged, as for any plain provider.
      */
     val retryUrl: ((attempt: Int, refused: Boolean) -> String)? = null,
     /** Called once when the player stops this stream (switch, leave, preview end). */

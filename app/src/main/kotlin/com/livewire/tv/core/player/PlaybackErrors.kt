@@ -10,7 +10,7 @@ import androidx.media3.common.PlaybackException
  */
 object PlaybackErrors {
 
-    /** 401/403/429/456 that kept coming after the quiet retries ([RefusedCodes]). */
+    /** A refused code ([RefusedCodes]) that kept coming after the quiet retries. */
     const val REFUSED = "The provider refused the stream. Its connections may be busy. Try again in a moment."
 
     /** 404/410 on a live channel: the provider (or the pool) has no stream for it right now. */
