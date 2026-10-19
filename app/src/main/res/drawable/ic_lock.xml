@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B · Grid icon in the logo's rounded line style. Tinted at runtime. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M7.5,10.5H16.5A2.5,2.5 0 0 1 19,13V17.5A2.5,2.5 0 0 1 16.5,20H7.5A2.5,2.5 0 0 1 5,17.5V13A2.5,2.5 0 0 1 7.5,10.5Z" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

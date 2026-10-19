@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The LiveWire mark: a TV with feet, a pulse line running into the red on-air dot.
+     Same geometry as docs/branding/svg. Not tinted: it always sits on the dark canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp" android:height="25.6dp"
+    android:viewportWidth="140" android:viewportHeight="128">
+    <group android:translateX="-20" android:translateY="-26">
+        <path
+            android:pathData="M46,38 H134 A18,18 0 0 1 152,56 V108 A18,18 0 0 1 134,126 H46 A18,18 0 0 1 28,108 V56 A18,18 0 0 1 46,38 Z"
+            android:strokeColor="#FFEEF2FA" android:strokeWidth="9" />
+        <path
+            android:pathData="M56,126 L50,142 M124,126 L130,142"
+            android:strokeColor="#FFEEF2FA" android:strokeWidth="9" android:strokeLineCap="round" />
+        <path
+            android:pathData="M50,82 h8 l8,-20 l12,40 l9,-30 l6,10 h12"
+            android:strokeColor="#FFEEF2FA" android:strokeWidth="8"
+            android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path
+            android:pathData="M112,82 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0"
+            android:fillColor="#FFFF3B30" />
+    </group>
+</vector>
