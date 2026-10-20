@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.settings
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -160,28 +162,17 @@ private fun TopLine(providerSummary: String) {
     Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
         Text(
             "Settings",
-            style = MaterialTheme.typography.headlineSmall,
+            style = LiveWireType.Heading,
             color = LiveWireTheme.onSurface,
         )
         Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Text(
             providerSummary,
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             color = LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.padding(bottom = 2.dp).weight(1f),
         )
-        Text(
-            rememberClockLabel(),
-            style = MaterialTheme.typography.labelMedium,
-            color = LiveWireTheme.onSurfaceMuted,
-        )
     }
-}
-
-/** The "Thu · 8:24 PM"-style clock label, formatted from the current time. */
-@Composable
-private fun rememberClockLabel(): String = remember {
-    SimpleDateFormat("EEE · h:mm a", Locale.getDefault()).format(Date())
 }
 
 /**
@@ -281,19 +272,7 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = HeaderGap),
         ) {
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .height(12.dp)
-                    .clip(RoundedCornerShape(1.5.dp))
-                    .background(LiveWireTheme.onSurfaceMuted),
-            )
-            Spacer(Modifier.width(LiveWireDimens.SpaceS))
-            Text(
-                title.uppercase(),
-                style = LiveWireTheme.tokens.overline,
-                color = LiveWireTheme.onSurfaceMuted,
-            )
+            Overline(title.uppercase())
         }
         content()
     }
@@ -330,7 +309,7 @@ private fun SettingRow(
             Column(modifier = Modifier.weight(1f).padding(end = LiveWireDimens.SpaceM)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -338,7 +317,7 @@ private fun SettingRow(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     description,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = LiveWireType.Body,
                     color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -402,7 +381,7 @@ private fun Segment(text: String, selected: Boolean) {
         if (selected) {
             Text(
                 "✓",
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 fontWeight = FontWeight.Bold,
                 color = LiveWireTheme.onSurface,
             )
@@ -410,7 +389,7 @@ private fun Segment(text: String, selected: Boolean) {
         }
         Text(
             text,
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             color = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
@@ -457,7 +436,7 @@ private fun GuideWindowRow(hours: Int, onDecrement: () -> Unit, onIncrement: () 
                 StepArrow(glyph = "‹", enabled = SettingsFormat.canDecrementGuideWindow(hours), onClick = onDecrement)
                 Text(
                     SettingsFormat.guideWindowLabel(hours),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = LiveWireType.Mono,
                     fontWeight = FontWeight.Bold,
                     color = LiveWireTheme.onSurface,
                     textAlign = TextAlign.Center,
@@ -470,7 +449,7 @@ private fun GuideWindowRow(hours: Int, onDecrement: () -> Unit, onIncrement: () 
                 Spacer(Modifier.height(2.dp))
                 Text(
                     SettingsFormat.guideWindowRangeCaption(baseline),
-                    style = LiveWireTheme.tokens.overline,
+                    style = LiveWireType.Overline,
                     color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
@@ -502,7 +481,7 @@ private fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             glyph,
-            style = MaterialTheme.typography.titleMedium,
+            style = LiveWireType.Title,
             fontWeight = FontWeight.Bold,
             color = if (enabled) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
         )
@@ -514,13 +493,13 @@ private fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
 private fun GuidePreviewRow(on: Boolean, onToggle: () -> Unit) {
     SettingRow(
         title = "Channel preview",
-        description = "Play the focused channel, muted, after 2 seconds",
+        description = "Play the focused channel muted after 2 seconds, in Home and the Guide",
         onClick = onToggle,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 SettingsFormat.onOffLabel(on),
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurface,
                 modifier = Modifier.widthIn(min = 26.dp),
             )
@@ -534,14 +513,14 @@ private fun GuidePreviewRow(on: Boolean, onToggle: () -> Unit) {
 @Composable
 private fun NowPlayingRow(on: Boolean, onToggle: () -> Unit) {
     SettingRow(
-        title = "Show now-playing on cards",
-        description = "Display the current programme under each channel",
+        title = "Show now-playing in lists",
+        description = "The current programme under each channel name",
         onClick = onToggle,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 SettingsFormat.onOffLabel(on),
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurface,
                 modifier = Modifier.widthIn(min = 26.dp),
             )
@@ -598,13 +577,13 @@ private fun FavoritesRow(onOpen: () -> Unit) {
         ) {
             Text(
                 "Manage",
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 fontWeight = FontWeight.SemiBold,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
             )
             Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-            Text("›", style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurfaceMuted)
+            Text("›", style = LiveWireType.Title, color = LiveWireTheme.onSurfaceMuted)
         }
     }
 }
@@ -628,7 +607,7 @@ private fun ProvidersRow(summary: String, onOpen: () -> Unit) {    val shape = R
         ) {
             Text(
                 "Manage",
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 fontWeight = FontWeight.SemiBold,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
@@ -636,7 +615,7 @@ private fun ProvidersRow(summary: String, onOpen: () -> Unit) {    val shape = R
             Spacer(Modifier.width(LiveWireDimens.SpaceXs))
             Text(
                 "›",
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurfaceMuted,
             )
         }
@@ -700,7 +679,7 @@ private fun AboutGroup(
         ) {
             Text(
                 "Check now",
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 fontWeight = FontWeight.SemiBold,
                 color = if (updatesEnabled) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
@@ -719,7 +698,7 @@ private fun AboutGroup(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     SettingsFormat.onOffLabel(s.autoCheckUpdates),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = LiveWireType.Mono,
                     color = LiveWireTheme.onSurface,
                     modifier = Modifier.widthIn(min = 26.dp),
                 )
@@ -762,7 +741,7 @@ private fun AboutInfoRow(title: String, description: String, trailing: String? =
         Column(Modifier.weight(1f)) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -770,7 +749,7 @@ private fun AboutInfoRow(title: String, description: String, trailing: String? =
             Spacer(Modifier.height(2.dp))
             Text(
                 description,
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -780,7 +759,7 @@ private fun AboutInfoRow(title: String, description: String, trailing: String? =
             Spacer(Modifier.width(LiveWireDimens.SpaceM))
             Text(
                 trailing,
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
@@ -804,9 +783,9 @@ private fun HintLine() {
 @Composable
 private fun Hint(keys: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(keys, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface)
+        Text(keys, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+        Text(label, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 

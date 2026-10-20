@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.sports
 
+import com.livewire.tv.ui.theme.LiveWireType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -95,12 +96,12 @@ internal fun ChannelPicker(
             ) {
                 Text(
                     "${game.away.abbreviation} @ ${game.home.abbreviation}",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = LiveWireType.Heading,
                     color = LiveWireTheme.onSurface,
                 )
                 Text(
                     SportsFormat.networksLine(game),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = LiveWireType.Mono,
                     color = LiveWireTheme.onSurfaceMuted,
                     modifier = Modifier.padding(bottom = LiveWireDimens.SpaceS),
                 )
@@ -148,7 +149,7 @@ private fun MatchRow(match: ChannelMatch, onPick: () -> Unit, focusRequester: Fo
         Column(Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceM)) {
             Text(
                 match.channel.name,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -156,7 +157,7 @@ private fun MatchRow(match: ChannelMatch, onPick: () -> Unit, focusRequester: Fo
             Spacer(Modifier.height(LiveWireDimens.SpaceXs))
             Text(
                 "MATCHED ${match.matchedNetwork.uppercase()}",
-                style = LiveWireTheme.tokens.overline,
+                style = LiveWireType.Overline,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
@@ -168,10 +169,10 @@ private fun MatchRow(match: ChannelMatch, onPick: () -> Unit, focusRequester: Fo
 @Composable
 private fun EmptyPickerState(message: String, focusRequester: FocusRequester, onDismiss: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-        Text(message, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
+        Text(message, style = LiveWireType.Title, color = LiveWireTheme.onSurface)
         Text(
             "Open the guide to find it manually.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = LiveWireType.Body,
             color = LiveWireTheme.onSurfaceMuted,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
@@ -191,7 +192,7 @@ private fun CloseButton(onDismiss: () -> Unit, focusRequester: FocusRequester?) 
     ) {
         Text(
             "✕  Close",
-            style = MaterialTheme.typography.titleMedium,
+            style = LiveWireType.Title,
             color = LiveWireTheme.onSurface,
             modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceXl, vertical = LiveWireDimens.SpaceM),
         )

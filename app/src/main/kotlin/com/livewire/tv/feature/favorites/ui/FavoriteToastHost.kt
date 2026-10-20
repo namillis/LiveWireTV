@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.favorites.ui
 
+import com.livewire.tv.ui.theme.LiveWireType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -91,7 +92,7 @@ fun FavoriteToastHost(
                 }
                 Text(
                     message,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = LiveWireType.Mono,
                     color = LiveWireTheme.onSurface,
                     maxLines = 1,
                 )

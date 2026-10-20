@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.favorites.ui
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -142,28 +144,23 @@ fun FavoritesManageScreen(
 @Composable
 private fun TopLine(summary: String) {
     Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
-        Text("Favourites", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
+        Text("Favourites", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Text(
             summary,
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             color = LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.padding(bottom = 2.dp).weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
 @Composable
 private fun Breadcrumb() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.width(3.dp).height(12.dp).clip(RoundedCornerShape(1.5.dp)).background(LiveWireTheme.onSurfaceMuted),
-        )
-        Spacer(Modifier.width(LiveWireDimens.SpaceS))
-        Text("SETTINGS › FAVOURITES", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
+        Overline("Settings  ›  Favourites")
     }
 }
 
@@ -189,7 +186,7 @@ private fun ManageRowView(
             .background(LiveWireColors.Surface)
             .border(
                 if (moving) LiveWireDimens.FocusBorder else LiveWireDimens.RestBorder,
-                if (moving) LiveWireColors.Live else LiveWireColors.Border,
+                if (moving) LiveWireColors.Focus else LiveWireColors.Border,
                 shape,
             )
             .heightIn(min = 56.dp)
@@ -205,7 +202,7 @@ private fun ManageRowView(
         )
         Text(
             row.displayNumber.toString(),
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             color = LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.width(16.dp),
         )
@@ -215,7 +212,7 @@ private fun ManageRowView(
                 if (!row.unavailable) FavoriteStar(size = 12.dp)
                 Text(
                     row.entry.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -229,7 +226,7 @@ private fun ManageRowView(
             Spacer(Modifier.height(2.dp))
             Text(
                 secondaryLine(row, moving),
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -293,12 +290,12 @@ private fun MoveButton(
             horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXs),
         ) {
             if (moving) {
-                Text("▲ ▼", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
+                Text("▲ ▼", style = LiveWireType.Mono, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                Text("Drop", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = LiveWireTheme.onSurface, maxLines = 1)
+                Text("Drop", style = LiveWireType.Mono, fontWeight = FontWeight.SemiBold, color = LiveWireTheme.onSurface, maxLines = 1)
             } else {
                 Icon(painter = painterResource(R.drawable.ic_fav_move), contentDescription = null, tint = LiveWireTheme.onSurfaceMuted, modifier = Modifier.size(14.dp))
-                Text("Move", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = LiveWireTheme.onSurface, maxLines = 1)
+                Text("Move", style = LiveWireType.Mono, fontWeight = FontWeight.SemiBold, color = LiveWireTheme.onSurface, maxLines = 1)
             }
         }
     }
@@ -328,14 +325,14 @@ private fun ActionButton(
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = null,
-                tint = if (danger) LiveWireColors.Live else LiveWireTheme.onSurfaceMuted,
+                tint = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.size(14.dp),
             )
             Text(
                 label,
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 fontWeight = FontWeight.SemiBold,
-                color = if (danger) LiveWireColors.Live else LiveWireTheme.onSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
             )
         }
@@ -354,7 +351,7 @@ private fun LogoTile(name: String, unavailable: Boolean) {
     ) {
         Text(
             if (unavailable) "?" else wordmark(name),
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             fontWeight = FontWeight.Bold,
             color = LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
@@ -375,7 +372,7 @@ private fun NeutralTag(text: String) {
     Box(
         Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
-        Text(text, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurfaceMuted)
+        Text(text, style = LiveWireType.Tag, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
@@ -385,11 +382,11 @@ private fun EmptyState() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             FavoriteStar(size = 48.dp)
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text("No favourites yet", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
+            Text("No favourites yet", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Text(
                 "Long-press OK on any channel to add it to Favourites",
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
             )
         }
@@ -400,13 +397,8 @@ private fun EmptyState() {
 private fun HintLine() {
     Text(
         "Move picks a favourite up, ▲ ▼ reorder, OK drops it. Order matches the Home rail and Guide.",
-        style = MaterialTheme.typography.bodyMedium,
+        style = LiveWireType.Body,
         color = LiveWireTheme.onSurfaceMuted,
         maxLines = 2,
     )
-}
-
-@Composable
-private fun rememberClockLabel(): String = remember {
-    SimpleDateFormat("EEE · h:mm a", Locale.getDefault()).format(Date())
 }

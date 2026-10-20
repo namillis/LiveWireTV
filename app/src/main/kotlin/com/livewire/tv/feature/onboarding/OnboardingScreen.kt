@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.onboarding
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -116,17 +119,14 @@ private fun TopBar(showBrand: Boolean = true) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         if (showBrand) Wordmark()
         Spacer(Modifier.weight(1f))
-        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+        Text(rememberClockLabel(), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
-/** "Live" in onSurface + "Wire" in amber. Amber here is the brand dot exception (§3.1). */
+/** The LiveWire lockup: the mark with "LiveWire / LIVE TV", as in the top bar. */
 @Composable
 private fun Wordmark() {
-    Row {
-        Text("Live", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
-        Text("Wire", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
-    }
+    com.livewire.tv.navigation.Lockup()
 }
 
 /** A header row with the brand wordmark left and the clock right. */
@@ -135,7 +135,7 @@ private fun BrandHeader() {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Wordmark()
         Spacer(Modifier.weight(1f))
-        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+        Text(rememberClockLabel(), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
@@ -183,14 +183,14 @@ private fun StepDot(index: Int, label: String, done: Boolean, current: Boolean) 
         ) {
             Text(
                 if (done) "✓" else index.toString(),
-                style = MaterialTheme.typography.labelSmall,
+                style = LiveWireType.Tag,
                 color = if (filled) LiveWireColors.Canvas else LiveWireTheme.onSurfaceMuted,
             )
         }
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
         Text(
             label,
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             color = if (current) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
             fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
         )
@@ -203,9 +203,9 @@ private fun HintLine(vararg hints: Pair<String, String>) {
     Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXl)) {
         hints.forEach { (k, v) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(k, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface)
+                Text(k, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                Text(v, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+                Text(v, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -256,31 +256,23 @@ private fun WelcomeScreen(onAdd: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // Brand mark tile with amber spark.
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(LiveWireColors.SurfaceRaised)
-                    .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(Modifier.size(12.dp).clip(CircleShape).background(LiveWireColors.Live))
-            }
+            // The brand mark, large, with the wordmark under it.
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.livewire.tv.R.drawable.ic_brand_mark),
+                contentDescription = null,
+                modifier = Modifier.size(width = 57.dp, height = 52.dp),
+            )
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
-            Row {
-                Text("Live", style = MaterialTheme.typography.displaySmall, color = LiveWireTheme.onSurface)
-                Text("Wire", style = MaterialTheme.typography.displaySmall, color = LiveWireTheme.onSurface)
-            }
+            Text("LiveWire", style = LiveWireType.Display.copy(fontSize = 33.sp, lineHeight = 36.sp), color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             Text(
                 "A player for your own IPTV provider.",
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
             )
             Text(
                 "No account, nothing leaves this device.",
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceXl))
@@ -315,9 +307,9 @@ private fun TypeScreen(
         Column {
             StepIndicator(OnboardingStep.TYPE)
             Spacer(Modifier.height(LiveWireDimens.SpaceXl))
-            Text("What kind of provider?", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
+            Text("What kind of provider?", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-            Text("Pick the format your provider gave you.", style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted)
+            Text("Pick the format your provider gave you.", style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted)
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL), modifier = Modifier.widthIn(max = TypeCardsMaxWidth)) {
                 TypeCard(
@@ -372,11 +364,11 @@ private fun TypeCard(
             .touchClickable(onClick),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(LiveWireDimens.SpaceL)) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
+            Text(title, style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted)
+            Text(body, style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted)
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text(meta, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+            Text(meta, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
         }
     }
 }
@@ -450,7 +442,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
             Text(
                 if (isM3u) "M3U playlist details" else "Xtream Codes details",
-                style = MaterialTheme.typography.headlineSmall,
+                style = LiveWireType.Heading,
                 color = LiveWireTheme.onSurface,
             )
             // The error banner replaces the subtitle, so the page still fits at 1080p
@@ -459,7 +451,7 @@ private fun DetailsScreen(state: OnboardingUiState, vm: OnboardingViewModel) {
                 Spacer(Modifier.height(LiveWireDimens.SpaceXs))
                 Text(
                     "Enter what your provider sent you.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = LiveWireType.Body,
                     color = LiveWireTheme.onSurfaceMuted,
                 )
             }
@@ -571,13 +563,13 @@ private fun ConnectErrorBanner(error: ConnectError) {
                 .border(LiveWireDimens.RestBorder, LiveWireColors.Border, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text("!", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.Live)
+            Text("!", style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
         }
         Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Column {
-            Text(error.message, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
+            Text(error.message, style = LiveWireType.Title, color = LiveWireTheme.onSurface)
             error.detail?.let {
-                Text(it, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+                Text(it, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -616,7 +608,7 @@ private fun ConnectingDoneScreen(
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
             if (!done) {
                 // Connecting: only the step list.
-                Text("Setting up your provider", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
+                Text("Setting up your provider", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.height(LiveWireDimens.SpaceL))
                 ConnectSteps(phase = state.connectPhase, compact = false)
             } else {
@@ -660,22 +652,22 @@ private fun ConnectSteps(phase: ConnectPhase, compact: Boolean) {
                 val muted = i > currentIndex || guideBg
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     color = if (muted) LiveWireTheme.onSurfaceMuted else LiveWireTheme.onSurface,
                 )
                 if (guideBg) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
                     Text(
                         "continues in the background",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = LiveWireType.Mono,
                         color = LiveWireTheme.onSurfaceMuted,
                     )
                 } else if (i == currentIndex && !compact) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                    Text("In progress…", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+                    Text("In progress…", style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
                 } else if (i < currentIndex && !compact) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                    Text("Done", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+                    Text("Done", style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
                 }
             }
         }
@@ -695,7 +687,7 @@ private fun StepGlyph(done: Boolean, current: Boolean, muted: Boolean) {
     ) {
         Text(
             if (done) "✓" else if (current) "…" else "•",
-            style = MaterialTheme.typography.labelSmall,
+            style = LiveWireType.Tag,
             color = if (filled) LiveWireColors.Canvas else LiveWireTheme.onSurfaceMuted,
         )
     }
@@ -729,18 +721,18 @@ private fun SuccessCard(summary: ProviderSummary, startFocus: FocusRequester, on
                     .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, RoundedCornerShape(50))
                     .padding(horizontal = LiveWireDimens.SpaceM, vertical = 4.dp),
             ) {
-                Text("✓", style = MaterialTheme.typography.labelSmall, color = LiveWireTheme.onSurface)
+                Text("✓", style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                Text(status.uppercase(), style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
+                Text(status.uppercase(), style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
         }
         Text(
             formatCount(summary.liveChannels),
-            style = MaterialTheme.typography.displaySmall,
+            style = LiveWireType.Display,
             color = LiveWireTheme.onSurface,
         )
-        Text("live channels ready to watch", style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted)
+        Text("live channels ready to watch", style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted)
 
         val facts = buildList {
             summary.expiryEpochSeconds?.let { add("Expires" to formatExpiry(it)) }
@@ -751,9 +743,9 @@ private fun SuccessCard(summary: ProviderSummary, startFocus: FocusRequester, on
             Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXl)) {
                 facts.forEach { (k, v) ->
                     Column {
-                        Text(k.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
+                        Overline(k.uppercase())
                         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-                        Text(v, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface)
+                        Text(v, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
                     }
                 }
             }
@@ -779,8 +771,9 @@ private fun formatExpiry(epochSeconds: Long): String =
 private fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
-        shape = RoundedCornerShape(LiveWireDimens.RadiusCard),
+        restingColor = LiveWireColors.Live,
+        restingBorder = false,
+        shape = RoundedCornerShape(50),
         modifier = modifier.touchClickable(onClick),
     ) {
         Box(
@@ -789,7 +782,7 @@ private fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier
                 .padding(horizontal = LiveWireDimens.SpaceXl, vertical = LiveWireDimens.SpaceM),
             contentAlignment = Alignment.Center,
         ) {
-            Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
+            Text(label, style = LiveWireType.Title, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
         }
     }
 }

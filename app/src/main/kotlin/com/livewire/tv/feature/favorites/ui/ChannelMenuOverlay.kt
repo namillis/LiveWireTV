@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.favorites.ui
 
+import com.livewire.tv.ui.theme.LiveWireType
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -86,7 +87,7 @@ fun ChannelMenuOverlay(
         ) {
             Text(
                 channel.name,
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -154,7 +155,7 @@ private fun MenuRow(
             )
             Text(
                 label,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.update
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -172,20 +174,20 @@ private fun AvailableDialog(
             Spacer(Modifier.width(LiveWireDimens.SpaceM))
             Text(
                 "You're on ${state.currentVersion}",
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
             )
         }
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
         Text(
             "LiveWire ${state.version} is available",
-            style = MaterialTheme.typography.headlineSmall,
+            style = LiveWireType.Heading,
             color = LiveWireTheme.onSurface,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
         Text(
             state.metaLine,
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             color = LiveWireTheme.onSurfaceMuted,
         )
 
@@ -318,11 +320,7 @@ private fun NotesBox(lines: List<UpdateFormat.NoteLine>, focusRequester: FocusRe
                     ),
                 contentAlignment = Alignment.BottomCenter,
             ) {
-                Text(
-                    "▼ scroll for more",
-                    style = LiveWireTheme.tokens.overline,
-                    color = LiveWireTheme.onSurfaceMuted,
-                    modifier = Modifier.padding(bottom = 4.dp),
+                Overline("▼ scroll for more", modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
         }
@@ -347,7 +345,7 @@ private fun NoteLineRow(line: UpdateFormat.NoteLine) {
         }
         Text(
             line.text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = LiveWireType.Body,
             color = LiveWireTheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -375,7 +373,7 @@ private fun ProgressDialog(pct: Int, bytes: Long, total: Long, verifying: Boolea
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
         Text(
             if (verifying) "Checking the download…" else "Getting the update",
-            style = MaterialTheme.typography.headlineSmall,
+            style = LiveWireType.Heading,
             color = LiveWireTheme.onSurface,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
@@ -383,13 +381,13 @@ private fun ProgressDialog(pct: Int, bytes: Long, total: Long, verifying: Boolea
         if (!verifying) {
             Text(
                 "$pct%",
-                style = MaterialTheme.typography.displaySmall,
+                style = LiveWireType.Display,
                 color = LiveWireTheme.onSurface,
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceXs))
             Text(
                 UpdateFormat.progressBytes(bytes, total),
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
@@ -434,8 +432,8 @@ private fun StepRow(label: String, sub: String, icon: ActionIcon, active: Boolea
         }
         Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.titleMedium, color = titleColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sub, style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, style = LiveWireType.Title, color = titleColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -464,7 +462,7 @@ private fun PermissionDialog(
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
         Text(
             "Install from unknown apps is turned off",
-            style = MaterialTheme.typography.headlineSmall,
+            style = LiveWireType.Heading,
             color = LiveWireTheme.onSurface,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
@@ -476,7 +474,7 @@ private fun PermissionDialog(
             } else {
                 state.manualSteps
             },
-            style = MaterialTheme.typography.bodyMedium,
+            style = LiveWireType.Body,
             color = LiveWireTheme.onSurfaceMuted,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
@@ -509,13 +507,13 @@ private fun FailedDialog(state: UpdateUiState.Failed, onTryAgain: () -> Unit, on
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
         Text(
             "Update couldn't finish",
-            style = MaterialTheme.typography.headlineSmall,
+            style = LiveWireType.Heading,
             color = LiveWireTheme.onSurface,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             state.error.message,
-            style = MaterialTheme.typography.bodyMedium,
+            style = LiveWireType.Body,
             color = LiveWireTheme.onSurfaceMuted,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
@@ -536,7 +534,7 @@ private fun FailedDialog(state: UpdateUiState.Failed, onTryAgain: () -> Unit, on
 private fun NeutralTag(text: String) {
     Text(
         text.uppercase(),
-        style = LiveWireTheme.tokens.tag,
+        style = LiveWireType.Tag,
         color = LiveWireTheme.onSurface,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
@@ -558,7 +556,7 @@ private fun GroupOverline(text: String) {
                 .background(LiveWireTheme.onSurfaceMuted),
         )
         Spacer(Modifier.width(LiveWireDimens.SpaceS))
-        Text(text.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
+        Overline(text.uppercase())
     }
 }
 
@@ -573,7 +571,7 @@ private fun WarnGlyph() {
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusCard)),
         contentAlignment = Alignment.Center,
     ) {
-        Text("!", style = MaterialTheme.typography.headlineSmall, color = LiveWireTheme.onSurface)
+        Text("!", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
     }
 }
 
@@ -589,7 +587,9 @@ private val StepBadgeSize = 28.dp
 private fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ActionIcon? = null) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
+        // Buttons are the red brand accent at rest and the light fill when focused.
+        restingColor = LiveWireColors.Live,
+        restingBorder = false,
         focusedScale = LiveWireDimens.FocusScaleWide,
         modifier = modifier,
     ) {
@@ -606,7 +606,7 @@ private fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier 
             }
             Text(
                 label,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 fontWeight = FontWeight.SemiBold,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,

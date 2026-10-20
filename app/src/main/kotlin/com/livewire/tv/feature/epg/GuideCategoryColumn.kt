@@ -197,7 +197,7 @@ private fun CollapsedLabel(categoryName: String, query: String) {
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
         Text(
             "CATEGORY",
-            style = LiveWireTheme.tokens.overline,
+            style = LiveWireType.Overline,
             color = LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
             modifier = Modifier.verticalText(),
@@ -205,7 +205,7 @@ private fun CollapsedLabel(categoryName: String, query: String) {
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             if (query.isBlank()) categoryName else "“${query.trim()}” · $categoryName",
-            style = MaterialTheme.typography.titleSmall,
+            style = LiveWireType.Title,
             color = LiveWireTheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -248,13 +248,13 @@ private fun KeywordField(
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
-                Text("Filter", style = MaterialTheme.typography.bodyMedium, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
+                Text("Filter", style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = LiveWireTheme.onSurface),
+                textStyle = LiveWireType.Body.copy(color = LiveWireTheme.onSurface),
                 cursorBrush = SolidColor(LiveWireColors.Live),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),

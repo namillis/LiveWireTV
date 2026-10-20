@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.search
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -208,7 +210,7 @@ fun SearchScreen(
                         query.trim() != state.query -> "Press Search on the keyboard"
                         else -> "Results for \"${state.query}\""
                     },
-                    style = LiveWireTheme.tokens.overline,
+                    style = LiveWireType.Overline,
                     color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
@@ -223,11 +225,7 @@ fun SearchScreen(
                         color = LiveWireColors.ProgressFill,
                         trackColor = LiveWireColors.ProgressTrack,
                     )
-                    Text(
-                        "Indexing channels, guide, and games…",
-                        style = LiveWireTheme.tokens.overline,
-                        color = LiveWireTheme.onSurfaceMuted,
-                        modifier = Modifier.padding(top = LiveWireDimens.SpaceXs),
+                    Overline("Indexing channels, guide, and games…", brandRule = false, modifier = Modifier.padding(top = LiveWireDimens.SpaceXs),
                     )
                 }
             }
@@ -363,7 +361,7 @@ private fun SearchField(
             if (value.isEmpty()) {
                 Text(
                     "Search channels, guide, and sports",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
@@ -372,7 +370,7 @@ private fun SearchField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.titleMedium.copy(color = LiveWireTheme.onSurface),
+                textStyle = LiveWireType.Title.copy(color = LiveWireTheme.onSurface),
                 cursorBrush = SolidColor(LiveWireColors.Live),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
@@ -417,7 +415,7 @@ private fun Results(
         item(key = "count") {
             Text(
                 SearchGrouping.countLine(grouped),
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
             )
         }
@@ -496,19 +494,12 @@ private fun SectionHeader(header: String, suffix: String) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(bottom = LiveWireDimens.SpaceS),
     ) {
-        Box(Modifier.width(2.dp).height(12.dp).background(LiveWireTheme.onSurfaceMuted))
-        Spacer(Modifier.width(LiveWireDimens.SpaceS))
-        Text(
-            header.uppercase(),
-            style = LiveWireTheme.tokens.overline,
-            color = LiveWireTheme.onSurfaceMuted,
-            maxLines = 1,
-        )
+        Overline(header)
         if (suffix.isNotBlank()) {
             Spacer(Modifier.width(LiveWireDimens.SpaceXs))
             Text(
                 suffix.uppercase(),
-                style = LiveWireTheme.tokens.overline,
+                style = LiveWireType.Overline,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
@@ -592,21 +583,21 @@ private fun ProgrammeRow(
             Box(Modifier.width(56.dp), contentAlignment = Alignment.CenterStart) {
                 if (airing) NowPill() else Text(
                     SearchGrouping.programmePill(programme, now),
-                    style = LiveWireTheme.tokens.tag,
+                    style = LiveWireType.Tag,
                     color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
             }
             Text(
                 SearchGrouping.programmeTimeRange(programme),
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 modifier = Modifier.width(132.dp),
             )
             Text(
                 result.title,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -614,7 +605,7 @@ private fun ProgrammeRow(
             )
             Text(
                 channelName,
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -659,7 +650,7 @@ private fun GameRow(
         ) {
             Text(
                 game.leagueId.uppercase(),
-                style = MaterialTheme.typography.labelMedium,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 modifier = Modifier.width(52.dp),
@@ -667,15 +658,15 @@ private fun GameRow(
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "${game.away.name} ",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text("@", style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurfaceMuted)
+                Text("@", style = LiveWireType.Title, color = LiveWireTheme.onSurfaceMuted)
                 Text(
                     " ${game.home.name}",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -683,7 +674,7 @@ private fun GameRow(
                 if (game.broadcastNetworks.isNotEmpty()) {
                     Text(
                         "  on ${game.broadcastNetworks.joinToString(", ")}",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = LiveWireType.Mono,
                         color = LiveWireTheme.onSurfaceMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -693,7 +684,7 @@ private fun GameRow(
             if (scored) {
                 Text(
                     "${SportsFormat.scoreLabel(game.away.score)} – ${SportsFormat.scoreLabel(game.home.score)}",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     fontWeight = FontWeight.Bold,
                     color = LiveWireTheme.onSurface,
                     maxLines = 1,
@@ -704,7 +695,7 @@ private fun GameRow(
             } else {
                 Text(
                     SearchGrouping.gameStatus(game, System.currentTimeMillis()),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = LiveWireType.Mono,
                     color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                 )
@@ -713,36 +704,16 @@ private fun GameRow(
     }
 }
 
-/** The red "NOW" pill on an airing programme (§7): red fill, white dot + text. */
+/** The LIVE badge on an airing programme: the pulse line into the red dot, then NOW. */
 @Composable
 private fun NowPill() {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(LiveWireColors.Live)
-            .padding(horizontal = LiveWireDimens.SpaceS, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(Color.White))
-        Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-        Text("NOW", style = LiveWireTheme.tokens.tag, color = Color.White, maxLines = 1)
-    }
+    com.livewire.tv.ui.theme.LiveBadge(label = "NOW")
 }
 
-/** A live game's red status pill (§7): red fill, white dot + spelled-out clock. */
+/** A live game's status: the LIVE badge with the spelled-out clock. */
 @Composable
 private fun StatusPill(text: String) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(LiveWireColors.Live)
-            .padding(horizontal = LiveWireDimens.SpaceS, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(Color.White))
-        Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-        Text(text, style = LiveWireTheme.tokens.tag, color = Color.White, maxLines = 1)
-    }
+    com.livewire.tv.ui.theme.LiveBadge(label = text.uppercase())
 }
 
 /**
@@ -835,7 +806,7 @@ private fun EmptyState(
             Text(
                 "Search finds live channels, what's on now and later in the guide, and today's games — " +
                     "all at once. Type a channel name like FOX, a show, or a team, then press Search.",
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.widthIn(max = 560.dp),
             )
@@ -874,7 +845,7 @@ private fun RecentSearchChip(
             Spacer(Modifier.width(LiveWireDimens.SpaceS))
             Text(
                 term,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -900,7 +871,7 @@ private fun ClearChip(onClick: () -> Unit) {
                 "Clear",
                 // Same text style as the search chips so the row lines up; muted colour marks
                 // it as secondary.
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
@@ -943,15 +914,11 @@ private fun RecentChannelCard(
                 Modifier.fillMaxWidth().height(56.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    "Unavailable",
-                    style = LiveWireTheme.tokens.overline,
-                    color = LiveWireTheme.onSurfaceMuted,
-                )
+                Overline("Unavailable", brandRule = false)
             }
             Text(
                 recent.watched.name,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -967,13 +934,13 @@ private fun NoResults(query: String) {
     Column(Modifier.fillMaxWidth().padding(top = LiveWireDimens.SpaceL)) {
         Text(
             "No results for \"$query\".",
-            style = MaterialTheme.typography.titleMedium,
+            style = LiveWireType.Title,
             color = LiveWireTheme.onSurface,
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             "Try a channel name, a show, or a team.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = LiveWireType.Body,
             color = LiveWireTheme.onSurfaceMuted,
         )
     }

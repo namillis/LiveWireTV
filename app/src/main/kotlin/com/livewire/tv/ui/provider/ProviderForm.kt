@@ -1,5 +1,7 @@
 package com.livewire.tv.ui.provider
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -151,7 +153,7 @@ fun ProviderFilledField(
                 onValueChange = onValue,
                 singleLine = true,
                 readOnly = !editing,
-                textStyle = MaterialTheme.typography.titleMedium.copy(color = LiveWireTheme.onSurface),
+                textStyle = LiveWireType.Title.copy(color = LiveWireTheme.onSurface),
                 cursorBrush = SolidColor(LiveWireTheme.onSurface),
                 visualTransformation = visualTransformation,
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
@@ -206,14 +208,14 @@ fun ProviderFilledField(
             if (error != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Red alert glyph, onSurface text (never a red fill).
-                    Text("!", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.Live)
+                    Text("!", style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
                     Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                    Text(error, style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurface)
+                    Text(error, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
                 }
             } else {
                 Text(
                     supporting,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = LiveWireType.Mono,
                     color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -232,23 +234,19 @@ private fun FieldLabel(
 ) {
     when (style) {
         ProviderFieldLabelStyle.OVERLINE ->
-            Text(
-                label.uppercase(),
-                style = LiveWireTheme.tokens.overline,
-                color = LiveWireTheme.onSurfaceMuted,
-            )
+            Overline(label.uppercase())
         ProviderFieldLabelStyle.SENTENCE ->
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     label,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = LiveWireType.Title,
                     color = if (focused) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                 )
                 if (optional) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
                     Text(
                         "optional",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = LiveWireType.Mono,
                         color = LiveWireTheme.onSurfaceMuted,
                     )
                 }
@@ -281,7 +279,7 @@ fun PasswordRevealToggle(
         ) {
             Text(
                 if (visible) "Hide password" else "Show password",
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 color = LiveWireTheme.onSurface,
             )
         }
