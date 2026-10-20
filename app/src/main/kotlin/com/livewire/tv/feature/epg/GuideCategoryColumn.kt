@@ -1,5 +1,8 @@
 package com.livewire.tv.feature.epg
 
+import androidx.compose.ui.unit.sp
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.brandEdge
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -124,6 +127,7 @@ internal fun GuideCategoryColumn(
             .clip(shape)
             .background(LiveWireColors.Surface)
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+            .then(if (expanded) Modifier.brandEdge() else Modifier)
             .onFocusChanged { expanded = it.hasFocus }
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusProperties {
@@ -281,7 +285,9 @@ private fun CategoryItem(
     LiveWireSurface(
         onClick = onClick,
         onLongClick = onLongClick,
+        // Selected but not focused = the raised fill; the rest are plain rows.
         restingColor = if (selected) LiveWireColors.SurfaceRaised else LiveWireColors.Surface,
+        restingBorder = false,
         shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
         focusedScale = 1f,
         modifier = Modifier.fillMaxWidth().height(ITEM_HEIGHT).focusRequester(requester),
@@ -290,14 +296,6 @@ private fun CategoryItem(
             Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // "You are here" bar on the selected category (amber = selection, per §2).
-            Box(
-                Modifier
-                    .width(2.dp)
-                    .height(12.dp)
-                    .background(if (selected) LiveWireColors.Live else LiveWireColors.Surface.copy(alpha = 0f)),
-            )
-            Spacer(Modifier.width(LiveWireDimens.SpaceXs))
             if (star) {
                 com.livewire.tv.feature.favorites.ui.FavoriteStar(
                     size = 12.dp,
@@ -307,8 +305,8 @@ private fun CategoryItem(
             }
             Text(
                 name,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
+                style = LiveWireType.Title.copy(fontSize = 10.5.sp),
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -324,7 +322,7 @@ private fun CategoryItem(
             }
             Text(
                 NumberFormat.getIntegerInstance().format(count),
-                style = LiveWireTheme.tokens.tag,
+                style = LiveWireType.Mono,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )

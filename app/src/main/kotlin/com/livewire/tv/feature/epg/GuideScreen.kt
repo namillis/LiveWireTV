@@ -1,5 +1,19 @@
 package com.livewire.tv.feature.epg
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Icon
+import com.livewire.tv.R
+import com.livewire.tv.ui.theme.KeyHints
+import com.livewire.tv.ui.theme.LiveBadge
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.LocalOnFocus
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -81,15 +95,15 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val PX_PER_MINUTE = 3          // 3dp per minute = 90dp per 30 min (design system §9.4)
-private val ROW_HEIGHT = 48.dp               // §9.4 row height; 7 full rows fit at 1080p
-private val CHANNEL_COL = 120.dp
+private const val PX_PER_MINUTE = 4          // 4dp per minute = 120dp per 30 min (B · Grid: about 2.8 h on screen)
+private val ROW_HEIGHT = 41.dp               // 55px in the mockup; 9 rows fit under the band
+private val CHANNEL_COL = 180.dp            // number, logo and name
 /** Narrowest text area a cell keeps when its text follows the lane's left edge (stickyTextShift). */
 private val STICKY_TEXT_MIN = 48.dp
 private val SLOT = (30 * PX_PER_MINUTE).dp   // one 30-minute tick
-private val NOW_LANE = 22.dp
+private val NOW_LANE = 20.dp
 private val AXIS_HEIGHT = 26.dp
-private val DETAILS_BAND_HEIGHT = 84.dp      // kept tight so the grid clears 7 rows
+private val DETAILS_BAND_HEIGHT = 46.dp      // one line: badge, channel, title, time, hints
 
 /**
  * The focused guide cell: which channel + programme drives the details band. [channelHasArchive]
@@ -352,7 +366,7 @@ private fun GuideContent(
             .padding(
                 start = LiveWireDimens.SafeHorizontal,
                 end = LiveWireDimens.SafeHorizontal,
-                top = LiveWireDimens.SafeVertical,
+                top = 6.dp,
                 bottom = LiveWireDimens.SafeVertical,
             ),
     ) {
@@ -420,12 +434,7 @@ private fun GuideContent(
             // The grid: NOW lane + axis header, then the scrolling rows, with the red now-line
             // overlaid across the lane area.
             val nowMin = nowLineMinutes(now, state.windowStartMs, state.windowSpanMs)
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(LiveWireDimens.RadiusCard))
-                    .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusCard)),
-            ) {
+            Box(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize()) {
                     NowLane(nowMin, { hScroll.value }, now, state.windowStartMs)
                     AxisRow(state.windowStartMs, spanMinutes) { hScroll.value }
@@ -660,156 +669,116 @@ private fun GuideDetailsBand(
     onStartOver: () -> Unit,
     onDismissActions: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
     val prog = focus.programme
     val onNow = prog != null && prog.airsAt(now)
-    // Catch-up affordances: a focused archived-past programme offers "Watch from start"; the now
-    // programme of an archive channel, once OK'd, offers "Watch live" (focused) / "Start over".
+    // Catch-up: a focused archived-past programme offers "Watch from start"; the now programme
+    // of an archive channel, once OK'd, offers Watch live (focused) / Start over.
     val showStartHint = focus.programmeArchived && prog != null && prog.stopMs <= now
     val showNowActions = bandActions && onNow && focus.channelHasArchive
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(DETAILS_BAND_HEIGHT)
-            .clip(shape)
-            .background(LiveWireColors.Surface)
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape),
-    ) {
+    Box(Modifier.fillMaxWidth().height(DETAILS_BAND_HEIGHT)) {
         // The muted preview sits behind the text, fading in from the right.
         GuidePreviewLayer(preview)
-        Box(Modifier.matchParentSize().padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS)) {
-            // Clock lives in the band (no page title, per §8).
+        Row(
+            Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+            when {
+                onNow -> LiveBadge()
+                focus.programmeArchived -> CatchupTag()
+            }
             Text(
-                clockLabel(now),
-                style = MaterialTheme.typography.labelMedium,
+                listOfNotNull(focus.channel.number?.toString(), focus.channel.name).joinToString(" ").uppercase(),
+                style = LiveWireType.Overline.copy(fontSize = 9.sp, letterSpacing = 0.12.em),
                 color = LiveWireTheme.onSurfaceMuted,
-                modifier = Modifier.align(Alignment.TopEnd),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 150.dp),
             )
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                // End padding keeps a long synopsis clear of the preview's bottom-right
-                // "PREVIEW · MUTED" tag.
-                Column(Modifier.weight(1f).padding(end = PREVIEW_TAG_CLEARANCE)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (onNow) {
-                            LiveDot()
-                            Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                        } else if (focus.programmeArchived) {
-                            // Archived past: a neutral ⟲ marks the "in archive" state (never amber).
-                            Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
-                            Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                        }
-                        Text(
-                            focus.channel.name,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = LiveWireTheme.onSurfaceMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    // The band is kept short so the grid fits 7 rows: label, one-line title and
-                    // one-line synopsis must fit its 68dp of inner height.
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        prog?.title ?: "No programme information",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = LiveWireTheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (prog != null) {
-                        Spacer(Modifier.height(2.dp))
-                        // A Live Now event's end is a guess: name its start, which carries its own day.
-                        val range = if (prog.endIsEstimate) EventTimes.label(prog, now) else "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
-                        val synopsis = prog.description?.takeIf { it.isNotBlank() }
-                        // On an earlier day the clock alone is ambiguous: lead with the day.
-                        val day = if (prog.endIsEstimate) null else dayLabel(prog.startMs, now)
-                        Text(
-                            if (day != null) {
-                                "$day $range" + ((synopsis ?: prog.category)?.let { " · $it" } ?: "")
-                            } else {
-                                synopsis ?: (range + (prog.category?.let { " · $it" } ?: ""))
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = LiveWireTheme.onSurfaceMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+            Text(
+                prog?.title ?: "No programme information",
+                style = LiveWireType.TitleLarge,
+                color = LiveWireTheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (prog != null) {
+                // A Live Now event's end is a guess: name its start, which carries its own day.
+                val range = if (prog.endIsEstimate) EventTimes.label(prog, now) else "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
+                val day = if (prog.endIsEstimate) null else dayLabel(prog.startMs, now)
+                val left = if (onNow && !prog.endIsEstimate) " · ${minutesLeft(prog, now)}" else ""
+                Text(
+                    listOfNotNull(day, range).joinToString(" ") + left,
+                    style = LiveWireType.Mono.copy(fontSize = 9.75.sp),
+                    color = LiveWireTheme.onSurfaceMuted,
+                    maxLines = 1,
+                )
+            }
+            }
+            when {
+                showNowActions -> {
+                    val liveFocus = remember { FocusRequester() }
+                    LaunchedEffect(Unit) { runCatching { liveFocus.requestFocus() } }
+                    Row(
+                        modifier = Modifier.onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (event.key) {
+                                // Back or Down returns to the grid cell.
+                                Key.Back, Key.DirectionDown -> { onDismissActions(); true }
+                                else -> false
+                            }
+                        },
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        BandActionButton(R.drawable.ic_fav_play, "Watch live", onClick = onWatchLive, modifier = Modifier.focusRequester(liveFocus))
+                        BandActionButton(R.drawable.ic_opt_reload, "Start over · ${clockLabel(prog!!.startMs)}", onClick = onStartOver)
                     }
                 }
-                // Right-hand catch-up affordances.
-                when {
-                    showNowActions -> {
-                        // OK moved focus into the band: Watch live (default) + Start over.
-                        val liveFocus = remember { FocusRequester() }
-                        LaunchedEffect(Unit) { runCatching { liveFocus.requestFocus() } }
-                        Row(
-                            modifier = Modifier.onPreviewKeyEvent { event ->
-                                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                                when (event.key) {
-                                    // Back or Down returns to the grid cell (mockup: band is transient).
-                                    Key.Back, Key.DirectionDown -> { onDismissActions(); true }
-                                    else -> false
-                                }
-                            },
-                            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            BandActionButton("OK", "Watch live", onClick = onWatchLive, modifier = Modifier.focusRequester(liveFocus))
-                            BandActionButton("▶", "Start over", onClick = onStartOver)
-                        }
-                    }
-                    showStartHint -> {
-                        // Focused archived-past cell: a neutral hint (the grid cell keeps focus).
-                        BandHintChip("OK", "▶ Watch from start")
-                    }
-                }
+                showStartHint -> KeyHints("OK" to "Watch from start", "◀" to "Earlier")
+                else -> KeyHints("OK" to "Watch", "◀" to "Earlier")
             }
         }
     }
 }
 
-/** A focusable band action (Watch live / Start over) — amber ring on focus via LiveWireSurface. */
+/** The CATCH-UP tag for an archived past programme, in place of the LIVE badge. */
 @Composable
-private fun BandActionButton(key: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun CatchupTag() {
+    Row(
+        Modifier.background(LiveWireColors.SurfaceRaised, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(painterResource(R.drawable.ic_archive), contentDescription = null, tint = LiveWireColors.OnSurface, modifier = Modifier.size(10.dp))
+        Text("CATCH-UP", style = LiveWireType.Tag, color = LiveWireColors.OnSurface)
+    }
+}
+
+/** A band action (Watch live / Start over): a pill, red at rest, the light fill when focused. */
+@Composable
+private fun BandActionButton(icon: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
-        shape = RoundedCornerShape(6.dp),
-        modifier = modifier,
+        restingColor = LiveWireColors.Live,
+        restingBorder = false,
+        shape = RoundedCornerShape(50),
+        modifier = modifier.height(28.dp),
     ) {
         Row(
-            Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+            Modifier.fillMaxHeight().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Box(
-                Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.Canvas.copy(alpha = 0.5f)).padding(horizontal = 6.dp, vertical = 2.dp),
-            ) {
-                Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
-            }
-            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
+            Icon(painterResource(icon), contentDescription = null, tint = LiveWireTheme.onSurface, modifier = Modifier.size(12.dp))
+            Text(label, style = LiveWireType.Title.copy(fontSize = 10.5.sp), color = LiveWireTheme.onSurface, maxLines = 1)
         }
-    }
-}
-
-/** A neutral (non-focusable) band hint chip, e.g. "OK ▶ Watch from start". */
-@Composable
-private fun BandHintChip(key: String, label: String) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(LiveWireColors.Canvas.copy(alpha = 0.5f))
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(6.dp))
-            .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp),
-        ) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
-        }
-        Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireTheme.onSurface)
     }
 }
 
@@ -830,8 +799,7 @@ private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long, windowStartMs:
     Row(
         Modifier
             .fillMaxWidth()
-            .height(NOW_LANE)
-            .background(LiveWireColors.Surface),
+            .height(NOW_LANE),
     ) {
         Spacer(Modifier.width(CHANNEL_COL))
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp)), Alignment.CenterStart) {
@@ -857,11 +825,11 @@ private fun NowLane(nowMin: Int?, scrollPx: () -> Int, now: Long, windowStartMs:
                     Modifier
                         // Pin to the viewport's left edge once now has scrolled off.
                         .offset { IntOffset((minutesToDp(nowMin).roundToPx() - scrollPx()).coerceAtLeast(0), 0) }
-                        .clip(RoundedCornerShape(50))
+                        .clip(RoundedCornerShape(4.dp))
                         .background(LiveWireColors.Live)
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
                 ) {
-                    Text("NOW · ${clockLabel(now)}", style = LiveWireTheme.tokens.tag, color = Color.White, maxLines = 1)
+                    Text("NOW ${clockLabel(now).removeSuffix(" AM").removeSuffix(" PM")}", style = LiveWireType.Tag.copy(fontSize = 8.25.sp), color = Color.White, maxLines = 1)
                 }
             }
         }
@@ -875,23 +843,23 @@ private fun AxisRow(windowStartMs: Long, spanMinutes: Int, scrollPx: () -> Int) 
         Modifier
             .fillMaxWidth()
             .height(AXIS_HEIGHT)
-            .background(LiveWireColors.Surface),
+            .gridLine(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier.width(CHANNEL_COL).fillMaxHeight().padding(start = LiveWireDimens.SpaceM),
             contentAlignment = Alignment.CenterStart,
         ) {
-            Text("CHANNEL", style = LiveWireTheme.tokens.overline, color = LiveWireTheme.onSurfaceMuted)
+            Text("CHANNEL", style = LiveWireType.Overline, color = LiveWireTheme.onSurfaceMuted)
         }
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(0.dp))) {
             var m = 0
             while (m < spanMinutes) {
                 val tick = m
                 Text(
-                    clockLabel(windowStartMs + TimeUnit.MINUTES.toMillis(m.toLong())),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireTheme.onSurface,
+                    clockLabel(windowStartMs + TimeUnit.MINUTES.toMillis(m.toLong())).removeSuffix(" AM").removeSuffix(" PM"),
+                    style = LiveWireType.Mono.copy(fontSize = 9.75.sp),
+                    color = LiveWireTheme.onSurfaceMuted,
                     modifier = Modifier
                         .offset { IntOffset(minutesToDp(tick).roundToPx() - scrollPx(), 0) }
                         .padding(start = 6.dp),
@@ -920,7 +888,7 @@ private fun androidx.compose.foundation.layout.BoxScope.NowLine(nowMin: Int, scr
                         // Once now has scrolled out of view to the left, park the line off-screen.
                         IntOffset(if (x < 0) -LINE_PARK_PX else x, topInset.roundToPx())
                     }
-                    .width(2.dp)
+                    .width(1.5.dp)
                     .fillMaxHeight()
                     .background(LiveWireColors.Live),
             )
@@ -948,26 +916,36 @@ private fun GuideRowView(
     onLongClick: (() -> Unit)? = null,
     laneStepping: () -> Boolean = { false },
 ) {
-    Row(Modifier.height(ROW_HEIGHT)) {
-        // Fixed channel column. Favourites carry a star and archive channels a ⟲ before the name.
+    Row(Modifier.height(ROW_HEIGHT).gridLine()) {
+        // Fixed channel column: number, logo, name. Favourites carry a star, archive channels
+        // the catch-up mark after the name.
         Row(
-            Modifier.width(CHANNEL_COL).fillMaxHeight().background(LiveWireColors.Surface).padding(horizontal = LiveWireDimens.SpaceM),
+            Modifier.width(CHANNEL_COL).fillMaxHeight().background(LiveWireColors.Canvas).padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXs),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Text(
+                row.channel.number?.toString() ?: "",
+                style = LiveWireType.Number,
+                color = LiveWireTheme.onSurface,
+                maxLines = 1,
+                modifier = Modifier.width(30.dp),
+            )
+            com.livewire.tv.feature.home.ChannelLogo(row.channel, Modifier.size(width = 40.dp, height = 25.dp), textSize = 7)
             if (isFavorite) {
-                com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 11.dp)
-            }
-            if (row.channel.hasArchive) {
-                Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
+                com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 10.dp, tint = LiveWireTheme.onSurface)
             }
             Text(
                 row.channel.name,
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Title.copy(fontWeight = FontWeight.Medium, fontSize = 10.5.sp),
                 color = LiveWireTheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
+            if (row.channel.hasArchive) {
+                Icon(painterResource(R.drawable.ic_archive), contentDescription = "Catch-up", tint = LiveWireTheme.onSurfaceMuted, modifier = Modifier.size(10.dp))
+            }
         }
         // Programme lane on the shared timeline / scroll. Focusing a cell already in view
         // does not move the timeline (see [laneScrollDistance]).
@@ -1041,21 +1019,25 @@ private fun ProgrammeCell(
     val onNow = programme.airsAt(now)
     // A past programme on a no-archive channel is dimmed; archived past and current are full.
     val dimmed = CatchupGuide.isDimmed(pastStyle)
-    val contentAlpha = if (dimmed) 0.45f else 1f
     LiveWireSurface(
         onClick = onClick,
         onLongClick = onLongClick,
-        restingColor = LiveWireColors.SurfaceRaised,
-        shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
-        focusedScale = LiveWireDimens.FocusScaleWide,
+        // On now = raised; later and archived past = surface; past with no recording = sunken.
+        restingColor = when {
+            dimmed -> LiveWireColors.SurfaceSunken
+            onNow -> LiveWireColors.SurfaceRaised
+            else -> LiveWireColors.Surface
+        },
+        restingBorder = false,
+        shape = RoundedCornerShape(4.dp),
         modifier = Modifier
             .width(widthDp)
             .height(ROW_HEIGHT)
-            .padding(2.dp)
+            .padding(start = 2.dp, end = 1.dp, top = 2.dp, bottom = 3.dp)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .androidx_onFocus(onFocus),
     ) {
-        Box(Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceM, vertical = 6.dp)) {
+        Box(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
             // Keep the text at the lane's visible left edge when the cell starts off screen
             // (see stickyTextShift). Read in the layout phase, so scrolling only re-places it.
             Column(
@@ -1072,38 +1054,32 @@ private fun ProgrammeCell(
                 },
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (showBadge) {
+                        Icon(painterResource(R.drawable.ic_archive), contentDescription = "In catch-up", tint = LiveWireTheme.onSurfaceMuted, modifier = Modifier.size(10.dp))
+                        Spacer(Modifier.width(4.dp))
+                    }
                     Text(
                         programme.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = LiveWireTheme.onSurface.copy(alpha = contentAlpha),
+                        style = LiveWireType.Title.copy(fontSize = 10.5.sp),
+                        color = when {
+                            LocalOnFocus.current -> LiveWireColors.OnFocus
+                            dimmed -> LiveWireColors.OnSurfaceFaint
+                            onNow -> LiveWireColors.OnSurface
+                            else -> LiveWireColors.OnSurfaceSoft
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         // The title truncates before the badge: it takes the row's width minus
                         // the badge's reserved space (handled by weighting the title).
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (showBadge) {
-                        Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                        Text("⟲", style = MaterialTheme.typography.labelMedium, color = LiveWireTheme.onSurfaceMuted)
-                    }
                 }
                 Text(
                     if (programme.endIsEstimate) EventTimes.label(programme, now)
                     else "${clockLabel(programme.startMs)} – ${clockLabel(programme.stopMs)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireTheme.onSurfaceMuted.copy(alpha = contentAlpha),
+                    style = LiveWireType.Mono.copy(fontSize = 8.25.sp),
+                    color = if (dimmed && !LocalOnFocus.current) LiveWireColors.OnFocusMuted else LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
-                )
-            }
-            // On-now cells carry a thin grey progress strip along the bottom (never amber/red).
-            // A Live Now event has none: its end, and so its progress, is a guess.
-            if (onNow && !programme.endIsEstimate) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth(programme.progressAt(now))
-                        .height(2.dp)
-                        .background(LiveWireColors.ProgressFill),
                 )
             }
         }
@@ -1116,8 +1092,9 @@ private fun EmptyCell(scrollPx: () -> Int, widthDp: Dp, focusRequester: FocusReq
     LiveWireSurface(
         onClick = onClick,
         onLongClick = onLongClick,
-        restingColor = LiveWireColors.SurfaceRaised,
-        shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
+        restingColor = LiveWireColors.Surface,
+        restingBorder = false,
+        shape = RoundedCornerShape(4.dp),
         // No focus scale: the cell is the whole window wide (days), so even 2% moved its
         // on-screen part by hundreds of pixels. The focus border still marks it.
         focusedScale = 1f,
@@ -1130,7 +1107,7 @@ private fun EmptyCell(scrollPx: () -> Int, widthDp: Dp, focusRequester: FocusReq
             // edge instead of at the window start, days off screen.
             Text(
                 "No programme information",
-                style = MaterialTheme.typography.bodyMedium,
+                style = LiveWireType.Sub,
                 color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 modifier = Modifier.offset { IntOffset(scrollPx(), 0) },
@@ -1149,9 +1126,15 @@ private class LaneMode {
     var stepping = false
 }
 
-@Composable
-private fun LiveDot() {
-    Box(Modifier.size(8.dp).clip(RoundedCornerShape(50)).background(LiveWireColors.Live))
+/** "36 min left", or "ends soon" in the last minute. */
+private fun minutesLeft(p: EpgProgramme, now: Long): String {
+    val mins = ((p.stopMs - now) / 60_000L).coerceAtLeast(0)
+    return if (mins < 1) "ends soon" else "$mins min left"
+}
+
+/** The 1dp grid line along the bottom of a header or row. */
+private fun Modifier.gridLine(): Modifier = drawBehind {
+    drawRect(LiveWireColors.Border, topLeft = Offset(0f, size.height - 1.dp.toPx()), size = Size(size.width, 1.dp.toPx()))
 }
 
 /** Far enough left to be clipped by the lane viewport. */
