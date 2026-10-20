@@ -126,6 +126,27 @@ object SearchGrouping {
         else "Starts " + SimpleDateFormat("EEE", Locale.US).apply { timeZone = zone }.format(Date(game.startTimeMs)) + " $time"
     }
 
+    /**
+     * The left-hand "when" on an ON TV row that is not airing: the start time today
+     * ("11:00 PM"), or the weekday and time on another day ("TUE 8:00 PM").
+     */
+    fun programmeWhen(programme: EpgProgramme, now: Long, zone: TimeZone = TimeZone.getDefault()): String =
+        dayPrefix(programme.startMs, now, zone) + formatTime(programme.startMs, zone)
+
+    /**
+     * The left-hand "when" on a game row that has not started: as [programmeWhen]. Live and
+     * finished games use the scoreboard's status instead ([gameStatus]).
+     */
+    fun gameWhen(game: SportsGame, now: Long, zone: TimeZone = TimeZone.getDefault()): String =
+        if (game.status.state != GameState.PRE || game.startTimeMs <= 0L) SportsFormat.statusLine(game).uppercase(Locale.US)
+        else dayPrefix(game.startTimeMs, now, zone) + formatTime(game.startTimeMs, zone)
+
+    private fun dayPrefix(ms: Long, now: Long, zone: TimeZone): String {
+        val day = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = zone }
+        if (day.format(Date(ms)) == day.format(Date(now))) return ""
+        return SimpleDateFormat("EEE", Locale.US).apply { timeZone = zone }.format(Date(ms)).uppercase(Locale.US) + " "
+    }
+
     private fun formatTime(ms: Long, zone: TimeZone): String =
         SimpleDateFormat("h:mm a", Locale.US).apply { timeZone = zone }.format(Date(ms))
 
