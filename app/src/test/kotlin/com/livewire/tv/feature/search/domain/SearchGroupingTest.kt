@@ -181,4 +181,18 @@ class SearchGroupingTest {
         val g = scheduled(eightPm).copy(status = GameStatus(GameState.FINAL))
         assertEquals("Final", SearchGrouping.gameStatus(g, now = tenPm, zone = ny))
     }
+
+    @Test fun `programme when is the time today and adds the weekday on another day`() {
+        val today = EpgProgramme(channelId = "x", startMs = ninePm, stopMs = tenPm, title = "T")
+        assertEquals("9:00 PM", SearchGrouping.programmeWhen(today, eightPm, ny))
+        val friday = today.copy(startMs = ninePm + 24 * 3_600_000L, stopMs = tenPm + 24 * 3_600_000L)
+        assertEquals("FRI 9:00 PM", SearchGrouping.programmeWhen(friday, eightPm, ny))
+    }
+
+    @Test fun `game when is the start for a scheduled game and the status otherwise`() {
+        assertEquals("8:00 PM", SearchGrouping.gameWhen(scheduled(eightPm), now = beforeEight, zone = ny))
+        assertEquals("FRI 8:00 PM", SearchGrouping.gameWhen(scheduled(eightPm + 24 * 3_600_000L), now = beforeEight, zone = ny))
+        val final = scheduled(eightPm).copy(status = GameStatus(GameState.FINAL))
+        assertEquals("FINAL", SearchGrouping.gameWhen(final, now = tenPm, zone = ny))
+    }
 }

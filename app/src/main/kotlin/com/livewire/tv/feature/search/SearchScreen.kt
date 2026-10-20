@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.search
 
+import com.livewire.tv.ui.theme.KeyHints
 import com.livewire.tv.ui.theme.LiveWireType
 import com.livewire.tv.ui.theme.Overline
 import androidx.compose.foundation.background
@@ -10,16 +11,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,18 +49,20 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.livewire.tv.R
-import com.livewire.tv.feature.home.ChannelCard
+import com.livewire.tv.feature.home.HomeLists
+import com.livewire.tv.feature.home.OnNowRow
+import com.livewire.tv.feature.home.shortMinutesLeft
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.feature.search.domain.GroupedSearch
@@ -78,19 +80,17 @@ import com.livewire.tv.ui.theme.dpadVerticalExit
 
 /**
  * Cross-source search over the loaded corpus (channels, EPG, sports), restyled to the
- * "grouped results" mockup (design system §4, §9; Option 1). A query field across the top,
- * a count line ("12 results · 4 channels · 5 on TV · 3 games"), then, in order and only
- * when non-empty: CHANNELS as a horizontal [ChannelCard] rail, ON TV as full-width guide
- * programme rows (now or later only, now-first), and SPORTS as full-width game rows.
+ * B · Grid mockups (B-grid-60/61). A query field across the top, a count line ("12 results ·
+ * 4 channels · 5 on TV · 3 games"), then two columns: CHANNELS as On now rows and GAMES on the
+ * left, ON TV programme rows (now or later only, now first) on the right.
  *
  * Playback (§ seed): a channel or programme plays its channel; selecting a game opens the
  * shared [ChannelPicker] (the same dialog the Sports screen uses) over the full ranked list of
  * the user's channels that carry it — OK in the picker plays, Back closes only the picker and
  * returns focus to the game row. The picker's own empty state covers the no-match case.
  *
- * Colour discipline (§3.3): amber only on the focused element (via [LiveWireSurface]) and the
- * focused query field's ring; red only on a NOW programme pill and a live game's status. Rails
- * stay inside the right safe margin at rest and leave room for the focus ring/scale (§2, §6).
+ * Focus is the light fill on rows and chips, and a light ring on the query field. Red marks
+ * what is live: the NOW and LIVE badges and the dots on the progress lines.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -179,11 +179,11 @@ fun SearchScreen(
                 .padding(
                     start = LiveWireDimens.SafeHorizontal,
                     end = LiveWireDimens.SafeHorizontal,
-                    top = LiveWireDimens.SafeVertical,
+                    top = 16.dp,
                     bottom = LiveWireDimens.SafeVertical,
                 ),
         ) {
-            // ── Query field + hint ──
+            // ── Query field (its status hint sits inside, at the right) ──
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SearchField(
                     value = query,
@@ -200,19 +200,12 @@ fun SearchScreen(
                         hasResultsFocusable -> resultsFocus
                         else -> null
                     },
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(LiveWireDimens.SpaceL))
-                Text(
-                    when {
-                        query.isBlank() -> "Type with the remote keyboard"
+                    status = when {
                         state.searching -> "Searching…"
-                        query.trim() != state.query -> "Press Search on the keyboard"
-                        else -> "Results for \"${state.query}\""
+                        query.isNotBlank() && query.trim() != state.query -> "Press Search on the keyboard"
+                        else -> "Remote keyboard"
                     },
-                    style = LiveWireType.Overline,
-                    color = LiveWireTheme.onSurfaceMuted,
-                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
                 )
             }
 
@@ -320,10 +313,10 @@ fun SearchScreen(
 }
 
 /**
- * The query field (§9.8): a filled [LiveWireColors.SurfaceRaised] box with a leading search
- * icon and an inline placeholder, showing a 2dp amber ring only while focused. Built on
- * [BasicTextField] (not Material's OutlinedTextField, which forces a floating label and its
- * own oversized metrics) so it matches the mockup's proportions and stays IME-capable.
+ * The query field: a pill on the surface colour with a leading search icon, an inline
+ * placeholder and a status hint at the right. Focus is a 2dp light ring rather than the fill,
+ * so typed text stays readable (the one place focus is a ring). Built on [BasicTextField], not
+ * Material's OutlinedTextField, which forces a floating label and its own metrics.
  */
 @Composable
 private fun SearchField(
@@ -332,37 +325,38 @@ private fun SearchField(
     onSearch: () -> Unit,
     focusRequester: FocusRequester,
     downTarget: FocusRequester?,
+    status: String,
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
+    val shape = RoundedCornerShape(50)
     Row(
         modifier = modifier
-            .height(36.dp)
+            .height(42.dp)
             .clip(shape)
-            .background(LiveWireColors.SurfaceRaised)
+            .background(LiveWireColors.Surface)
             .border(
                 width = if (focused) LiveWireDimens.FocusBorder else LiveWireDimens.RestBorder,
                 color = if (focused) LiveWireColors.Focus else LiveWireColors.Border,
                 shape = shape,
             )
-            .padding(horizontal = LiveWireDimens.SpaceM),
+            .padding(horizontal = 17.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_nav_search),
             contentDescription = null,
-            tint = if (focused) LiveWireColors.OnSurface else LiveWireTheme.onSurfaceMuted,
-            modifier = Modifier.size(18.dp),
+            tint = LiveWireColors.OnSurfaceMuted,
+            modifier = Modifier.size(17.dp),
         )
-        Spacer(Modifier.width(LiveWireDimens.SpaceS))
+        Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
                 Text(
-                    "Search channels, guide, and sports",
-                    style = LiveWireType.Title,
-                    color = LiveWireTheme.onSurfaceMuted,
+                    "Search channels, the guide and games",
+                    style = LiveWireType.TitleLarge.copy(fontWeight = FontWeight.Medium, fontSize = 13.5.sp),
+                    color = LiveWireColors.OnSurfaceMuted,
                     maxLines = 1,
                 )
             }
@@ -370,8 +364,8 @@ private fun SearchField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = LiveWireType.Title.copy(color = LiveWireTheme.onSurface),
-                cursorBrush = SolidColor(LiveWireColors.Live),
+                textStyle = LiveWireType.TitleLarge.copy(fontWeight = FontWeight.Medium, fontSize = 13.5.sp, color = LiveWireColors.OnSurface),
+                cursorBrush = SolidColor(LiveWireColors.OnSurface),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
                     keyboard?.hide()
@@ -381,14 +375,20 @@ private fun SearchField(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { focused = it.isFocused }
-                    // D-pad Down leaves the field for the results; Up has nowhere above.
+                    // D-pad Down leaves the field for the results; Up goes to the top bar.
                     .dpadVerticalExit(down = downTarget),
             )
         }
+        Spacer(Modifier.width(12.dp))
+        Text(status, style = LiveWireType.Hint, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
     }
 }
 
-/** The count line + grouped sections. The first focusable result carries [firstResultFocus]. */
+/**
+ * The results (mockup B-grid-60): the count line, then two columns. Left: CHANNELS as On now
+ * rows (the same row as Home), then GAMES. Right: ON TV programme rows, now first. The first
+ * focusable result, in that order, carries [firstResultFocus] for the field-to-results hop.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun Results(
@@ -402,307 +402,188 @@ private fun Results(
     onRegisterFocus: (String, FocusRequester) -> Unit,
 ) {
     val now = System.currentTimeMillis()
-    val firstSection = grouped.nonEmptySections().firstOrNull()
+    val first = when {
+        grouped.channels.isNotEmpty() -> SearchSection.CHANNELS
+        grouped.games.isNotEmpty() -> SearchSection.SPORTS
+        else -> SearchSection.ON_TV
+    }
     // One FocusRequester per game row, so closing the picker (Back) can return focus to the
     // exact row that opened it. Rebuilt only when the games list changes.
     val gameRowFocus = remember(grouped.games) { grouped.games.map { FocusRequester() } }
 
-    LazyColumn(
-        // Section-to-section spacing (§ railSpacing). Rows inside a section pack tighter (§5).
-        verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL),
-        contentPadding = PaddingValues(top = LiveWireDimens.SpaceM, bottom = LiveWireDimens.SpaceS),
-    ) {
-        item(key = "count") {
-            Text(
-                SearchGrouping.countLine(grouped),
-                style = LiveWireType.Mono,
-                color = LiveWireTheme.onSurfaceMuted,
-            )
-        }
-
-        // CHANNELS — a horizontal card rail.
-        if (grouped.channels.isNotEmpty()) {
-            item(key = "channels") {
-                Column {
-                    SectionHeader("Channels", "· ${grouped.channels.size}")
-                    ChannelRail(
-                        channels = grouped.channels,
-                        viewModel = viewModel,
-                        now = now,
-                        firstFocus = firstResultFocus.takeIf { firstSection == SearchSection.CHANNELS },
-                        onPlayChannel = onPlayChannel,
-                        favoriteIds = favoriteIds,
-                        onLongPress = onLongPress,
-                        onRegisterFocus = onRegisterFocus,
-                    )
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            SearchGrouping.countLine(grouped),
+            style = LiveWireType.Mono,
+            color = LiveWireTheme.onSurfaceMuted,
+            modifier = Modifier.padding(start = 10.dp, top = 12.dp, bottom = 10.dp),
+        )
+        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(30.dp)) {
+            LazyColumn(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (grouped.channels.isNotEmpty()) {
+                    item(key = "h:channels") { GroupHeader("Channels", grouped.channels.size) }
+                    itemsIndexed(grouped.channels, key = { _, r -> "c:${r.channel?.streamId}" }) { index, r ->
+                        val channel = r.channel ?: return@itemsIndexed
+                        val rowFocus = remember(channel.streamId) { FocusRequester() }
+                        DisposableEffect(channel.streamId) {
+                            onRegisterFocus(channel.streamId, rowFocus)
+                            onDispose { }
+                        }
+                        OnNowRow(
+                            number = HomeLists.rowNumber(channel.number, index),
+                            channel = channel,
+                            nowPlaying = viewModel.nowPlaying(channel, now),
+                            now = now,
+                            showStar = channel.streamId in favoriteIds,
+                            onClick = { onPlayChannel(channel) },
+                            onLongClick = { onLongPress(channel) },
+                            modifier = Modifier
+                                .focusRequester(rowFocus)
+                                .then(if (index == 0 && first == SearchSection.CHANNELS) Modifier.focusRequester(firstResultFocus) else Modifier),
+                        )
+                    }
+                }
+                if (grouped.games.isNotEmpty()) {
+                    item(key = "h:games") {
+                        GroupHeader("Games", grouped.games.size, top = if (grouped.channels.isNotEmpty()) 14.dp else 0.dp)
+                    }
+                    itemsIndexed(grouped.games, key = { i, r -> "g:${r.game?.id ?: i}" }) { index, r ->
+                        val game = r.game ?: return@itemsIndexed
+                        val rowFocus = gameRowFocus[index]
+                        GameRow(
+                            game = game,
+                            now = now,
+                            rowFocus = rowFocus,
+                            initialFocus = firstResultFocus.takeIf { index == 0 && first == SearchSection.SPORTS },
+                            // OK opens the shared channel picker with the full ranked list.
+                            onClick = { onOpenPicker(game, rowFocus) },
+                        )
+                    }
                 }
             }
-        }
-
-        // ON TV — full-width guide programme rows, packed tight.
-        if (grouped.programmes.isNotEmpty()) {
-            // One item per section, so rows pack at SpaceS instead of the section gap.
-            // A section holds at most SearchIndex.PROGRAMME_LIMIT rows, so this stays cheap.
-            item(key = "ontv") {
-                Column(verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-                    SectionHeader("On TV", "· GUIDE")
-                    grouped.programmes.forEachIndexed { index, r ->
-                        val programme = r.programme ?: return@forEachIndexed
+            LazyColumn(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (grouped.programmes.isNotEmpty()) {
+                    item(key = "h:ontv") { GroupHeader("On TV", grouped.programmes.size) }
+                    itemsIndexed(grouped.programmes, key = { i, r -> "p:$i:${r.programme?.startMs}" }) { index, r ->
+                        val programme = r.programme ?: return@itemsIndexed
                         ProgrammeRow(
-                            result = r,
+                            programme = programme,
+                            title = r.title,
                             now = now,
                             channelName = viewModel.channelNameForProgramme(programme),
-                            focusRequester = firstResultFocus.takeIf {
-                                index == 0 && firstSection == SearchSection.ON_TV
-                            },
+                            focusRequester = firstResultFocus.takeIf { index == 0 && first == SearchSection.ON_TV },
                             onClick = { viewModel.channelForProgramme(programme)?.let(onPlayChannel) },
                         )
                     }
                 }
             }
         }
-
-        // SPORTS — full-width game rows, packed tight.
-        if (grouped.games.isNotEmpty()) {
-            item(key = "sports") {
-                Column(verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-                    SectionHeader("Sports", "· ${grouped.games.size} games")
-                    grouped.games.forEachIndexed { index, r ->
-                        val game = r.game ?: return@forEachIndexed
-                        val rowFocus = gameRowFocus[index]
-                        GameRow(
-                            result = r,
-                            rowFocus = rowFocus,
-                            initialFocus = firstResultFocus.takeIf {
-                                index == 0 && firstSection == SearchSection.SPORTS
-                            },
-                            // OK opens the shared channel picker with the full ranked list;
-                            // the picker's OK plays and its empty state covers no-match.
-                            onClick = { onOpenPicker(game, rowFocus) },
-                        )
-                    }
-                }
-            }
-        }
+        KeyHints("OK" to "Watch", "HOLD OK" to "Channel menu", "▲" to "Edit search", modifier = Modifier.padding(top = 8.dp))
     }
 }
 
-/** An overline section header with the 2×12dp muted bar before it (CHANNELS / ON TV · GUIDE / SPORTS). */
+/** A group header: the overline with its red rule on the left, the count on the right. */
 @Composable
-private fun SectionHeader(header: String, suffix: String) {
+private fun GroupHeader(title: String, count: Int?, top: androidx.compose.ui.unit.Dp = 0.dp) {
     Row(
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = top, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(bottom = LiveWireDimens.SpaceS),
     ) {
-        Overline(header)
-        if (suffix.isNotBlank()) {
-            Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-            Text(
-                suffix.uppercase(),
-                style = LiveWireType.Overline,
-                color = LiveWireTheme.onSurfaceMuted,
-                maxLines = 1,
-            )
-        }
+        Overline(title)
+        Spacer(Modifier.weight(1f))
+        if (count != null) Text(count.toString(), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
-/** The CHANNELS rail: reuses Home's [ChannelCard]. Inset so focus scale/ring is not clipped. */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun ChannelRail(
-    channels: List<SearchResult>,
-    viewModel: SearchViewModel,
-    now: Long,
-    firstFocus: FocusRequester?,
-    onPlayChannel: (LiveChannel) -> Unit,
-    favoriteIds: Set<String>,
-    onLongPress: (LiveChannel) -> Unit,
-    onRegisterFocus: (String, FocusRequester) -> Unit,
-) {
-    LazyRow(
-        // Horizontal inset keeps the first/last card's 1.04 scale + ring off the column edge
-        // and inside the right safe margin at rest; vertical inset leaves room top/bottom (§9.3).
-        contentPadding = PaddingValues(horizontal = LiveWireDimens.SpaceXs, vertical = LiveWireDimens.SpaceXs),
-        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.RailGap),
-    ) {
-        itemsIndexed(channels, key = { _, r -> "c:${r.channel?.streamId}" }) { index, r ->
-            val channel = r.channel ?: return@itemsIndexed
-            // One requester per result card, registered by stream id, so an overlay close can
-            // return focus to this exact card.
-            val cardFocus = remember(channel.streamId) { FocusRequester() }
-            androidx.compose.runtime.DisposableEffect(channel.streamId) {
-                onRegisterFocus(channel.streamId, cardFocus)
-                onDispose { }
-            }
-            ChannelCard(
-                channel = channel,
-                nowPlaying = viewModel.nowPlaying(channel, now),
-                isFavorite = channel.streamId in favoriteIds,
-                onClick = { onPlayChannel(channel) },
-                onLongClick = { onLongPress(channel) },
-                modifier = Modifier
-                    .focusRequester(cardFocus)
-                    .then(if (index == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier),
-            )
-        }
-    }
-}
+
 
 /**
- * A full-width guide programme row (ON TV): a left pill (red NOW while airing, else the small
- * mono-muted start-time pill), the time range, the programme title, and the channel name at
- * the right. Selecting it plays the programme's channel. Wide focus scale so the ring never
- * clips. Tight vertical padding so ~3 rows sit in view (§5).
+ * An ON TV row: the LIVE badge with NOW while airing, else when it starts ("11:00 PM", or
+ * "TUE 8:00 PM" on another day), then the title over the channel name and, while airing, the
+ * minutes left. Selecting it plays the programme's channel.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ProgrammeRow(
-    result: SearchResult,
+    programme: com.livewire.tv.feature.epg.domain.EpgProgramme,
+    title: String,
     now: Long,
     channelName: String,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
-    val programme = result.programme ?: return
     val airing = SearchGrouping.isAiring(programme, now)
-    LiveWireSurface(
-        onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
-        shape = RoundedCornerShape(LiveWireDimens.RadiusCard),
-        focusedScale = LiveWireDimens.FocusScaleWide,
-        modifier = Modifier.fillMaxWidth()
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
-        ) {
-            // Fixed-width pill column so the time ranges line up across rows.
-            Box(Modifier.width(56.dp), contentAlignment = Alignment.CenterStart) {
-                if (airing) NowPill() else Text(
-                    SearchGrouping.programmePill(programme, now),
-                    style = LiveWireType.Tag,
-                    color = LiveWireTheme.onSurfaceMuted,
-                    maxLines = 1,
-                )
-            }
-            Text(
-                SearchGrouping.programmeTimeRange(programme),
-                style = LiveWireType.Mono,
-                color = LiveWireTheme.onSurface,
-                maxLines = 1,
-                modifier = Modifier.width(132.dp),
-            )
-            Text(
-                result.title,
-                style = LiveWireType.Title,
-                color = LiveWireTheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                channelName,
-                style = LiveWireType.Mono,
-                color = LiveWireTheme.onSurfaceMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 260.dp),
-            )
+    ResultRow(onClick = onClick, modifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier) {
+        Box(Modifier.width(WHEN_WIDTH), contentAlignment = Alignment.CenterStart) {
+            if (airing) NowPill() else Text(SearchGrouping.programmeWhen(programme, now), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
         }
+        val left = if (airing && !programme.endIsEstimate) shortMinutesLeft(programme, now).let { " · $it" } else ""
+        ResultText(title, channelName + left)
     }
 }
 
 /**
- * A full-width game row (SPORTS): league code, the "Away @ Home on NETWORK" match, the
- * score (or an em dash) and the live status (red while in progress) or start time. Selecting
- * it opens the shared channel picker for the game. Wide focus scale; tight padding (§5).
- *
- * [rowFocus] is this row's own requester, so closing the picker returns focus here; when this
- * is the first result on screen it ALSO carries [initialFocus] for the field→results hop.
+ * A GAMES row: the LIVE badge while in progress, else the start ("SAT 9:00 AM") or the final
+ * status, then "Away @ Home" over the league, score and network. Selecting it opens the shared
+ * channel picker. [rowFocus] is this row's own requester, so closing the picker returns here;
+ * the first result on screen ALSO carries [initialFocus] for the field-to-results hop.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun GameRow(
-    result: SearchResult,
+    game: SportsGame,
+    now: Long,
     rowFocus: FocusRequester,
     initialFocus: FocusRequester?,
     onClick: () -> Unit,
 ) {
-    val game = result.game ?: return
     val live = SportsFormat.isLive(game)
     val scored = SportsFormat.showScores(game)
-    LiveWireSurface(
+    ResultRow(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
-        shape = RoundedCornerShape(LiveWireDimens.RadiusCard),
-        focusedScale = LiveWireDimens.FocusScaleWide,
-        modifier = Modifier.fillMaxWidth()
-            .focusRequester(rowFocus)
-            .then(if (initialFocus != null) Modifier.focusRequester(initialFocus) else Modifier),
+        modifier = Modifier.focusRequester(rowFocus).then(if (initialFocus != null) Modifier.focusRequester(initialFocus) else Modifier),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
-        ) {
-            Text(
-                game.leagueId.uppercase(),
-                style = LiveWireType.Mono,
-                color = LiveWireTheme.onSurfaceMuted,
-                maxLines = 1,
-                modifier = Modifier.width(52.dp),
-            )
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${game.away.name} ",
-                    style = LiveWireType.Title,
-                    color = LiveWireTheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text("@", style = LiveWireType.Title, color = LiveWireTheme.onSurfaceMuted)
-                Text(
-                    " ${game.home.name}",
-                    style = LiveWireType.Title,
-                    color = LiveWireTheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (game.broadcastNetworks.isNotEmpty()) {
-                    Text(
-                        "  on ${game.broadcastNetworks.joinToString(", ")}",
-                        style = LiveWireType.Mono,
-                        color = LiveWireTheme.onSurfaceMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            if (scored) {
-                Text(
-                    "${SportsFormat.scoreLabel(game.away.score)} – ${SportsFormat.scoreLabel(game.home.score)}",
-                    style = LiveWireType.Title,
-                    fontWeight = FontWeight.Bold,
-                    color = LiveWireTheme.onSurface,
-                    maxLines = 1,
-                )
-            }
-            if (live) {
-                StatusPill(SportsFormat.statusLine(game))
-            } else {
-                Text(
-                    SearchGrouping.gameStatus(game, System.currentTimeMillis()),
-                    style = LiveWireType.Mono,
-                    color = LiveWireTheme.onSurfaceMuted,
-                    maxLines = 1,
-                )
-            }
+        Box(Modifier.width(WHEN_WIDTH), contentAlignment = Alignment.CenterStart) {
+            if (live) StatusPill("LIVE") else Text(SearchGrouping.gameWhen(game, now), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
         }
+        val sub = listOfNotNull(
+            if (live) SportsFormat.statusLine(game) else game.leagueId.uppercase(),
+            if (scored) "${SportsFormat.scoreLabel(game.away.score)}–${SportsFormat.scoreLabel(game.home.score)}" else null,
+            game.broadcastNetworks.takeIf { it.isNotEmpty() }?.let { "on ${it.joinToString(", ")}" },
+        ).joinToString(" · ")
+        ResultText("${game.away.name} @ ${game.home.name}", sub)
     }
 }
+
+/** A flat result row: invisible at rest, the light fill when focused. */
+@Composable
+private fun ResultRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    LiveWireSurface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().height(43.dp),
+        shape = RoundedCornerShape(9.dp),
+        restingColor = Color.Transparent,
+        restingBorder = false,
+    ) {
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.ResultText(title: String, sub: String) {
+    Column(Modifier.weight(1f)) {
+        Text(title, style = LiveWireType.Title, color = LiveWireTheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (sub.isNotBlank()) Text(sub, style = LiveWireType.Sub, color = LiveWireTheme.onSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** The left "when" column of the ON TV and GAMES rows, wide enough for "TUE 12:00 PM". */
+private val WHEN_WIDTH = 72.dp
 
 /** The LIVE badge on an airing programme: the pulse line into the red dot, then NOW. */
 @Composable
@@ -717,16 +598,12 @@ private fun StatusPill(text: String) {
 }
 
 /**
- * The empty state (nothing typed), per the approved mockup (option1-empty): the focused query
- * field (owned by the caller) sits above; here we show, in order and each only when non-empty,
- * RECENT SEARCHES as a row of clock pill chips (most recent first, capped in the store), then
- * JUMP BACK IN as a rail of recently watched channels reusing Home's [ChannelCard] (now-playing
- * + progress + "N min left"), then the existing one-line hint. With no history at all only the
- * hint shows — matching today's behaviour aside from the always-present hint.
+ * The empty state (mockup B-grid-61): RECENT SEARCHES as clock chips with a Clear chip, then
+ * JUMP BACK IN as On now rows on the left with a short explanation on the right. Each part
+ * shows only when non-empty; with no history only the explanation shows.
  *
- * D-pad: the caller routes Down-from-field to [firstFocus] (the first chip, or the first card
- * when there are no chips). Selecting a chip fills the field and runs its search; selecting a
- * card plays that channel. Amber appears only on the focused element (via [LiveWireSurface]).
+ * D-pad: the caller routes Down-from-field to [firstFocus] (the first chip, or the first row
+ * when there are no chips). A chip fills the field and runs its search; a row plays.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -740,77 +617,49 @@ private fun EmptyState(
 ) {
     val now = System.currentTimeMillis()
     val hasChips = recentSearches.isNotEmpty()
-    val hasCards = recentChannels.isNotEmpty()
-
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXl),
-        contentPadding = PaddingValues(top = LiveWireDimens.SpaceL, bottom = LiveWireDimens.SpaceS),
-    ) {
-        // ── RECENT SEARCHES ── a wrap of clock pill chips, most recent first.
+    val playable = recentChannels.filter { it.channel != null }
+    Column(Modifier.fillMaxSize().padding(top = 18.dp)) {
         if (hasChips) {
-            item(key = "recent-searches") {
-                Column {
-                    SectionHeader("Recent searches", "")
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
-                        verticalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
-                        modifier = Modifier.padding(LiveWireDimens.SpaceXs),
-                    ) {
-                        recentSearches.forEachIndexed { index, term ->
-                            RecentSearchChip(
-                                term = term,
-                                onClick = { onSelectSearch(term) },
-                                focusRequester = firstFocus.takeIf { index == 0 },
-                            )
-                        }
-                        // A trailing "Clear" chip removes all history (searches + channels).
-                        ClearChip(onClick = { viewModel.clearHistory() })
+            Overline("Recent searches", modifier = Modifier.padding(bottom = 9.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                recentSearches.forEachIndexed { index, term ->
+                    RecentSearchChip(term = term, onClick = { onSelectSearch(term) }, focusRequester = firstFocus.takeIf { index == 0 })
+                }
+                ClearChip(onClick = { viewModel.clearHistory() })
+            }
+            Spacer(Modifier.height(22.dp))
+        }
+        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(30.dp)) {
+            LazyColumn(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (playable.isNotEmpty()) {
+                    item(key = "h:jump") { GroupHeader("Jump back in", playable.size) }
+                    itemsIndexed(playable, key = { _, r -> "w:${r.watched.providerId}:${r.watched.streamId}" }) { index, recent ->
+                        val channel = recent.channel ?: return@itemsIndexed
+                        OnNowRow(
+                            number = HomeLists.rowNumber(channel.number, index),
+                            channel = channel,
+                            nowPlaying = viewModel.nowPlayingFor(recent, now),
+                            now = now,
+                            showStar = false,
+                            onClick = { onPlayChannel(channel) },
+                            onLongClick = { },
+                            modifier = if (index == 0 && !hasChips) Modifier.focusRequester(firstFocus) else Modifier,
+                        )
                     }
                 }
             }
-        }
-
-        // ── JUMP BACK IN ── a rail of recently watched channels (Home ChannelCard).
-        if (hasCards) {
-            item(key = "jump-back-in") {
-                Column {
-                    SectionHeader("Jump back in", "")
-                    LazyRow(
-                        contentPadding = PaddingValues(
-                            horizontal = LiveWireDimens.SpaceXs,
-                            vertical = LiveWireDimens.SpaceXs,
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.RailGap),
-                    ) {
-                        itemsIndexed(
-                            recentChannels,
-                            key = { _, r -> "w:${r.watched.providerId}:${r.watched.streamId}" },
-                        ) { index, recent ->
-                            RecentChannelCard(
-                                recent = recent,
-                                nowPlaying = viewModel.nowPlayingFor(recent, now),
-                                onClick = {
-                                    recent.channel?.let(onPlayChannel)
-                                },
-                                // First card takes Down-from-field only when there are no chips.
-                                focusRequester = firstFocus.takeIf { index == 0 && !hasChips },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── The one-line hint (always shown, as today). ──
-        item(key = "hint") {
             Text(
-                "Search finds live channels, what's on now and later in the guide, and today's games — " +
-                    "all at once. Type a channel name like FOX, a show, or a team, then press Search.",
+                "Search finds live channels, what is on now and later in the guide, and today's games, all at once. " +
+                    "Type a channel name, a show or a team, then press Search on the keyboard.",
                 style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
-                modifier = Modifier.widthIn(max = 560.dp),
+                modifier = Modifier.weight(1f).padding(top = 10.dp),
             )
         }
+        KeyHints("OK" to "Open keyboard", "▼" to "Recents", "▲" to "Tabs", modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -828,24 +677,24 @@ private fun RecentSearchChip(
 ) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
+        restingColor = LiveWireColors.Surface,
         shape = RoundedCornerShape(50),
-        modifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
+        modifier = (if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier).height(28.dp),
     ) {
         Row(
-            Modifier.padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
+            Modifier.fillMaxHeight().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_clock),
                 contentDescription = null,
                 tint = LiveWireTheme.onSurfaceMuted,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(11.dp),
             )
-            Spacer(Modifier.width(LiveWireDimens.SpaceS))
+            Spacer(Modifier.width(6.dp))
             Text(
                 term,
-                style = LiveWireType.Title,
+                style = LiveWireType.Title.copy(fontSize = 10.5.sp),
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -860,73 +709,25 @@ private fun RecentSearchChip(
 private fun ClearChip(onClick: () -> Unit) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
+        restingColor = Color.Transparent,
         shape = RoundedCornerShape(50),
+        modifier = Modifier.height(28.dp),
     ) {
         Row(
-            Modifier.padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
+            Modifier.fillMaxHeight().padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 "Clear",
-                // Same text style as the search chips so the row lines up; muted colour marks
-                // it as secondary.
-                style = LiveWireType.Title,
-                color = LiveWireTheme.onSurfaceMuted,
+                style = LiveWireType.Title.copy(fontSize = 10.5.sp),
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
             )
         }
     }
 }
 
-/**
- * A "Jump back in" card. When the watched channel is still in the playlist it renders the exact
- * Home [ChannelCard] (logo, name, now-playing, progress, "N min left") and plays on select. When
- * the stream has dropped out of the playlist we still show its stored name in a matching-width
- * card, but it is not focusable/clickable (nothing to play).
- */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun RecentChannelCard(
-    recent: RecentChannel,
-    nowPlaying: com.livewire.tv.feature.epg.domain.EpgProgramme?,
-    onClick: () -> Unit,
-    focusRequester: FocusRequester?,
-) {
-    val channel = recent.channel
-    if (channel != null) {
-        ChannelCard(
-            channel = channel,
-            nowPlaying = nowPlaying,
-            onClick = onClick,
-            modifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
-        )
-    } else {
-        // Unavailable: a non-focusable placeholder that keeps the rail's rhythm.
-        Column(
-            Modifier
-                .width(148.dp)
-                .clip(RoundedCornerShape(LiveWireDimens.RadiusCard))
-                .background(LiveWireColors.Surface)
-                .padding(9.dp),
-        ) {
-            Box(
-                Modifier.fillMaxWidth().height(56.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Overline("Unavailable", brandRule = false)
-            }
-            Text(
-                recent.watched.name,
-                style = LiveWireType.Title,
-                color = LiveWireTheme.onSurfaceMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = LiveWireDimens.SpaceS),
-            )
-        }
-    }
-}
+
 
 /** No results for the current query (§9.9): a plain-words line, never a bare code. */
 @Composable

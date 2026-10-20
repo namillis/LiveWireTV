@@ -434,7 +434,7 @@ internal fun shortMinutesLeft(p: EpgProgramme, now: Long): String {
 }
 
 @Composable
-private fun OnNowRow(
+internal fun OnNowRow(
     number: String,
     channel: LiveChannel,
     nowPlaying: EpgProgramme?,
