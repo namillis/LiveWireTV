@@ -39,13 +39,17 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-/** One rail: a category name + its channels. The favourites and recently watched rails are flagged. */
+/**
+ * One list Home can show: a category name + its channels. The favourites, recently watched and
+ * pool Live Now lists are flagged. See [HomeLists] for the order and the default.
+ */
 data class ChannelRail(
     val categoryId: String,
     val title: String,
     val channels: List<LiveChannel>,
     val isFavorites: Boolean = false,
     val isRecent: Boolean = false,
+    val isLiveNow: Boolean = false,
 )
 
 /**
@@ -63,7 +67,12 @@ data class FavoriteConfirmation(
 data class HomeUiState(
     val loading: Boolean = true,
     val error: String? = null,
+    /** Every list the filter dropdown offers, in [HomeLists.lists] order. */
     val rails: List<ChannelRail> = emptyList(),
+    /** The list the On now column shows; see [HomeLists.defaultSelection]. */
+    val selectedListId: String? = null,
+    /** Play the focused channel muted in the preview (Settings > Channel preview). */
+    val previewEnabled: Boolean = true,
     val guideLoaded: Boolean = false,
     /** Bumps each time a guide load finishes, so cards re-read now-playing after the rails change. */
     val guideVersion: Int = 0,
@@ -81,6 +90,7 @@ class HomeViewModel @Inject constructor(
     private val favorites: FavoritesStore,
     private val pins: PinnedCategoriesStore,
     private val history: RecentHistoryStore,
+    private val listChoice: com.livewire.tv.feature.home.data.HomeListStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -103,6 +113,10 @@ class HomeViewModel @Inject constructor(
     private var favoriteRail: ChannelRail? = null
     private var recentRail: ChannelRail? = null
     private var categoryRails: List<ChannelRail> = emptyList()
+    private var liveNowRail: ChannelRail? = null
+    private var allRail: ChannelRail? = null
+    /** The list picked last time on this provider, read once per load. */
+    private var rememberedList: String? = null
 
     /** Loaded category rails by category id, so a pin change only fetches the new ones. */
     private val railCache = HashMap<String, ChannelRail?>()
@@ -133,6 +147,7 @@ class HomeViewModel @Inject constructor(
             val appSettings = settings.settings.first()
             showNowPlaying = appSettings.showNowPlayingOnCards
             streamFormat = appSettings.streamFormat
+            _state.update { it.copy(previewEnabled = appSettings.guidePreview) }
 
             val cfg = active.current()
             if (cfg == null) {
@@ -148,12 +163,16 @@ class HomeViewModel @Inject constructor(
                 categories = client.liveCategories(cfg)
                 if (categories.isEmpty()) active.recheck()
                 val pinned = pins.pinned(cfg.id).first()
+                rememberedList = listChoice.selected(cfg.id)
+                liveNowRail = loadLiveNowRail(cfg)
                 categoryRails = loadCategoryRails(cfg, pinned)
                 publishRails()
                 // Raised only now: while the spinner shows, the toast would fade before Home appears.
                 val message = failover?.let { "${it.primary.name} isn't responding. Using ${it.backup.name}." } ?: notice
                 if (message != null) showProviderNotice(message)
                 allChannels = fullList.await().ifEmpty { categoryRails.flatMap { it.channels }.distinctBy { it.streamId } }
+                rebuildAllRail()
+                publishRails()
                 railsLoadedAtMs = System.currentTimeMillis()
                 observeFavorites()
                 observeRecent()
@@ -189,13 +208,16 @@ class HomeViewModel @Inject constructor(
         railCache.clear()
         categories = emptyList()
         categoryRails = emptyList()
+        liveNowRail = null
+        allRail = null
+        rememberedList = null
         favoriteRail = null
         recentRail = null
         allChannels = emptyList()
         favoriteEntries = emptyList()
         railsLoadedAtMs = 0L
         guide = null
-        _state.update { it.copy(rails = emptyList(), favoriteIds = emptySet()) }
+        _state.update { it.copy(rails = emptyList(), selectedListId = null, favoriteIds = emptySet()) }
         startLoad(notice)
     }
 
@@ -211,6 +233,38 @@ class HomeViewModel @Inject constructor(
                 if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)
             }
         }
+
+    /** The pool's Live Now category as a list, or null for providers that don't send one. */
+    private suspend fun loadLiveNowRail(cfg: ProviderConfig): ChannelRail? {
+        val category = categories.firstOrNull { HomeLists.isLiveNow(it.name) } ?: return null
+        val rail = railCache.getOrPut(category.id) {
+            val channels = client.liveChannels(cfg, categoryId = category.id)
+            if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)
+        }
+        return rail?.copy(isLiveNow = true)
+    }
+
+    private fun rebuildAllRail() {
+        allRail = allChannels.takeIf { it.isNotEmpty() }?.let { ChannelRail(HomeLists.ALL_ID, "All channels", it) }
+    }
+
+    /** Show [listId] in the On now column and remember it for this provider. */
+    fun selectList(listId: String) {
+        val cfg = provider ?: return
+        if (_state.value.rails.none { it.categoryId == listId }) return
+        rememberedList = listId
+        _state.update { it.copy(selectedListId = listId) }
+        viewModelScope.launch {
+            listChoice.select(cfg.id, listId)
+            loadGuide()
+        }
+    }
+
+    /** The stream to preview for [streamId], resolved the same way the player resolves it. */
+    suspend fun previewSource(streamId: String): com.livewire.tv.feature.providers.domain.PlaybackSource? {
+        val cfg = provider ?: return null
+        return client.playbackSource(cfg, streamId, settings.settings.first().streamFormat.ext)
+    }
 
     /** Rebuild the category rails when the pins change (from the Guide's category column). */
     private fun CoroutineScope.observePins(cfg: ProviderConfig, initial: List<String>) {
@@ -245,7 +299,7 @@ class HomeViewModel @Inject constructor(
         favorites.applyRematches(cfg.id, resolved)
         val favChannels = resolved.mapNotNull { it.channel }
         favoriteRail = favChannels.takeIf { it.isNotEmpty() }?.let {
-            ChannelRail(FAVORITES_RAIL_ID, "Favourites", it, isFavorites = true)
+            ChannelRail(HomeLists.FAVORITES_ID, "Favourites", it, isFavorites = true)
         }
     }
 
@@ -264,7 +318,7 @@ class HomeViewModel @Inject constructor(
     private fun rebuildRecentRail(cfg: ProviderConfig) {
         val channels = HomeRails.recentlyWatched(watched, cfg.id, allChannels)
         recentRail = channels.takeIf { it.isNotEmpty() }?.let {
-            ChannelRail(RECENT_RAIL_ID, "Recently watched", it, isRecent = true)
+            ChannelRail(HomeLists.RECENT_ID, "Recently watched", it, isRecent = true)
         }
     }
 
@@ -285,6 +339,7 @@ class HomeViewModel @Inject constructor(
             val fullList = async { runCatching { client.liveChannels(cfg) }.getOrNull().orEmpty() }
             val pinned = pins.pinned(cfg.id).first()
             railCache.clear()
+            val live = runCatching { loadLiveNowRail(cfg) }.getOrNull()
             val rails = runCatching { loadCategoryRails(cfg, pinned) }.getOrNull()
             val channels = fullList.await()
             if (rails.isNullOrEmpty() || channels.isEmpty()) {
@@ -293,10 +348,12 @@ class HomeViewModel @Inject constructor(
                 return@launch
             }
             railsLoadedAtMs = now
-            val changed = rails != categoryRails || channels != allChannels
+            val changed = rails != categoryRails || channels != allChannels || live != liveNowRail
             categoryRails = rails
+            liveNowRail = live
             allChannels = channels
             if (!changed) return@launch
+            rebuildAllRail()
             rebuildFavoriteRail(cfg)
             rebuildRecentRail(cfg)
             publishRails()
@@ -304,10 +361,13 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Home's rails in order: Favourites, Recently watched, then the pinned (or first) categories. */
+    /** Publish the dropdown's lists, keeping the current choice while it still exists. */
     private fun publishRails() {
-        val rails = listOfNotNull(favoriteRail, recentRail) + categoryRails
-        _state.update { it.copy(loading = false, rails = rails) }
+        val rails = HomeLists.lists(liveNowRail, favoriteRail, recentRail, categoryRails, allRail)
+        _state.update { st ->
+            val keep = st.selectedListId?.takeIf { id -> rails.any { it.categoryId == id } }
+            st.copy(loading = false, rails = rails, selectedListId = keep ?: HomeLists.defaultSelection(rails, rememberedList))
+        }
     }
 
     /** The guide for every channel on Home's rails. Served from the guide cache after the first load. */
@@ -320,7 +380,9 @@ class HomeViewModel @Inject constructor(
             endMs = now + TimeUnit.HOURS.toMillis(12),
         )
         val favChannels = FavoritesLogic.resolve(favorites.favorites(cfg.id).first(), allChannels).mapNotNull { it.channel }
-        val onHome = categoryRails.flatMap { it.channels } + favChannels + recentRail?.channels.orEmpty()
+        val shown = _state.value.rails.firstOrNull { it.categoryId == _state.value.selectedListId }?.channels.orEmpty()
+        val onHome = categoryRails.flatMap { it.channels } + favChannels + recentRail?.channels.orEmpty() +
+            liveNowRail?.channels.orEmpty() + shown.take(GUIDE_ROWS_FOR_ALL)
         val ids = onHome.mapNotNullTo(HashSet()) { it.epgChannelId }
         runCatching { epg.fetch(cfg, window, ids) }.getOrNull()?.let { loaded ->
             guide = loaded
@@ -378,8 +440,8 @@ class HomeViewModel @Inject constructor(
     }
 
     private companion object {
-        const val FAVORITES_RAIL_ID = "\u0000favorites"
-        const val RECENT_RAIL_ID = "\u0000recent"
+        /** How many rows of a long list (All channels) get guide data. */
+        const val GUIDE_ROWS_FOR_ALL = 300
 
         /** How long the "isn't responding" and "is back" notices stay on screen. */
         const val PROVIDER_NOTICE_MS = 6_000L
