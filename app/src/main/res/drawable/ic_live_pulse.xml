@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LIVE badge pulse line. Tinted at runtime; the dot is ic_live_dot. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="16dp" android:viewportWidth="30" android:viewportHeight="16">
+    <path android:pathData="M1,8h4l2.5,-5.5l4,11l2.5,-8l1.8,2.5h3" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

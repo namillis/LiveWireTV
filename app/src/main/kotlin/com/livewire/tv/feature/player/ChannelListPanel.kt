@@ -1,5 +1,9 @@
 package com.livewire.tv.feature.player
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
+import com.livewire.tv.ui.theme.brandEdge
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -92,15 +97,17 @@ fun ChannelListPanel(
                 .width(LiveWireDimens.SafeHorizontal + 340.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(LiveWireColors.Surface)
+                .border(1.dp, LiveWireColors.Border, RoundedCornerShape(14.dp))
+                .brandEdge()
                 .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceL),
         ) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceS, vertical = LiveWireDimens.SpaceS),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(state.categoryName.uppercase(), style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+                Overline(state.categoryName.uppercase())
                 Spacer(Modifier.weight(1f))
-                Text("${state.items.size} channels", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text("${state.items.size} channels", style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -171,11 +178,7 @@ private sealed interface ChannelPanelRow {
 /** A group header inside the channel list (e.g. "FAVOURITES", the category name). Not focusable. */
 @Composable
 private fun GroupHeader(title: String) {
-    Text(
-        title.uppercase(),
-        style = LiveWireTheme.tokens.overline,
-        color = LiveWireColors.OnSurfaceMuted,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+    Overline(title.uppercase(), modifier = Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
     )
 }
 
@@ -202,16 +205,16 @@ private fun ChannelRow(
         ) {
             Text(
                 item.number,
-                style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                style = LiveWireType.Number,
+                color = LiveWireTheme.onSurfaceMuted,
                 modifier = Modifier.width(34.dp),
             )
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
                     Text(
                         item.channel.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = LiveWireColors.OnSurface,
+                        style = LiveWireType.Title,
+                        color = LiveWireTheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -222,8 +225,8 @@ private fun ChannelRow(
                 Spacer(Modifier.height(3.dp))
                 Text(
                     programmeLine(item.nowPlaying, now),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    style = LiveWireType.Body,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -238,13 +241,15 @@ private fun ChannelRow(
 
 @Composable
 private fun WatchingTag() {
-    Box(
+    Row(
         Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(LiveWireColors.SurfaceRaised)
+            .border(1.dp, LiveWireColors.Live.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
             .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text("WATCHING", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurfaceMuted)
+        Box(Modifier.size(5.dp).clip(RoundedCornerShape(50)).background(LiveWireColors.Live))
+        Text("WATCHING", style = LiveWireType.Tag, color = LiveWireColors.Live)
     }
 }
 
@@ -256,26 +261,28 @@ private fun Preview(item: ChannelListItem, now: Long, modifier: Modifier) {
         modifier
             .clip(RoundedCornerShape(14.dp))
             .background(LiveWireColors.Surface.copy(alpha = 0.94f))
+            .border(1.dp, LiveWireColors.Border, RoundedCornerShape(14.dp))
+            .brandEdge()
             .padding(LiveWireDimens.SpaceL),
         horizontalAlignment = Alignment.Start,
     ) {
-        Text("PREVIEW · CH ${item.number}", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+        Overline("PREVIEW · CH ${item.number}")
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             item.nowPlaying?.title ?: item.channel.name,
-            style = MaterialTheme.typography.headlineSmall,
-            color = LiveWireColors.OnSurface,
+            style = LiveWireType.Heading,
+            color = LiveWireTheme.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         val meta = previewMeta(item.nowPlaying, now)
         if (meta.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
-            Text(meta, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
+            Text(meta, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
         }
         item.nowPlaying?.description?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(it, style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -295,9 +302,9 @@ private fun HintRow() {
 private fun KeyHint(key: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp)) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            Text(key, style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 

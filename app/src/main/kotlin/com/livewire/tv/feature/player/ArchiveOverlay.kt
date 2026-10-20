@@ -1,5 +1,13 @@
 package com.livewire.tv.feature.player
 
+import com.livewire.tv.ui.theme.brandEdge
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Icon
+import com.livewire.tv.R
+import com.livewire.tv.ui.theme.KeyHints
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +41,6 @@ import androidx.tv.material3.Text
 import com.livewire.tv.core.player.PlaybackState
 import com.livewire.tv.core.player.PlayerFormats
 import com.livewire.tv.core.player.VideoFormat
-import com.livewire.tv.feature.home.brandTint
 import com.livewire.tv.feature.home.wordmark
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
@@ -107,17 +114,17 @@ fun ArchivePlayerOverlay(
 
             // CATCH-UP <title> · <category>
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-                Text(if (timeShift) "TIME-SHIFTED" else "CATCH-UP", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+                Overline(if (timeShift) "Time-shifted" else "Catch-up")
                 Text(
                     model.programmeTitle ?: model.channelName,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = LiveWireColors.OnSurface,
+                    style = LiveWireType.Display,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 900.dp),
                 )
                 model.programmeCategory?.takeIf { it.isNotBlank() }?.let {
-                    Text("· $it", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted)
+                    Text("· $it", style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted)
                 }
             }
 
@@ -128,8 +135,8 @@ fun ArchivePlayerOverlay(
                 } else {
                     "Aired ${PlayerFormats.dayAndTime(model.windowStartMs)} · ${PlayerFormats.watchingOf(model.positionMs - model.windowStartMs, model.durationMs)}"
                 },
-                style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                style = LiveWireType.Body,
+                color = LiveWireTheme.onSurfaceMuted,
             )
 
             // Room for the position tooltip above the knob, so it never covers the line above.
@@ -188,15 +195,15 @@ fun PausedLiveOverlay(
                 Modifier.size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("❚❚", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface)
+                Text("❚❚", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
             }
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text("Paused", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface)
+            Text("Paused", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Text(
                 PlayerFormats.behindLive(behindMs),
-                style = MaterialTheme.typography.bodyMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                style = LiveWireType.Body,
+                color = LiveWireTheme.onSurfaceMuted,
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             NeutralChip("▲ Go live")
@@ -243,6 +250,8 @@ fun NoRewindCard(channelName: String, modifier: Modifier = Modifier) {
                 .widthIn(max = 680.dp)
                 .clip(RoundedCornerShape(LiveWireDimens.RadiusDialog))
                 .background(LiveWireColors.Surface)
+                .border(1.dp, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusDialog))
+                .brandEdge()
                 .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(LiveWireDimens.RadiusDialog))
                 .padding(LiveWireDimens.SpaceL),
             horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL),
@@ -251,20 +260,20 @@ fun NoRewindCard(channelName: String, modifier: Modifier = Modifier) {
                 Modifier.size(44.dp).clip(RoundedCornerShape(LiveWireDimens.RadiusCell)).background(LiveWireColors.SurfaceRaised),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("⟲", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurfaceMuted)
+                Icon(painterResource(R.drawable.ic_archive), contentDescription = null, tint = LiveWireTheme.onSurfaceMuted, modifier = Modifier.size(22.dp))
             }
             Column {
                 Text(
                     "This channel can’t rewind",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = LiveWireColors.OnSurface,
+                    style = LiveWireType.Title.copy(fontWeight = FontWeight.Bold),
+                    color = LiveWireTheme.onSurface,
                 )
                 Spacer(Modifier.height(LiveWireDimens.SpaceS))
                 Text(
                     "$channelName has no catch-up archive, so you can’t go back or start over. " +
                         "Pausing still works — press OK to pause, and OK again to rejoin live.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    style = LiveWireType.Body,
+                    color = LiveWireTheme.onSurfaceMuted,
                     modifier = Modifier.widthIn(max = 520.dp),
                 )
                 Spacer(Modifier.height(LiveWireDimens.SpaceM))
@@ -311,35 +320,29 @@ private fun androidx.compose.foundation.layout.BoxScope.BottomScrim() {
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.ArchiveTopBug(channelNumber: String, pill: String, archive: Boolean) {
     Row(
-        Modifier
-            .align(Alignment.TopStart)
-            .padding(start = LiveWireDimens.SafeHorizontal, top = LiveWireDimens.SafeVertical),
+        Modifier.align(Alignment.TopStart).padding(start = LiveWireDimens.SafeHorizontal, top = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (channelNumber.isNotBlank()) {
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(5.dp))
-                    .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
-            ) {
-                Text("CH $channelNumber", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
-            }
+            Text(
+                channelNumber,
+                style = LiveWireType.Number,
+                color = LiveWireColors.OnSurface,
+                modifier = Modifier
+                    .background(LiveWireColors.Canvas.copy(alpha = 0.6f), RoundedCornerShape(5.dp))
+                    .border(1.dp, LiveWireColors.Border, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+            )
         }
-        // Grey state pill (white text) — never the red LIVE pill (§3.3).
+        // A raised state tag, never the red LIVE badge: this is not live.
         Row(
-            Modifier
-                .clip(RoundedCornerShape(50))
-                .background(Color.Black.copy(alpha = 0.5f))
-                .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, RoundedCornerShape(50))
-                .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
+            Modifier.background(LiveWireColors.SurfaceRaised, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            if (archive) Text("⟲", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
-            Text(pill, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            if (archive) Icon(painterResource(R.drawable.ic_archive), contentDescription = null, tint = LiveWireColors.OnSurface, modifier = Modifier.size(10.dp))
+            Text(pill, style = LiveWireType.Tag.copy(fontSize = 8.25.sp), color = LiveWireColors.OnSurface)
         }
     }
 }
@@ -348,8 +351,8 @@ private fun androidx.compose.foundation.layout.BoxScope.ArchiveTopBug(channelNum
 private fun Clock(now: Long, modifier: Modifier) {
     Text(
         PlayerFormats.clockMeridiem(now),
-        style = MaterialTheme.typography.labelMedium,
-        color = LiveWireColors.OnSurface,
+        style = LiveWireType.Mono,
+        color = LiveWireTheme.onSurface,
         modifier = modifier.padding(end = LiveWireDimens.SafeHorizontal, top = LiveWireDimens.SafeVertical),
     )
 }
@@ -364,15 +367,15 @@ private fun ChannelIdentity(
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL)) {
         Text(
             wordmark(channelName),
-            style = MaterialTheme.typography.headlineSmall,
-            color = brandTint(channelName).brightenForText(),
+            style = LiveWireType.Heading,
+            color = LiveWireTheme.onSurface,
             maxLines = 1,
         )
         Column {
             Text(
                 channelName,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = LiveWireColors.OnSurface,
+                style = LiveWireType.Title.copy(fontWeight = FontWeight.Bold),
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -380,7 +383,7 @@ private fun ChannelIdentity(
                 if (channelNumber.isNotBlank()) add("CH $channelNumber")
                 add(stateLabel)
             }.joinToString(" · ")
-            Text(sub, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
+            Text(sub, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
         }
     }
 }
@@ -403,14 +406,14 @@ private fun OutlineChip(label: String) {
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(5.dp))
             .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
     ) {
-        Text(label, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+        Text(label, style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
     }
 }
 
 /**
- * The grey archive scrub bar. [fraction] fills the elapsed portion; the knob sits at that
- * fraction and carries the amber focus ring only when [knobFocused]. When [knobFocused] a
- * position tooltip sits above the knob. [liveEdge] draws a red live-edge dot at the right.
+ * The seek bar (mockup B-grid-31): watched up to the playhead in the light line, and where the
+ * playhead sits a light handle. When [knobFocused] the handle grows and a time tag in the focus
+ * fill sits above it. [liveEdge] marks the live edge at the right with the red dot.
  */
 @Composable
 private fun ScrubBar(
@@ -420,49 +423,46 @@ private fun ScrubBar(
     knobFocused: Boolean,
     liveEdge: Boolean,
 ) {
-    val track = 4.dp
-    val knob = 18.dp
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-        Text(leftLabel, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
-        BoxWithConstraints(Modifier.weight(1f)) {
+    val track = 6.dp
+    val knob = if (knobFocused) 15.dp else 11.dp
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(leftLabel, style = LiveWireType.Mono, color = LiveWireColors.OnSurface)
+        BoxWithConstraints(Modifier.weight(1f).height(knob + 6.dp)) {
             val f = fraction.coerceIn(0f, 1f)
-            // Keep the knob fully inside the track at both ends.
             val knobX: Dp = (maxWidth - knob) * f
             Box(Modifier.fillMaxWidth().height(track).align(Alignment.CenterStart).clip(RoundedCornerShape(50)).background(LiveWireColors.ProgressTrack))
             Box(Modifier.fillMaxWidth(f).height(track).align(Alignment.CenterStart).clip(RoundedCornerShape(50)).background(LiveWireColors.ProgressFill))
             if (liveEdge) {
-                Box(Modifier.align(Alignment.CenterEnd).size(10.dp).clip(CircleShape).background(LiveWireColors.Live))
-            }
-            // Tooltip above the knob when focused.
-            if (knobFocused) {
                 Box(
-                    Modifier
-                        .offset(x = knobX - 14.dp, y = -(knob + 10.dp))
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(LiveWireColors.SurfaceRaised)
-                        .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(5.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(leftLabel, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
-                }
+                    Modifier.align(Alignment.CenterEnd).size(11.dp).clip(CircleShape).background(LiveWireColors.Canvas).padding(2.dp)
+                        .clip(CircleShape).background(LiveWireColors.Live),
+                )
             }
-            // Knob: white, with an amber ring only when focused (mockup option2-player-bar).
+            if (knobFocused) {
+                Text(
+                    leftLabel,
+                    style = LiveWireType.Mono.copy(fontWeight = FontWeight.SemiBold),
+                    color = LiveWireColors.OnFocus,
+                    modifier = Modifier
+                        .offset(x = knobX - 20.dp, y = -(knob + 12.dp))
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(LiveWireColors.Focus)
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                )
+            }
             Box(
                 Modifier
+                    .align(Alignment.CenterStart)
                     .offset(x = knobX)
-                    .size(knob)
+                    .size(knob + 6.dp)
                     .clip(CircleShape)
-                    .background(LiveWireColors.ProgressFill)
-                    .then(
-                        if (knobFocused) {
-                            Modifier.border(LiveWireDimens.FocusBorder, LiveWireColors.Accent, CircleShape)
-                        } else {
-                            Modifier
-                        },
-                    ),
+                    .background(LiveWireColors.Canvas.copy(alpha = 0.85f))
+                    .padding(3.dp)
+                    .clip(CircleShape)
+                    .background(LiveWireColors.Focus),
             )
         }
-        Text(rightLabel, style = MaterialTheme.typography.labelMedium, color = if (liveEdge) LiveWireColors.OnSurfaceMuted else LiveWireColors.OnSurface)
+        Text(rightLabel, style = LiveWireType.Mono, color = LiveWireColors.OnSurfaceMuted)
     }
 }
 
@@ -473,9 +473,7 @@ private data class HintSpec(val key: String, val label: String)
 
 @Composable
 private fun HintRow(vararg hints: HintSpec) {
-    Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-        hints.forEach { HintChip(it.key, it.label) }
-    }
+    KeyHints(*hints.map { it.key to it.label }.toTypedArray())
 }
 
 @Composable
@@ -487,38 +485,14 @@ private fun NeutralChip(label: String) {
             .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, RoundedCornerShape(6.dp))
             .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+        Text(label, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
     }
 }
 
 @Composable
 private fun HintChip(key: String, label: String) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(LiveWireColors.Canvas.copy(alpha = 0.6f))
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(6.dp))
-            .padding(horizontal = LiveWireDimens.SpaceS, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(LiveWireColors.SurfaceRaised)
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-        ) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
-        }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-    }
+    KeyHints(key to label)
 }
 
 private fun fractionOf(elapsedMs: Long, durationMs: Long): Float =
     if (durationMs <= 0) 0f else (elapsedMs.toFloat() / durationMs).coerceIn(0f, 1f)
-
-/** Lighten a dark brand colour so the wordmark stays legible over the gradient. */
-private fun Color.brightenForText(): Color {
-    val f = 0.45f
-    return Color(red + (1f - red) * f, green + (1f - green) * f, blue + (1f - blue) * f, 1f)
-}

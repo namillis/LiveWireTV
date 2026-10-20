@@ -1,5 +1,9 @@
 package com.livewire.tv.feature.player
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
+import com.livewire.tv.ui.theme.brandEdge
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -155,6 +159,8 @@ fun OptionsPanel(
             .width(430.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(LiveWireColors.Surface)
+            .border(1.dp, LiveWireColors.Border, RoundedCornerShape(14.dp))
+            .brandEdge()
             .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceL),
     ) {
         Column(Modifier.fillMaxHeight()) {
@@ -166,11 +172,7 @@ fun OptionsPanel(
                 OptionsView.PICTURE -> "PICTURE"
                 OptionsView.STREAM_INFO -> "STREAM INFO"
             }
-            Text(
-                header,
-                style = LiveWireTheme.tokens.overline,
-                color = LiveWireColors.OnSurfaceMuted,
-                modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+            Overline(header, modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Box(Modifier.weight(1f)) {
@@ -363,9 +365,9 @@ private fun StreamInfoList(mediaInfo: MediaInfo) {
                 Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceM),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+                Text(label, style = LiveWireType.Title, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.weight(1f))
-                Text(value, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text(value, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -393,14 +395,14 @@ private fun OptionRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
         ) {
-            Icon(painterResource(iconRes), contentDescription = null, tint = LiveWireColors.OnSurfaceMuted, modifier = Modifier.size(22.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, modifier = Modifier.weight(1f))
+            Icon(painterResource(iconRes), contentDescription = null, tint = LiveWireTheme.onSurfaceMuted, modifier = Modifier.size(22.dp))
+            Text(label, style = LiveWireType.Title, color = LiveWireTheme.onSurface, modifier = Modifier.weight(1f))
             if (value != null) {
-                Text(value, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(value, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (hasChevron) {
                 Spacer(Modifier.width(LiveWireDimens.SpaceS))
-                Text("›", style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text("›", style = LiveWireType.Title, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -417,8 +419,8 @@ private fun ChoiceRow(label: String, selected: Boolean, focusRequester: FocusReq
             Modifier.fillMaxWidth().heightIn(min = 32.dp).padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, modifier = Modifier.weight(1f))
-            if (selected) Text("✓", style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface)
+            Text(label, style = LiveWireType.Title, color = LiveWireTheme.onSurface, modifier = Modifier.weight(1f))
+            if (selected) Text("✓", style = LiveWireType.Title, color = LiveWireTheme.onSurface)
         }
     }
 }
@@ -435,8 +437,8 @@ private fun Separator() {
 private fun EmptyNote(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = LiveWireColors.OnSurfaceMuted,
+        style = LiveWireType.Body,
+        color = LiveWireTheme.onSurfaceMuted,
         modifier = Modifier.padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceM),
     )
 }
@@ -461,8 +463,8 @@ private fun KeyHint(key: String, label: String) {
         Box(
             Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            Text(key, style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }

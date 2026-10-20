@@ -1,5 +1,7 @@
 package com.livewire.tv.ui.provider
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +64,7 @@ import com.livewire.tv.ui.theme.dpadVerticalExit
  * Every input is a [ProviderFilledField] built on [BasicTextField] — there is no
  * `OutlinedTextField` anywhere in the form, which is what lets the app drop its last
  * Material outlined field (plan section 1, step 7). The field renders the design
- * system's filled box: [LiveWireColors.SurfaceRaised] at rest, [LiveWireColors.SurfaceFocused]
+ * system's filled box: [LiveWireColors.SurfaceRaised] at rest, [LiveWireColors.SurfaceRaised] with a light ring
  * with a 2dp amber ring when focused, a label above and an optional help/error line below.
  *
  * D-pad: each field takes explicit `up`/`down` [FocusRequester]s and installs
@@ -134,8 +136,8 @@ fun ProviderFilledField(
         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
 
         val shape = RoundedCornerShape(FieldRadius)
-        val boxColor = if (focused) LiveWireColors.SurfaceFocused else LiveWireColors.SurfaceRaised
-        val borderColor = if (focused) LiveWireColors.Accent else LiveWireColors.Border
+        val boxColor = LiveWireColors.SurfaceRaised
+        val borderColor = if (focused) LiveWireColors.Focus else LiveWireColors.Border
         val borderWidth = if (focused) LiveWireDimens.FocusBorder else LiveWireDimens.RestBorder
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -151,8 +153,8 @@ fun ProviderFilledField(
                 onValueChange = onValue,
                 singleLine = true,
                 readOnly = !editing,
-                textStyle = MaterialTheme.typography.titleMedium.copy(color = LiveWireColors.OnSurface),
-                cursorBrush = SolidColor(LiveWireColors.OnSurface),
+                textStyle = LiveWireType.Title.copy(color = LiveWireTheme.onSurface),
+                cursorBrush = SolidColor(LiveWireTheme.onSurface),
                 visualTransformation = visualTransformation,
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
                 keyboardActions = KeyboardActions(onNext = { onImeAction() }, onDone = { onImeAction() }),
@@ -206,15 +208,15 @@ fun ProviderFilledField(
             if (error != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Red alert glyph, onSurface text (never a red fill).
-                    Text("!", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.Live)
+                    Text("!", style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
                     Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-                    Text(error, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+                    Text(error, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
                 }
             } else {
                 Text(
                     supporting,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    style = LiveWireType.Mono,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -232,24 +234,20 @@ private fun FieldLabel(
 ) {
     when (style) {
         ProviderFieldLabelStyle.OVERLINE ->
-            Text(
-                label.uppercase(),
-                style = LiveWireTheme.tokens.overline,
-                color = LiveWireColors.OnSurfaceMuted,
-            )
+            Overline(label.uppercase())
         ProviderFieldLabelStyle.SENTENCE ->
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     label,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (focused) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                    style = LiveWireType.Title,
+                    color = if (focused) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                 )
                 if (optional) {
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
                     Text(
                         "optional",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = LiveWireColors.OnSurfaceMuted,
+                        style = LiveWireType.Mono,
+                        color = LiveWireTheme.onSurfaceMuted,
                     )
                 }
             }
@@ -281,8 +279,8 @@ fun PasswordRevealToggle(
         ) {
             Text(
                 if (visible) "Hide password" else "Show password",
-                style = MaterialTheme.typography.titleMedium,
-                color = LiveWireColors.OnSurface,
+                style = LiveWireType.Title,
+                color = LiveWireTheme.onSurface,
             )
         }
     }

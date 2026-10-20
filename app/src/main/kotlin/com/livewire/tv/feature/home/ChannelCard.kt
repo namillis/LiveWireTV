@@ -25,6 +25,7 @@ import com.livewire.tv.feature.epg.domain.EventTimes
 import com.livewire.tv.feature.favorites.ui.FavoriteStar
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.ui.theme.LiveWireColors
+import com.livewire.tv.ui.theme.LiveWireTheme
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireProgress
 import com.livewire.tv.ui.theme.LiveWireSurface
@@ -69,7 +70,7 @@ fun ChannelCard(
                     Text(
                         wordmark(channel.name),
                         style = MaterialTheme.typography.headlineSmall,
-                        color = LiveWireColors.OnSurface,
+                        color = LiveWireTheme.onSurface,
                         maxLines = 1,
                     )
                 }
@@ -91,7 +92,7 @@ fun ChannelCard(
                 Text(
                     nowPlaying?.title ?: " ",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    color = LiveWireTheme.onSurfaceMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -101,7 +102,7 @@ fun ChannelCard(
                     Text(
                         EventTimes.label(nowPlaying, System.currentTimeMillis()),
                         style = MaterialTheme.typography.labelMedium,
-                        color = LiveWireColors.OnSurfaceMuted,
+                        color = LiveWireTheme.onSurfaceMuted,
                         maxLines = 1,
                     )
                 } else if (nowPlaying != null) {
@@ -112,7 +113,7 @@ fun ChannelCard(
                         Text(
                             minutesLeft(nowPlaying, now),
                             style = MaterialTheme.typography.labelMedium,
-                            color = LiveWireColors.OnSurfaceMuted,
+                            color = LiveWireTheme.onSurfaceMuted,
                         )
                     }
                 } else {

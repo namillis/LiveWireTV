@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.providers
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -81,7 +83,7 @@ import java.util.Locale
  * as a Settings sub-screen; content here starts at the same 48dp inset as Settings.
  *
  * Colour discipline (§3.3): amber only on the focus ring (via [LiveWireSurface]); the
- * ACTIVE mark and tags are neutral; Delete uses [LiveWireColors.Live] (red = destructive,
+ * ACTIVE mark and tags are neutral, and so is Delete (red means live and the brand only,
  * the one place red is allowed off the "live" meaning per the mockup).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -227,15 +229,14 @@ fun ProvidersScreen(
 @Composable
 private fun TopLine(title: String, sub: String) {
     Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
-        Text(title, style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface)
+        Text(title, style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Text(
             sub,
-            style = MaterialTheme.typography.labelMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            style = LiveWireType.Mono,
+            color = LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.padding(bottom = 2.dp).weight(1f),
         )
-        Text(rememberClockLabel(), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
     }
 }
 
@@ -243,19 +244,10 @@ private fun TopLine(title: String, sub: String) {
 @Composable
 private fun Breadcrumb(vararg parts: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        parts.forEachIndexed { i, p ->
-            if (i > 0) {
-                Text("  ›  ", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
-            }
-            Text(p, style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
-        }
+        Overline(parts.joinToString("  ›  "))
     }
 }
 
-@Composable
-private fun rememberClockLabel(): String = remember {
-    SimpleDateFormat("EEE · h:mm a", Locale.getDefault()).format(Date())
-}
 
 /**
  * The provider rows plus the Add row, in one capped-width focus column left-aligned to the
@@ -346,8 +338,8 @@ private fun ProviderRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         provider.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = LiveWireColors.OnSurface,
+                        style = LiveWireType.Title,
+                        color = LiveWireTheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -366,8 +358,8 @@ private fun ProviderRow(
                     Spacer(Modifier.width(LiveWireDimens.SpaceS))
                     Text(
                         providerSummary(provider),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (focused) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                        style = LiveWireType.Mono,
+                        color = if (focused) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -378,8 +370,8 @@ private fun ProviderRow(
             if (focused) {
                 Text(
                     "OK · Actions",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurface,
+                    style = LiveWireType.Mono,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                 )
                 Spacer(Modifier.width(LiveWireDimens.SpaceM))
@@ -396,14 +388,14 @@ private fun ActivePill() {
     Row(
         modifier = Modifier
             .clip(shape)
-            .background(LiveWireColors.SurfaceFocused)
+            .background(LiveWireColors.SurfaceRaised)
             .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, shape)
             .padding(horizontal = LiveWireDimens.SpaceS, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = LiveWireColors.OnSurface)
+        Text("✓", style = LiveWireType.Tag, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-        Text("ACTIVE", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+        Text("ACTIVE", style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
     }
 }
 
@@ -417,7 +409,7 @@ private fun StatusPill(label: String) {
             .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, shape)
             .padding(horizontal = LiveWireDimens.SpaceS, vertical = 3.dp),
     ) {
-        Text(label, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = LiveWireType.Tag, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
@@ -434,8 +426,8 @@ private fun TypeTag(type: ProviderType) {
     ) {
         Text(
             when (type) { ProviderType.XTREAM -> "XTREAM"; ProviderType.M3U -> "M3U" },
-            style = LiveWireTheme.tokens.tag,
-            color = LiveWireColors.OnSurfaceMuted,
+            style = LiveWireType.Tag,
+            color = LiveWireTheme.onSurfaceMuted,
         )
     }
 }
@@ -451,15 +443,15 @@ private fun MoreAffordance(focused: Boolean) {
         modifier = Modifier
             .size(width = 40.dp, height = 32.dp)
             .clip(shape)
-            .background(if (focused) LiveWireColors.OnSurface else LiveWireColors.SurfaceRaised)
-            .border(LiveWireDimens.RestBorder, if (focused) LiveWireColors.OnSurface else LiveWireColors.Border, shape),
+            .background(if (focused) LiveWireTheme.onSurface else LiveWireColors.SurfaceRaised)
+            .border(LiveWireDimens.RestBorder, if (focused) LiveWireTheme.onSurface else LiveWireColors.Border, shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             "•••",
-            style = MaterialTheme.typography.labelMedium,
+            style = LiveWireType.Mono,
             fontWeight = FontWeight.Bold,
-            color = if (focused) LiveWireColors.Canvas else LiveWireColors.OnSurface,
+            color = if (focused) LiveWireColors.Canvas else LiveWireTheme.onSurface,
         )
     }
 }
@@ -491,9 +483,9 @@ private fun AddProviderRow(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LiveWireColors.OnSurface)
+            Text("+", style = LiveWireType.Title, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
             Spacer(Modifier.width(LiveWireDimens.SpaceS))
-            Text("Add provider", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = LiveWireColors.OnSurface)
+            Text("Add provider", style = LiveWireType.Title, fontWeight = FontWeight.SemiBold, color = LiveWireTheme.onSurface)
         }
     }
 }
@@ -532,12 +524,12 @@ private fun DialogScaffold(onBack: () -> Unit, content: @Composable androidx.com
 /** Dialog heading (display font) + a tag·host sub-row (no username in the menu header). */
 @Composable
 private fun MenuHeader(provider: ProviderConfig) {
-    Text(provider.name, style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(provider.name, style = LiveWireType.Heading, color = LiveWireTheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(LiveWireDimens.SpaceXs))
     Row(verticalAlignment = Alignment.CenterVertically) {
         TypeTag(provider.type)
         Spacer(Modifier.width(LiveWireDimens.SpaceS))
-        Text(provider.displayHost(), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(provider.displayHost(), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -598,13 +590,14 @@ private fun MenuItem(
     danger: Boolean = false,
     trailing: String? = null,
 ) {
-    val fg = if (danger) LiveWireColors.Live else LiveWireColors.OnSurface
     LiveWireSurface(
         onClick = onClick,
         restingColor = LiveWireColors.SurfaceRaised,
         focusedScale = LiveWireDimens.FocusScaleWide,
         modifier = modifier.fillMaxWidth(),
     ) {
+        // Read inside the surface so it turns dark on the focus fill.
+        val fg = LiveWireTheme.onSurface
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -616,9 +609,9 @@ private fun MenuItem(
                 MenuGlyph(icon, tint = fg)
                 Spacer(Modifier.width(LiveWireDimens.SpaceM))
             }
-            Text(label, style = MaterialTheme.typography.titleMedium, color = fg, modifier = Modifier.weight(1f))
+            Text(label, style = LiveWireType.Title, color = fg, modifier = Modifier.weight(1f))
             if (trailing != null) {
-                Text(trailing, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+                Text(trailing, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
             }
         }
     }
@@ -656,9 +649,9 @@ private fun ConfirmDeleteOverlay(
     val cancelFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
     DialogScaffold(onBack = onCancel) {
-        Text("Delete ${provider.name}?", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("Delete ${provider.name}?", style = LiveWireType.Heading, color = LiveWireTheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-        Text("This removes the provider from this device.", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text("This removes the provider from this device.", style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
         Spacer(Modifier.height(LiveWireDimens.SpaceL))
         MenuItem("Cancel", icon = null, onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus))
         Spacer(Modifier.height(MenuGap))
@@ -809,13 +802,13 @@ private fun ProviderFormPage(
                 Spacer(Modifier.height(LiveWireDimens.SpaceXs))
                 Text(
                     "This provider uses unencrypted HTTP. Use only a trusted network.",
-                    color = LiveWireColors.OnSurfaceMuted,
-                    style = MaterialTheme.typography.bodyMedium,
+                    color = LiveWireTheme.onSurfaceMuted,
+                    style = LiveWireType.Body,
                 )
             }
             error?.let {
                 Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-                Text(it, color = LiveWireColors.Live, style = MaterialTheme.typography.bodyMedium)
+                Text(it, color = LiveWireTheme.onSurface, style = LiveWireType.Body)
             }
 
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
@@ -878,16 +871,16 @@ private fun TypeToggle(
 private fun SegmentButton(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = if (selected) LiveWireColors.SurfaceFocused else LiveWireColors.SurfaceRaised,
+        restingColor = LiveWireColors.SurfaceRaised,
         focusedScale = LiveWireDimens.FocusScaleWide,
         modifier = modifier,
     ) {
         Box(Modifier.heightIn(min = ControlHeight).padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS), contentAlignment = Alignment.Center) {
             Text(
                 label,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                color = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
         }
@@ -898,21 +891,21 @@ private fun SegmentButton(label: String, selected: Boolean, onClick: () -> Unit,
 private fun LockedSegment(label: String, selected: Boolean, leading: Boolean) {
     Box(
         modifier = Modifier
-            .background(if (selected) LiveWireColors.SurfaceFocused else LiveWireColors.SurfaceRaised)
+            .background(if (selected) LiveWireColors.Canvas else LiveWireColors.SurfaceRaised)
             .heightIn(min = ControlHeight)
             .padding(horizontal = LiveWireDimens.SpaceL, vertical = LiveWireDimens.SpaceS),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (leading) {
-                Text("✓", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LiveWireColors.OnSurface)
+                Text("✓", style = LiveWireType.Mono, fontWeight = FontWeight.Bold, color = LiveWireTheme.onSurface)
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
             }
             Text(
                 label,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                color = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
         }
@@ -962,16 +955,18 @@ private fun FilledField(
 private fun FormButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, ghost: Boolean = false) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
+        // The main action is red at rest; the ghost one stays quiet.
+        restingColor = if (ghost) LiveWireColors.SurfaceRaised else LiveWireColors.Live,
+        restingBorder = ghost,
         focusedScale = LiveWireDimens.FocusScaleWide,
         modifier = modifier,
     ) {
         Box(Modifier.heightIn(min = ControlHeight).padding(horizontal = LiveWireDimens.SpaceXl, vertical = LiveWireDimens.SpaceM), contentAlignment = Alignment.Center) {
             Text(
                 label,
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 fontWeight = if (ghost) FontWeight.SemiBold else FontWeight.Bold,
-                color = if (ghost) LiveWireColors.OnSurfaceMuted else LiveWireColors.OnSurface,
+                color = if (ghost) LiveWireTheme.onSurfaceMuted else LiveWireTheme.onSurface,
                 maxLines = 1,
             )
         }
@@ -1000,9 +995,9 @@ private fun HintLine(overlay: ProvidersOverlay) {
 @Composable
 private fun Hint(keys: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(keys, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+        Text(keys, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 

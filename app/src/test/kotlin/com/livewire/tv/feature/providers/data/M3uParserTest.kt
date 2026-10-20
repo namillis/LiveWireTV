@@ -30,6 +30,21 @@ class M3uParserTest {
     }
 
     @Test
+    fun readsTheChannelNumberFromTvgChno() {
+        val entries = parse(
+            """
+            #EXTM3U
+            #EXTINF:-1 tvg-chno="103" group-title="Film",Kino Classics
+            http://s/103.ts
+            #EXTINF:-1 tvg-chno="x" group-title="Film",No Number
+            http://s/x.ts
+            """.trimIndent(),
+        ).entries
+        assertEquals(103, entries[0].number)
+        assertNull(entries[1].number)
+    }
+
+    @Test
     fun commaInsideQuotedAttributeDoesNotSplitName() {
         val entry = parse(
             """

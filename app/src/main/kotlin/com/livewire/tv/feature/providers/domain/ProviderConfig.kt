@@ -146,6 +146,8 @@ data class LiveChannel(
     val archiveDays: Int = 0,
     val catchup: CatchupSpec? = null,
     @Transient val poolEvent: EpgProgramme? = null,
+    /** The provider's channel number (Xtream `num`, M3U `tvg-chno`); null when it sends none. */
+    val number: Int? = null,
 ) {
     /** True when this channel offers any catch-up window. */
     val hasArchive: Boolean get() = archiveDays > 0

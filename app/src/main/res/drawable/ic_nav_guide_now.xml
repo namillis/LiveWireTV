@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The guide mark's red now-line. Not tinted: red means now. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M11.5,4.2H11.5A0.8,0.8 0 0 1 12.3,5V20A0.8,0.8 0 0 1 11.5,20.8H11.5A0.8,0.8 0 0 1 10.7,20V5A0.8,0.8 0 0 1 11.5,4.2Z" android:fillColor="#FFFF3B30" />
+    <path android:pathData="M9.5,4a2,2 0 1,0 4,0a2,2 0 1,0 -4,0" android:fillColor="#FFFF3B30" />
+</vector>

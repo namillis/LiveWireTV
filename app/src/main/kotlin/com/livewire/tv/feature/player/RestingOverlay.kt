@@ -13,18 +13,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.MaterialTheme
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.livewire.tv.core.player.PlaybackState
 import com.livewire.tv.core.player.PlaybackStatus
@@ -32,12 +30,16 @@ import com.livewire.tv.core.player.PlayerFormats
 import com.livewire.tv.core.player.VideoFormat
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EventTimes
-import com.livewire.tv.feature.home.brandTint
+import com.livewire.tv.feature.home.ChannelLogo
 import com.livewire.tv.feature.home.wordmark
+import com.livewire.tv.feature.providers.domain.LiveChannel
+import com.livewire.tv.ui.theme.KeyHints
+import com.livewire.tv.ui.theme.LiveBadge
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireProgress
-import com.livewire.tv.ui.theme.LiveWireTheme
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 
 /** All the strings/data the resting overlay renders. Built by the screen from view-model state. */
 data class RestingOverlayModel(
@@ -48,16 +50,18 @@ data class RestingOverlayModel(
     val video: VideoFormat?,
     val audioChannelCount: Int,
     val hasSubtitles: Boolean,
+    /** The playing channel, for its logo; null while the source is still resolving. */
+    val channel: LiveChannel? = null,
 )
 
 /**
- * The resting player overlay (design system §9.6, mockup option3.png): top-left channel-number
- * chip + LIVE, top-right clock; a bottom block with the channel mark/name, the "CH n · 1080p ·
- * Stereo · CC" sub-line, ON NOW title + category, a 2-line description, a grey progress bar with
- * start/end times, UP NEXT, hint chips and the two edge hints. Sits over a bottom gradient.
+ * The resting player overlay (mockup B-grid-30): top-left channel number + LIVE badge,
+ * top-right clock, edge hints for the channel list (Left) and Options (Right). The bottom block
+ * holds the channel logo, name and "CH n · 1080p · STEREO · CC" line, the ON NOW title and
+ * genre, a short description, the full-width progress line into the red dot with start time,
+ * minutes left and end time, UP NEXT and key hints, all over a bottom gradient.
  *
- * Purely presentational: [visible] gates it, [now] drives the clock/progress, and the screen
- * owns auto-hide and key handling.
+ * Purely presentational: the screen owns auto-hide and key handling.
  */
 @Composable
 fun RestingOverlay(
@@ -67,39 +71,29 @@ fun RestingOverlay(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.fillMaxSize()) {
-        // Top gradient behind the chip/clock so they stay legible over bright video (§9.6).
         Box(
             Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .height(150.dp)
-                .background(
-                    Brush.verticalGradient(
-                        0f to LiveWireColors.Canvas.copy(alpha = 0.75f),
-                        1f to Color.Transparent,
-                    ),
-                ),
+                .height(90.dp)
+                .background(Brush.verticalGradient(0f to LiveWireColors.Canvas.copy(alpha = 0.7f), 1f to LiveWireColors.Canvas.copy(alpha = 0f))),
         )
-        // Bottom gradient (§9.6): canvas 0% -> ~92% over the lower ~45% of the screen, so the
-        // channel info / title / description / progress stay readable over any broadcaster
-        // lower-third. Fraction of the full overlay height, not a fixed dp, so it scales.
         Box(
             Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .fillMaxHeight(0.5f)
+                .fillMaxHeight(0.62f)
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.25f to LiveWireColors.Canvas.copy(alpha = 0.78f),
-                        0.5f to LiveWireColors.Canvas.copy(alpha = 0.94f),
-                        1f to LiveWireColors.Canvas.copy(alpha = 0.98f),
+                        0f to LiveWireColors.Canvas.copy(alpha = 0f),
+                        0.45f to LiveWireColors.Canvas.copy(alpha = 0.78f),
+                        1f to LiveWireColors.Canvas.copy(alpha = 0.94f),
                     ),
                 ),
         )
 
         TopBug(model.channelNumber, status)
-        Clock(now, Modifier.align(Alignment.TopEnd))
+        PlayerClock(now, Modifier.align(Alignment.TopEnd))
         EdgeHint("◀", "Channels", start = true, modifier = Modifier.align(Alignment.CenterStart))
         EdgeHint("▶", "Options", start = false, modifier = Modifier.align(Alignment.CenterEnd))
 
@@ -110,81 +104,59 @@ fun RestingOverlay(
 @Composable
 private fun TopBug(channelNumber: String, status: PlaybackStatus) {
     Row(
-        Modifier.padding(start = LiveWireDimens.SafeHorizontal, top = LiveWireDimens.SafeVertical),
+        Modifier.padding(start = LiveWireDimens.SafeHorizontal, top = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (channelNumber.isNotBlank()) {
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(5.dp))
-                    .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
-            ) {
-                Text("CH $channelNumber", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
-            }
+            Text(
+                channelNumber,
+                style = LiveWireType.Number,
+                color = LiveWireColors.OnSurface,
+                modifier = Modifier
+                    .background(LiveWireColors.Canvas.copy(alpha = 0.6f), RoundedCornerShape(5.dp))
+                    .border(1.dp, LiveWireColors.Border, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+            )
         }
-        if (status.isLive && status.state != PlaybackState.PAUSED) LivePill()
-        if (status.state == PlaybackState.PAUSED) PausedPill()
+        when {
+            status.state == PlaybackState.PAUSED -> PlayerTag("❚❚ PAUSED")
+            status.isLive -> LiveBadge(color = LiveWireColors.OnSurface)
+        }
     }
 }
 
+/** A raised mono tag, e.g. "❚❚ PAUSED · 6 MIN BEHIND LIVE". */
 @Composable
-private fun LivePill() {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(LiveWireColors.Live)
-            .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(Color.White))
-        Text("LIVE", style = LiveWireTheme.tokens.tag, color = Color.White)
-    }
+internal fun PlayerTag(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = LiveWireType.Tag.copy(fontSize = 8.25.sp),
+        color = LiveWireColors.OnSurface,
+        modifier = modifier
+            .background(LiveWireColors.SurfaceRaised, RoundedCornerShape(4.dp))
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+    )
 }
 
+/** "9:24 PM" over the date, top right. */
 @Composable
-private fun PausedPill() {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.5f))
-            .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, RoundedCornerShape(50))
-            .padding(horizontal = LiveWireDimens.SpaceS, vertical = 4.dp),
-    ) {
-        Text("❚❚ PAUSED", style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
-    }
-}
-
-@Composable
-private fun Clock(now: Long, modifier: Modifier) {
+internal fun PlayerClock(now: Long, modifier: Modifier = Modifier) {
     Text(
         PlayerFormats.clockMeridiem(now),
-        style = MaterialTheme.typography.labelMedium,
+        style = LiveWireType.Number.copy(fontSize = 13.5.sp),
         color = LiveWireColors.OnSurface,
-        modifier = modifier.padding(end = LiveWireDimens.SafeHorizontal, top = LiveWireDimens.SafeVertical),
+        modifier = modifier.padding(end = LiveWireDimens.SafeHorizontal, top = 21.dp),
     )
 }
 
 @Composable
 private fun EdgeHint(arrow: String, label: String, start: Boolean, modifier: Modifier) {
-    Row(
-        modifier.padding(horizontal = LiveWireDimens.SafeHorizontal)
-            .clip(RoundedCornerShape(6.dp))
-            .background(LiveWireColors.Canvas.copy(alpha = 0.6f))
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(6.dp))
-            .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
-    ) {
-        if (start) {
-            Text(arrow, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-            Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-        } else {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-            Text(arrow, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+    Box(modifier.padding(horizontal = 22.dp)) {
+        if (start) KeyHints(arrow to label) else Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = LiveWireType.Hint, color = LiveWireColors.OnSurfaceMuted)
+            Spacer(Modifier.width(5.dp))
+            KeyHints(arrow to "")
         }
     }
 }
@@ -194,24 +166,17 @@ private fun BottomBlock(model: RestingOverlayModel, status: PlaybackStatus, now:
     Column(
         modifier
             .fillMaxWidth()
-            .padding(horizontal = LiveWireDimens.SafeHorizontal, vertical = LiveWireDimens.SafeVertical),
+            .padding(start = LiveWireDimens.SafeHorizontal, end = LiveWireDimens.SafeHorizontal, bottom = 22.dp),
     ) {
-        // Channel identity: mark + name + sub-line.
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL)) {
-            Text(
-                wordmark(model.channelName),
-                style = MaterialTheme.typography.headlineSmall,
-                color = brandTint(model.channelName).brightenForText(),
-                maxLines = 1,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            val channel = model.channel
+            if (channel != null) {
+                ChannelLogo(channel, Modifier.size(width = 48.dp, height = 30.dp))
+            } else {
+                Text(wordmark(model.channelName), style = LiveWireType.Title, color = LiveWireColors.OnSurface, maxLines = 1)
+            }
             Column {
-                Text(
-                    model.channelName,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = LiveWireColors.OnSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Text(model.channelName, style = LiveWireType.Title, color = LiveWireColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val subline = PlayerFormats.channelSubline(
                     channelNumber = model.channelNumber,
                     video = model.video,
@@ -219,125 +184,79 @@ private fun BottomBlock(model: RestingOverlayModel, status: PlaybackStatus, now:
                     hasSubtitles = model.hasSubtitles,
                 )
                 if (subline.isNotBlank()) {
-                    Text(subline, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
+                    Text(subline.uppercase(), style = LiveWireType.Overline.copy(letterSpacing = LiveWireType.Overline.letterSpacing * 0.75f), color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
                 }
             }
         }
-
-        Spacer(Modifier.height(LiveWireDimens.SpaceL))
+        Spacer(Modifier.height(15.dp))
         NowNext(model, now, failed = status.state == PlaybackState.ERROR, paused = status.state == PlaybackState.PAUSED)
     }
 }
 
 @Composable
-private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paused: Boolean = false) {
+private fun NowNext(model: RestingOverlayModel, now: Long, failed: Boolean, paused: Boolean) {
     val nowPlaying = model.nowPlaying
+    val hints = arrayOf(
+        "OK" to when { failed -> "Retry"; paused -> "Play"; else -> "Pause" },
+        "▲▼" to "Channel",
+        "▼" to "Seek",
+    )
     if (nowPlaying == null) {
-        // No EPG: show the "on now" label with a clear no-info line, no empty gaps (requirement 1).
-        Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-            Text("ON NOW", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
-            Text("No programme information", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Overline("On now")
+            Text("No programme information", style = LiveWireType.Body, color = LiveWireColors.OnSurfaceMuted)
         }
-        Spacer(Modifier.height(LiveWireDimens.SpaceM))
-        HintRow(failed, paused)
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1f))
+            KeyHints(*hints)
+        }
         return
     }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
         // A Live Now event shows here before it starts too, so say which it is.
-        val overline = if (EventTimes.isUpcoming(nowPlaying, now)) "UP NEXT" else "ON NOW"
-        Text(overline, style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.alignByBaseline())
-        Text(
-            nowPlaying.title,
-            style = MaterialTheme.typography.headlineSmall,
-            color = LiveWireColors.OnSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.alignByBaseline(),
-        )
+        Overline(if (EventTimes.isUpcoming(nowPlaying, now)) "Up next" else "On now")
+        Text(nowPlaying.title, style = LiveWireType.Display, color = LiveWireColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         nowPlaying.category?.takeIf { it.isNotBlank() }?.let {
-            Text("· $it", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1, modifier = Modifier.alignByBaseline())
+            Text("· $it", style = LiveWireType.Body, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
         }
     }
-
     nowPlaying.description?.takeIf { it.isNotBlank() }?.let {
-        Spacer(Modifier.height(LiveWireDimens.SpaceS))
-        Text(
-            it,
-            style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 900.dp),
-        )
+        Spacer(Modifier.height(4.dp))
+        Text(it, style = LiveWireType.Body.copy(fontSize = 10.5.sp), color = LiveWireColors.OnSurfaceMuted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 615.dp))
     }
 
-    Spacer(Modifier.height(LiveWireDimens.SpaceM))
+    Spacer(Modifier.height(15.dp))
     if (nowPlaying.endIsEstimate) {
         // The end is the pool's guess: no end clock and no progress bar.
-        Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(EventTimes.label(nowPlaying, now), style = LiveWireType.Mono, color = LiveWireColors.OnSurfaceMuted)
     } else {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-            Text(PlayerFormats.clockMeridiem(nowPlaying.startMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-            LiveWireProgress(nowPlaying.progressAt(now), Modifier.weight(1f), height = 4.dp)
-            Text(PlayerFormats.clockMeridiem(nowPlaying.stopMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        LiveWireProgress(nowPlaying.progressAt(now), Modifier.fillMaxWidth(), height = 3.dp, dot = 9.dp)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth()) {
+            Text(PlayerFormats.clockMeridiem(nowPlaying.startMs), style = LiveWireType.Mono, color = LiveWireColors.OnSurfaceMuted)
+            Spacer(Modifier.weight(1f))
+            Text(minutesLeftLabel(nowPlaying, now), style = LiveWireType.Mono, color = LiveWireColors.OnSurface)
+            Spacer(Modifier.weight(1f))
+            Text(PlayerFormats.clockMeridiem(nowPlaying.stopMs), style = LiveWireType.Mono, color = LiveWireColors.OnSurfaceMuted)
         }
     }
 
-    Spacer(Modifier.height(LiveWireDimens.SpaceM))
+    Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         model.upNext?.let { next ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-                Text("UP NEXT", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
-                Text(
-                    next.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = LiveWireColors.OnSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 520.dp),
-                )
-                Text("· ${PlayerFormats.clockMeridiem(next.startMs)}", style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.weight(1f)) {
+                Text("UP NEXT", style = LiveWireType.Overline.copy(fontSize = 9.sp), color = LiveWireColors.OnSurfaceMuted)
+                Text(PlayerFormats.clock(next.startMs), style = LiveWireType.Mono.copy(fontSize = 9.sp), color = LiveWireColors.OnSurface)
+                Text(next.title, style = LiveWireType.Mono.copy(fontSize = 9.sp), color = LiveWireColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-        }
-        Spacer(Modifier.weight(1f))
-        HintRow(failed, paused)
+        } ?: Spacer(Modifier.weight(1f))
+        KeyHints(*hints)
     }
 }
 
-@Composable
-private fun HintRow(failed: Boolean, paused: Boolean = false) {
-    Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS)) {
-        HintChip("OK", when { failed -> "Retry"; paused -> "Play"; else -> "Pause" })
-        HintChip("▲▼", "Channel")
-    }
-}
-
-@Composable
-private fun HintChip(key: String, label: String) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(LiveWireColors.Canvas.copy(alpha = 0.6f))
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, RoundedCornerShape(6.dp))
-            .padding(horizontal = LiveWireDimens.SpaceS, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(LiveWireColors.SurfaceRaised)
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-        ) {
-            Text(key, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
-        }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-    }
-}
-
-/** Lighten a dark brand colour so the wordmark stays legible over the gradient. */
-private fun Color.brightenForText(): Color {
-    val f = 0.45f
-    return Color(red + (1f - red) * f, green + (1f - green) * f, blue + (1f - blue) * f, 1f)
+private fun minutesLeftLabel(p: EpgProgramme, now: Long): String {
+    val mins = ((p.stopMs - now) / 60_000L).coerceAtLeast(0)
+    return if (mins < 1) "ends soon" else "$mins min left"
 }

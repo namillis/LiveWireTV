@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.player
 
+import com.livewire.tv.ui.theme.LiveWireType
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -517,6 +518,7 @@ fun PlayerScreen(
                             video = mediaInfo.video,
                             audioChannelCount = mediaInfo.video?.audioChannelCount ?: 0,
                             hasSubtitles = mediaInfo.hasSubtitles,
+                            channel = channel,
                         ),
                         status = status,
                         now = now,
@@ -667,20 +669,20 @@ private fun OptionsMiniInfo(
     ) {
         Text(
             channelName,
-            style = MaterialTheme.typography.titleMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            style = LiveWireType.Title,
+            color = LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
         )
         Spacer(Modifier.height(6.dp))
         Text(
             nowPlaying?.title ?: channelName,
-            style = MaterialTheme.typography.headlineSmall,
-            color = LiveWireColors.OnSurface,
+            style = LiveWireType.Heading,
+            color = LiveWireTheme.onSurface,
             maxLines = 1,
         )
         if (nowPlaying != null && nowPlaying.endIsEstimate) {
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text(EventTimes.label(nowPlaying, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+            Text(EventTimes.label(nowPlaying, now), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
         } else if (nowPlaying != null) {
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -688,8 +690,8 @@ private fun OptionsMiniInfo(
                 Spacer(Modifier.width(LiveWireDimens.SpaceM))
                 Text(
                     PlayerFormats.minutesLeft(nowPlaying.stopMs, now),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurfaceMuted,
+                    style = LiveWireType.Mono,
+                    color = LiveWireTheme.onSurfaceMuted,
                 )
             }
         }

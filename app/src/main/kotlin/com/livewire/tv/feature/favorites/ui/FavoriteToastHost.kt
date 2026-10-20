@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.favorites.ui
 
+import com.livewire.tv.ui.theme.LiveWireType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +30,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.livewire.tv.R
 import com.livewire.tv.ui.theme.LiveWireColors
+import com.livewire.tv.ui.theme.LiveWireTheme
 import com.livewire.tv.ui.theme.LiveWireDimens
 import kotlinx.coroutines.delay
 
@@ -84,14 +86,14 @@ fun FavoriteToastHost(
                     Icon(
                         painter = painterResource(R.drawable.ic_fav_star_outline),
                         contentDescription = null,
-                        tint = LiveWireColors.OnSurfaceMuted,
+                        tint = LiveWireTheme.onSurfaceMuted,
                         modifier = Modifier.size(14.dp),
                     )
                 }
                 Text(
                     message,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LiveWireColors.OnSurface,
+                    style = LiveWireType.Mono,
+                    color = LiveWireTheme.onSurface,
                     maxLines = 1,
                 )
             }

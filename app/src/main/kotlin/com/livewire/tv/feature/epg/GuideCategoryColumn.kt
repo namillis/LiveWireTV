@@ -1,5 +1,8 @@
 package com.livewire.tv.feature.epg
 
+import androidx.compose.ui.unit.sp
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.brandEdge
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -124,6 +127,7 @@ internal fun GuideCategoryColumn(
             .clip(shape)
             .background(LiveWireColors.Surface)
             .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+            .then(if (expanded) Modifier.brandEdge() else Modifier)
             .onFocusChanged { expanded = it.hasFocus }
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusProperties {
@@ -187,22 +191,22 @@ private fun CollapsedLabel(categoryName: String, query: String) {
         Icon(
             painter = painterResource(R.drawable.ic_nav_search),
             contentDescription = null,
-            tint = if (query.isNotBlank()) LiveWireColors.Accent else LiveWireColors.OnSurfaceMuted,
+            tint = if (query.isNotBlank()) LiveWireColors.OnSurface else LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
         Text(
             "CATEGORY",
-            style = LiveWireTheme.tokens.overline,
-            color = LiveWireColors.OnSurfaceMuted,
+            style = LiveWireType.Overline,
+            color = LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
             modifier = Modifier.verticalText(),
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             if (query.isBlank()) categoryName else "“${query.trim()}” · $categoryName",
-            style = MaterialTheme.typography.titleSmall,
-            color = LiveWireColors.OnSurface,
+            style = LiveWireType.Title,
+            color = LiveWireTheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.verticalText(),
@@ -229,7 +233,7 @@ private fun KeywordField(
             .background(LiveWireColors.SurfaceRaised)
             .border(
                 width = if (focused) LiveWireDimens.FocusBorder else LiveWireDimens.RestBorder,
-                color = if (focused) LiveWireColors.Accent else LiveWireColors.Border,
+                color = if (focused) LiveWireColors.Focus else LiveWireColors.Border,
                 shape = shape,
             )
             .padding(horizontal = LiveWireDimens.SpaceS),
@@ -238,20 +242,20 @@ private fun KeywordField(
         Icon(
             painter = painterResource(R.drawable.ic_nav_search),
             contentDescription = null,
-            tint = if (focused) LiveWireColors.Accent else LiveWireColors.OnSurfaceMuted,
+            tint = if (focused) LiveWireColors.OnSurface else LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.size(14.dp),
         )
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
-                Text("Filter", style = MaterialTheme.typography.bodyMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
+                Text("Filter", style = LiveWireType.Body, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = LiveWireColors.OnSurface),
-                cursorBrush = SolidColor(LiveWireColors.Accent),
+                textStyle = LiveWireType.Body.copy(color = LiveWireTheme.onSurface),
+                cursorBrush = SolidColor(LiveWireColors.Live),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
                 modifier = Modifier
@@ -281,7 +285,9 @@ private fun CategoryItem(
     LiveWireSurface(
         onClick = onClick,
         onLongClick = onLongClick,
+        // Selected but not focused = the raised fill; the rest are plain rows.
         restingColor = if (selected) LiveWireColors.SurfaceRaised else LiveWireColors.Surface,
+        restingBorder = false,
         shape = RoundedCornerShape(LiveWireDimens.RadiusCell),
         focusedScale = 1f,
         modifier = Modifier.fillMaxWidth().height(ITEM_HEIGHT).focusRequester(requester),
@@ -290,25 +296,17 @@ private fun CategoryItem(
             Modifier.fillMaxSize().padding(horizontal = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // "You are here" bar on the selected category (amber = selection, per §2).
-            Box(
-                Modifier
-                    .width(2.dp)
-                    .height(12.dp)
-                    .background(if (selected) LiveWireColors.Accent else LiveWireColors.Surface.copy(alpha = 0f)),
-            )
-            Spacer(Modifier.width(LiveWireDimens.SpaceXs))
             if (star) {
                 com.livewire.tv.feature.favorites.ui.FavoriteStar(
                     size = 12.dp,
-                    tint = if (selected) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                    tint = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
                 )
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
             }
             Text(
                 name,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) LiveWireColors.OnSurface else LiveWireColors.OnSurfaceMuted,
+                style = LiveWireType.Title.copy(fontSize = 10.5.sp),
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -317,15 +315,15 @@ private fun CategoryItem(
                 Icon(
                     painter = painterResource(R.drawable.ic_pin),
                     contentDescription = "Pinned to Home",
-                    tint = LiveWireColors.Accent,
+                    tint = LiveWireTheme.onSurface,
                     modifier = Modifier.size(11.dp),
                 )
                 Spacer(Modifier.width(LiveWireDimens.SpaceXs))
             }
             Text(
                 NumberFormat.getIntegerInstance().format(count),
-                style = LiveWireTheme.tokens.tag,
-                color = LiveWireColors.OnSurfaceMuted,
+                style = LiveWireType.Mono,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
             )
         }

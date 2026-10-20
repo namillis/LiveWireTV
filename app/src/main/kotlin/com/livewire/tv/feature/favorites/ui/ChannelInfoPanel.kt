@@ -1,5 +1,7 @@
 package com.livewire.tv.feature.favorites.ui
 
+import com.livewire.tv.ui.theme.LiveWireType
+import com.livewire.tv.ui.theme.Overline
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -154,25 +156,25 @@ private fun Header(model: ChannelInfoModel) {
         ) {
             Text(
                 wordmark(model.channel.name),
-                style = MaterialTheme.typography.titleMedium,
+                style = LiveWireType.Title,
                 fontWeight = FontWeight.Bold,
-                color = LiveWireColors.OnSurface,
+                color = LiveWireTheme.onSurface,
                 maxLines = 1,
             )
         }
         Column(Modifier.weight(1f)) {
             Text(
                 model.channel.name,
-                style = MaterialTheme.typography.headlineSmall,
-                color = LiveWireColors.OnSurface,
+                style = LiveWireType.Heading,
+                color = LiveWireTheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 metaLine(model),
-                style = MaterialTheme.typography.labelMedium,
-                color = LiveWireColors.OnSurfaceMuted,
+                style = LiveWireType.Mono,
+                color = LiveWireTheme.onSurfaceMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -204,8 +206,8 @@ private fun Chip(label: String, value: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceXs),
     ) {
-        Text(label, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurfaceMuted)
-        Text(value, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+        Text(label, style = LiveWireType.Tag, color = LiveWireTheme.onSurfaceMuted)
+        Text(value, style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
     }
 }
 
@@ -214,14 +216,14 @@ private fun NowAndNext(model: ChannelInfoModel, now: Long) {
     val prog = model.nowPlaying ?: return
     Column(Modifier.fillMaxWidth()) {
         // A Live Now event shows here before it starts too, so say which it is.
-        Text(if (EventTimes.isUpcoming(prog, now)) "UP NEXT" else "ON NOW", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+        Overline(if (EventTimes.isUpcoming(prog, now)) "UP NEXT" else "ON NOW")
         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-        Text(prog.title, style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(prog.title, style = LiveWireType.Heading, color = LiveWireTheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(2.dp))
         Text(
             progRange(prog, now),
-            style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            style = LiveWireType.Body,
+            color = LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
         )
         // An event's end is the pool's guess: no progress bar, elapsed or minutes left.
@@ -230,14 +232,14 @@ private fun NowAndNext(model: ChannelInfoModel, now: Long) {
             LiveWireProgress(prog.progressAt(now), Modifier.fillMaxWidth(), height = 4.dp)
             Spacer(Modifier.height(LiveWireDimens.SpaceXs))
             Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
-                Text(elapsedLabel(prog, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
-                Text(leftLabel(prog, now), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurface)
+                Text(elapsedLabel(prog, now), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
+                Text(leftLabel(prog, now), style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
             }
         }
 
         if (model.upNext.isNotEmpty()) {
             Spacer(Modifier.height(LiveWireDimens.SpaceL))
-            Text("UP NEXT", style = LiveWireTheme.tokens.overline, color = LiveWireColors.OnSurfaceMuted)
+            Overline("UP NEXT")
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(model.upNext.take(3), key = { it.startMs }) { next -> UpNextRow(next) }
@@ -257,10 +259,10 @@ private fun UpNextRow(programme: EpgProgramme) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM),
     ) {
-        Text(clock(programme.startMs), style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, modifier = Modifier.width(64.dp))
-        Text(programme.title, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(clock(programme.startMs), style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, modifier = Modifier.width(64.dp))
+        Text(programme.title, style = LiveWireType.Title, color = LiveWireTheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         programme.category?.takeIf { it.isNotBlank() }?.let {
-            Text(it, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted, maxLines = 1)
+            Text(it, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
         }
     }
 }
@@ -271,16 +273,16 @@ private fun EmptyState() {
         Icon(
             painter = painterResource(R.drawable.ic_fav_listings),
             contentDescription = null,
-            tint = LiveWireColors.OnSurfaceMuted,
+            tint = LiveWireTheme.onSurfaceMuted,
             modifier = Modifier.size(28.dp),
         )
         Spacer(Modifier.height(LiveWireDimens.SpaceM))
-        Text("No guide listings for this channel", style = MaterialTheme.typography.headlineSmall, color = LiveWireColors.OnSurface, maxLines = 2)
+        Text("No guide listings for this channel", style = LiveWireType.Heading, color = LiveWireTheme.onSurface, maxLines = 2)
         Spacer(Modifier.height(LiveWireDimens.SpaceS))
         Text(
             "We don't have programme information for this channel right now. You can still play it live.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = LiveWireColors.OnSurfaceMuted,
+            style = LiveWireType.Body,
+            color = LiveWireTheme.onSurfaceMuted,
         )
     }
 }
@@ -306,7 +308,9 @@ private fun Actions(isFavourite: Boolean, playFocus: FocusRequester, onPlay: () 
 private fun ActionButton(iconRes: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     LiveWireSurface(
         onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
+        // Buttons are the red brand accent at rest and the light fill when focused.
+        restingColor = LiveWireColors.Live,
+        restingBorder = false,
         focusedScale = LiveWireDimens.FocusScaleWide,
         modifier = modifier,
     ) {
@@ -315,8 +319,8 @@ private fun ActionButton(iconRes: Int, label: String, onClick: () -> Unit, modif
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceS),
         ) {
-            Icon(painter = painterResource(iconRes), contentDescription = null, tint = LiveWireColors.OnSurface, modifier = Modifier.size(16.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = LiveWireColors.OnSurface, maxLines = 1)
+            Icon(painter = painterResource(iconRes), contentDescription = null, tint = LiveWireTheme.onSurface, modifier = Modifier.size(16.dp))
+            Text(label, style = LiveWireType.Title, color = LiveWireTheme.onSurface, maxLines = 1)
         }
     }
 }
@@ -335,9 +339,9 @@ private fun HintRow() {
 private fun Hint(keys: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.clip(RoundedCornerShape(4.dp)).background(LiveWireColors.SurfaceRaised).padding(horizontal = 6.dp, vertical = 2.dp)) {
-            Text(keys, style = LiveWireTheme.tokens.tag, color = LiveWireColors.OnSurface)
+            Text(keys, style = LiveWireType.Tag, color = LiveWireTheme.onSurface)
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = LiveWireColors.OnSurfaceMuted)
+        Text(label, style = LiveWireType.Mono, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
