@@ -470,8 +470,12 @@ class PlayerViewModel @Inject constructor(
     fun currentChannel(): LiveChannel? =
         _source.value.currentStreamId?.let { id -> categoryChannels.firstOrNull { it.streamId == id } }
 
-    /** Channel number for display: providers don't expose one, so use the 1-based list position. */
+    /**
+     * Channel number for display: the provider's own number (Xtream `num`, M3U `tvg-chno`) when
+     * it sends one, as Home and the Guide show it; otherwise the 1-based list position.
+     */
     private fun channelNumber(channel: LiveChannel): String {
+        channel.number?.let { return it.toString() }
         val idx = categoryChannels.indexOfFirst { it.streamId == channel.streamId }
         return if (idx >= 0) (idx + 1).toString() else ""
     }
