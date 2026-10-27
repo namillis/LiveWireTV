@@ -69,7 +69,7 @@ import java.util.Locale
  *
  * Colour discipline (§3.3): amber is only the focus ring (via [LiveWireSurface]); the MOVING
  * and UNAVAILABLE tags are neutral/muted, never amber. Order changes go straight to the store,
- * so the Home rail and Guide filter follow. Back returns to Settings (handled by the nav host).
+ * so the Home Favourites list and Guide filter follow. Back returns to Settings (handled by the nav host).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -396,7 +396,7 @@ private fun EmptyState() {
 @Composable
 private fun HintLine() {
     Text(
-        "Move picks a favourite up, ▲ ▼ reorder, OK drops it. Order matches the Home rail and Guide.",
+        "Move picks a favourite up, ▲ ▼ reorder, OK drops it. Home and the Guide list them in this order.",
         style = LiveWireType.Body,
         color = LiveWireTheme.onSurfaceMuted,
         maxLines = 2,

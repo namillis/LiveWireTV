@@ -45,7 +45,7 @@ data class FavoritesManageUiState(
  * Backs the Settings → Favourites management screen (mockup option1-manage). Reads the active
  * provider's favourites, resolves each to a current [LiveChannel] (flagging the Unavailable
  * ones), and exposes reorder (move up/down) and remove. All ordering goes through
- * [FavoritesStore]/[FavoritesLogic], so the Home rail and Guide filter stay in the same order.
+ * [FavoritesStore]/[FavoritesLogic], so the Home Favourites list and Guide filter stay in the same order.
  */
 @HiltViewModel
 class FavoritesManageViewModel @Inject constructor(
