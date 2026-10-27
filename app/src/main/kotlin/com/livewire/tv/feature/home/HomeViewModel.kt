@@ -137,6 +137,19 @@ class HomeViewModel @Inject constructor(
 
     fun load() = startLoad(notice = null)
 
+    /**
+     * Home coming back into view: load it again when the provider changed while it was away
+     * (Set active in Settings → Providers keeps this view model alive), otherwise refresh the
+     * lists only when they're stale.
+     */
+    fun onShown() {
+        if (_state.value.rails.isEmpty()) return load()
+        viewModelScope.launch {
+            val now = active.current()
+            if (now?.id != provider?.id) load() else refreshIfStale()
+        }
+    }
+
     /** Load Home from the provider [ActiveProvider] picks; [notice] is shown once the rails are up. */
     private fun startLoad(notice: String?) {
         loadJob?.cancel()
