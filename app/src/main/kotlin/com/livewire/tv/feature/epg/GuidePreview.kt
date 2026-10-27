@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -146,7 +147,9 @@ internal fun BoxScope.GuidePreviewLayer(state: GuidePreviewState) {
     val alpha by animateFloatAsState(if (showing) 1f else 0f, tween(300), label = "previewAlpha")
 
     if (alpha > 0f) {
-        Box(Modifier.matchParentSize().alpha(alpha)) {
+        // Clipped: the picture is zoomed to the band's width, so unclipped it spills over the
+        // top bar and the grid header.
+        Box(Modifier.matchParentSize().clipToBounds().alpha(alpha)) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -177,16 +180,6 @@ internal fun BoxScope.GuidePreviewLayer(state: GuidePreviewState) {
                     ),
                 ),
             )
-            Row(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(LiveWireDimens.SpaceS)
-                    .clip(RoundedCornerShape(LiveWireDimens.RadiusCell))
-                    .background(LiveWireColors.Canvas.copy(alpha = 0.7f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            ) {
-                Text("PREVIEW · MUTED", style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
-            }
         }
     }
 
@@ -196,5 +189,23 @@ internal fun BoxScope.GuidePreviewLayer(state: GuidePreviewState) {
         Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp)) {
             Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(LiveWireColors.ProgressFill))
         }
+    }
+}
+
+/**
+ * The "PREVIEW · MUTED" tag, shown while the preview plays. It sits in the band's row, before
+ * the key hints, so the one-line band never stacks the two.
+ */
+@Composable
+internal fun GuidePreviewTag(state: GuidePreviewState) {
+    val status by state.player.engine.status.collectAsStateWithLifecycle()
+    if (state.player.playingStreamId == null || status.state != PlaybackState.PLAYING) return
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(LiveWireDimens.RadiusCell))
+            .background(LiveWireColors.Canvas.copy(alpha = 0.7f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text("PREVIEW · MUTED", style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
     }
 }
