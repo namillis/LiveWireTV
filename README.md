@@ -12,16 +12,27 @@ on the device.
 
 ![Home screen](docs/images/home.jpg)
 
-| Guide | Player options |
+| Guide | Player |
 |---|---|
-| ![Guide](docs/images/guide.jpg) | ![Player options panel](docs/images/player.jpg) |
+| ![Guide](docs/images/guide.jpg) | ![Player info bar](docs/images/player.jpg) |
 | **Sports** | **Settings** |
 | ![Sports scoreboard](docs/images/sports.jpg) | ![Settings](docs/images/settings.jpg) |
 
+The channels and programmes in these screenshots are made up.
+
 ## Features
 
-- **Home.** A hero band shows what's on the focused channel now and next,
-  with rails of channels grouped by your provider's categories.
+- **Top bar.** Home, Guide, Sports, Search and Settings sit in a bar along the
+  top with a clock. Up from the top of any screen reaches the bar, Left and
+  Right move between sections, and OK opens one. Back goes to the bar, then
+  to Home, and exits from Home.
+- **Home.** A large preview of the focused channel sits beside an On now list
+  with each channel's number, logo, programme and time left. After 2 seconds
+  the preview plays the channel muted. Below it are the programme's details,
+  a progress bar and what's up next. A filter above the list switches between
+  Favourites, Recently watched (the last 8 channels you played), your pinned
+  categories and All channels, and Home remembers your last pick. If your
+  provider has a Live Now category, Home opens on it.
 - **Guide.** A programme grid with a red now-line. You can filter it by
   category or keyword, and it keeps your place when you come back from a
   channel. Above the grid, a details band describes the focused programme,
@@ -50,17 +61,16 @@ on the device.
     one-time message says the channel can't rewind.
 - **Favourites.** To add one, hold OK on a channel in Home, the Guide or
   Search and choose Favourite, or use the Favourite row in the player's
-  Options. Favourites appear as a rail at the top of Home, a ★ Favourites
+  Options. Favourites appear in Home's list filter, a ★ Favourites
   filter in the Guide and a group at the top of the player's channel list.
   If you start watching from a favourite, Up and Down in the player move
   through your favourites only. Reorder or remove them under
   Settings → Favourites. They're saved separately for each provider, on the
   device only.
-- **Home.** Rails run Favourites, Recently watched (the last 8 channels you
-  played), then your pinned categories. To pin a category, hold OK on it in
-  the Guide's category column; hold OK again to unpin it. Up to 6 can be
-  pinned, and they show on Home in the order you pinned them. With nothing
-  pinned, Home shows the provider's first 6 categories. Pins are saved
+- **Pinned categories.** To pin a category, hold OK on it in the Guide's
+  category column; hold OK again to unpin it. Up to 6 can be pinned, and they
+  show in Home's list filter in the order you pinned them. With nothing
+  pinned, Home offers the provider's first 6 categories. Pins are saved
   separately for each provider, on the device only.
 - **Search.** Results are grouped into channels, programmes that are on now
   or later, and games. When the field is empty it shows your recent searches
@@ -81,9 +91,9 @@ on the device.
   short note on Home when it does.
   Favourites, pins and recents are saved per provider, so the backup shows its
   own.
-- **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview,
-  now-playing text on Home cards, favourites, and About with Check for
-  updates.
+- **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview
+  (Home and the Guide), now-playing text in lists, favourites, providers, and
+  About with Check for updates.
 - **Updates.** LiveWire checks git.namillis.me for a new release once a day
   and offers to install it. It installs an update only if the file's checksum
   matches the release and it's signed with the same key as the installed app.
