@@ -455,7 +455,8 @@ private fun GuideContent(
                                     if (current < 0) return@onPreviewKeyEvent false
                                     when (event.key) {
                                         Key.DirectionDown -> { focusRow(current + 1); true }
-                                        Key.DirectionUp -> { focusRow(current - 1); true }
+                                        // On the top row focusRow is false: let focus move up to the top bar.
+                                        Key.DirectionUp -> focusRow(current - 1)
                                         // Left/Right step to the neighbouring programme through
                                         // the anchor (see [neighbourAnchor]). Left from a row's
                                         // first cell (or an empty row) opens the category column;
@@ -721,6 +722,7 @@ private fun GuideDetailsBand(
                 )
             }
             }
+            GuidePreviewTag(preview)
             when {
                 showNowActions -> {
                     val liveFocus = remember { FocusRequester() }
@@ -1175,9 +1177,6 @@ internal fun dayLabel(ms: Long, now: Long, upper: Boolean = false): String? {
 /** onFocusChanged that fires our callback only when this cell gains focus. */
 private fun Modifier.androidx_onFocus(onFocus: () -> Unit): Modifier =
     this.onFocusChanged { if (it.isFocused) onFocus() }
-
-/** Room kept at the band's right edge for the preview's "PREVIEW · MUTED" tag. */
-private val PREVIEW_TAG_CLEARANCE = 150.dp
 
 /** How far rewind / fast-forward jump the Guide's browsed time. */
 private const val GUIDE_JUMP_MS = 3L * 60 * 60 * 1000

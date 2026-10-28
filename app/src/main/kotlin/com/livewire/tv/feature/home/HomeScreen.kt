@@ -115,7 +115,7 @@ fun HomeScreen(
     val updateDialogShowing = com.livewire.tv.feature.update.isDialogState(updateState)
 
     // The ViewModel lives as long as Home's back-stack entry, so coming back keeps the lists.
-    LaunchedEffect(Unit) { if (viewModel.state.value.rails.isEmpty()) viewModel.load() else viewModel.refreshIfStale() }
+    LaunchedEffect(Unit) { viewModel.onShown() }
 
     val list = state.rails.firstOrNull { it.categoryId == state.selectedListId }
     val channels = list?.channels.orEmpty()

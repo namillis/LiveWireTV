@@ -57,6 +57,7 @@ import com.livewire.tv.feature.providers.domain.ProviderType
 import com.livewire.tv.ui.provider.ProviderFieldLabelStyle
 import com.livewire.tv.ui.provider.ProviderFilledField
 import com.livewire.tv.ui.theme.LiveWireColors
+import com.livewire.tv.ui.theme.LocalOnFocus
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
@@ -381,6 +382,16 @@ private fun ProviderRow(
     }
 }
 
+/**
+ * Tag fill and border that stay readable on the focused row: a raised surface at rest, and a
+ * faint ink tint with an ink border on the light focus fill, where the text turns dark.
+ */
+private val tagFill: Color
+    @Composable get() = if (LocalOnFocus.current) LiveWireColors.OnFocus.copy(alpha = 0.08f) else LiveWireColors.SurfaceRaised
+
+private val tagBorder: Color
+    @Composable get() = if (LocalOnFocus.current) LiveWireColors.OnFocusMuted else LiveWireColors.BorderStrong
+
 /** The neutral "✓ ACTIVE" pill on the active row (never amber; §3.3). */
 @Composable
 private fun ActivePill() {
@@ -388,8 +399,8 @@ private fun ActivePill() {
     Row(
         modifier = Modifier
             .clip(shape)
-            .background(LiveWireColors.SurfaceRaised)
-            .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, shape)
+            .background(tagFill)
+            .border(LiveWireDimens.RestBorder, tagBorder, shape)
             .padding(horizontal = LiveWireDimens.SpaceS, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -406,7 +417,7 @@ private fun StatusPill(label: String) {
     Box(
         modifier = Modifier
             .clip(shape)
-            .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, shape)
+            .border(LiveWireDimens.RestBorder, tagBorder, shape)
             .padding(horizontal = LiveWireDimens.SpaceS, vertical = 3.dp),
     ) {
         Text(label, style = LiveWireType.Tag, color = LiveWireTheme.onSurfaceMuted)
@@ -420,8 +431,8 @@ private fun TypeTag(type: ProviderType) {
     Box(
         modifier = Modifier
             .clip(shape)
-            .background(LiveWireColors.SurfaceRaised)
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+            .background(tagFill)
+            .border(LiveWireDimens.RestBorder, if (LocalOnFocus.current) tagBorder else LiveWireColors.Border, shape)
             .padding(horizontal = LiveWireDimens.SpaceS, vertical = 2.dp),
     ) {
         Text(
@@ -433,8 +444,8 @@ private fun TypeTag(type: ProviderType) {
 }
 
 /**
- * The ⋯ affordance. Raised neutral when the row is at rest; a white fill with dark dots
- * when the row is focused (mockup). Presentation only.
+ * The ⋯ affordance. Raised neutral when the row is at rest; on the focused row's light fill it
+ * inverts to a dark ink chip with light dots. Presentation only.
  */
 @Composable
 private fun MoreAffordance(focused: Boolean) {
@@ -443,15 +454,15 @@ private fun MoreAffordance(focused: Boolean) {
         modifier = Modifier
             .size(width = 40.dp, height = 32.dp)
             .clip(shape)
-            .background(if (focused) LiveWireTheme.onSurface else LiveWireColors.SurfaceRaised)
-            .border(LiveWireDimens.RestBorder, if (focused) LiveWireTheme.onSurface else LiveWireColors.Border, shape),
+            .background(if (focused) LiveWireColors.OnFocus else LiveWireColors.SurfaceRaised)
+            .border(LiveWireDimens.RestBorder, if (focused) LiveWireColors.OnFocus else LiveWireColors.Border, shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             "•••",
             style = LiveWireType.Mono,
             fontWeight = FontWeight.Bold,
-            color = if (focused) LiveWireColors.Canvas else LiveWireTheme.onSurface,
+            color = if (focused) LiveWireColors.OnSurface else LiveWireTheme.onSurface,
         )
     }
 }
@@ -534,7 +545,7 @@ private fun MenuHeader(provider: ProviderConfig) {
 }
 
 /** The three action glyphs (mockup): check-circle, pencil, trash. */
-private enum class MenuIcon { CHECK_CIRCLE, PENCIL, TRASH }
+private enum class MenuIcon { CHECK_CIRCLE, BACKUP, PENCIL, TRASH }
 
 /**
  * The action menu (mockup option2-edit): Set active · Edit · Delete, each with its icon.
@@ -562,7 +573,7 @@ private fun ActionMenuOverlay(
             MenuItem("Set active", MenuIcon.CHECK_CIRCLE, onClick = onSetActive, modifier = Modifier.focusRequester(first))
             Spacer(Modifier.height(MenuGap))
             MenuItem(
-                if (isBackup) "Stop using as backup" else "Use as backup", null, onClick = onToggleBackup,
+                if (isBackup) "Stop using as backup" else "Use as backup", MenuIcon.BACKUP, onClick = onToggleBackup,
                 trailing = if (isBackup) null else "when the active one is down",
             )
             Spacer(Modifier.height(MenuGap))
@@ -624,6 +635,7 @@ private fun MenuGlyph(icon: MenuIcon, tint: Color) {
     // rail uses (painterResource + Icon), not emoji.
     val res = when (icon) {
         MenuIcon.CHECK_CIRCLE -> R.drawable.ic_action_set_active
+        MenuIcon.BACKUP -> R.drawable.ic_opt_reload
         MenuIcon.PENCIL -> R.drawable.ic_action_edit
         MenuIcon.TRASH -> R.drawable.ic_action_delete
     }
