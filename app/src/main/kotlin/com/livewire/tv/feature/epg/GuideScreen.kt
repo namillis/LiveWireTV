@@ -455,6 +455,19 @@ private fun GuideContent(
                                     val current = rows.indexOfFirst { it.channel.streamId == focusedStreamId }
                                     if (current < 0) return@onPreviewKeyEvent false
                                     when (event.key) {
+                                        // Back steps out one level: grid -> category column (the
+                                        // column's Back then reaches the top bar). The lane snaps
+                                        // back to now, so Right from the column lands on live
+                                        // rather than wherever the archive was scrolled to.
+                                        Key.Back -> {
+                                            anchorMs = now
+                                            scope.launch {
+                                                val minutes = (TimeUnit.MILLISECONDS.toMinutes(now - state.windowStartMs) - 30L).coerceAtLeast(0L).toInt()
+                                                hScroll.scrollTo(with(density) { minutesToDp(minutes).roundToPx() })
+                                            }
+                                            runCatching { columnRequester.requestFocus() }
+                                            true
+                                        }
                                         Key.DirectionDown -> { focusRow(current + 1); true }
                                         // On the top row focusRow is false: let focus move up to the top bar.
                                         Key.DirectionUp -> focusRow(current - 1)
