@@ -1,12 +1,17 @@
 package com.livewire.tv.feature.epg
 
+import androidx.annotation.OptIn
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,16 +30,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -42,19 +47,22 @@ import androidx.tv.material3.Text
 import com.livewire.tv.R
 import com.livewire.tv.core.player.ExoPlayerEngine
 import com.livewire.tv.core.player.PlaybackState
+import com.livewire.tv.feature.home.ChannelLogo
+import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
 import com.livewire.tv.ui.theme.LiveWireTheme
+import com.livewire.tv.ui.theme.LiveWireType
 import kotlinx.coroutines.delay
 
 /** How long focus must rest on a cell before its channel starts previewing. */
 internal const val PREVIEW_DELAY_MS = 2_000L
 
 /**
- * One muted player that the Guide owns. It plays the channel under focus behind the details
- * band once focus has rested for [PREVIEW_DELAY_MS], and stops the moment focus moves on,
- * the Guide leaves the screen, or the app goes to the background.
+ * One muted player that the Guide owns. It plays the channel under focus in the details band's
+ * preview window once focus has rested for [PREVIEW_DELAY_MS], and stops the moment focus moves
+ * on, the Guide leaves the screen, or the app goes to the background.
  */
 @OptIn(UnstableApi::class)
 internal class GuidePreviewPlayer(context: android.content.Context) {
@@ -62,7 +70,7 @@ internal class GuidePreviewPlayer(context: android.content.Context) {
         // Muted, and never takes audio focus: whatever else is playing keeps its sound.
         it.exoPlayer.volume = 0f
     }
-    /** Compose state, so the band hides the layer the moment a preview stops. */
+    /** Compose state, so the window drops the picture the moment a preview stops. */
     var playingStreamId: String? by mutableStateOf(null)
         private set
 
@@ -114,9 +122,10 @@ internal fun rememberGuidePreview(
     val target = streamId.takeIf { enabled && resumed }
     LaunchedEffect(target) {
         state.countdown = 0f
+        if (target != state.failedStreamId) state.failedStreamId = null
         if (target == null || target != player.playingStreamId) player.stop()
         if (target == null || target == player.playingStreamId) return@LaunchedEffect
-        // Count down in small steps so the band can show a thin progress line.
+        // Count down in small steps so the window can show a thin progress line.
         val steps = 20
         repeat(steps) { i ->
             delay(PREVIEW_DELAY_MS / steps)
@@ -124,7 +133,7 @@ internal fun rememberGuidePreview(
         }
         val source = runCatching { resolve(target) }.getOrNull()
         state.countdown = 0f
-        if (source != null) player.play(target, source)
+        if (source != null) player.play(target, source) else state.failedStreamId = target
     }
     return state
 }
@@ -132,80 +141,91 @@ internal fun rememberGuidePreview(
 internal class GuidePreviewState(val player: GuidePreviewPlayer) {
     /** 0 while idle or playing; rises to 1 during the wait before a preview starts. */
     var countdown by mutableFloatStateOf(0f)
+
+    /** The channel whose preview could not start (no source), so its window says so. */
+    var failedStreamId: String? by mutableStateOf(null)
 }
 
 /**
- * The preview layer inside the details band: the video filling the band (cropped), a
- * left-to-right fade so the programme text stays readable, and a "PREVIEW · MUTED" tag.
- * Shows nothing until the first frame plays, so there is never a black flash.
+ * The preview window at the right of the details band: a 16:9 tile the height of the band.
+ * It always takes its place, so the grid never moves when a preview starts or stops. At rest
+ * it shows the focused channel's logo, with a thin line along the bottom while the preview
+ * counts down. Once the first frame plays, the muted picture fades in over the logo,
+ * letterboxed (never cropped), with a PREVIEW · MUTED tag in its top-left corner. Nothing
+ * else is drawn over the picture, and the picture is drawn under nothing else.
  */
 @OptIn(UnstableApi::class)
 @Composable
-internal fun BoxScope.GuidePreviewLayer(state: GuidePreviewState) {
+internal fun GuidePreviewWindow(state: GuidePreviewState, channel: LiveChannel, modifier: Modifier = Modifier) {
     val status by state.player.engine.status.collectAsStateWithLifecycle()
-    val showing = state.player.playingStreamId != null && status.state == PlaybackState.PLAYING
+    val mine = state.player.playingStreamId == channel.streamId
+    val showing = mine && status.state == PlaybackState.PLAYING
+    val failed = state.failedStreamId == channel.streamId || (mine && status.state == PlaybackState.ERROR)
     val alpha by animateFloatAsState(if (showing) 1f else 0f, tween(300), label = "previewAlpha")
+    val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
 
-    if (alpha > 0f) {
-        // Clipped: the picture is zoomed to the band's width, so unclipped it spills over the
-        // top bar and the grid header.
-        Box(Modifier.matchParentSize().clipToBounds().alpha(alpha)) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    (android.view.LayoutInflater.from(ctx).inflate(R.layout.livewire_player_view, android.widget.FrameLayout(ctx), false) as PlayerView)
-                        .apply {
-                            player = state.player.engine.exoPlayer
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        }
-                },
-                onRelease = { it.player = null },
-            )
-            // Solid on the left where the text sits, fading to show the picture on the right.
-            Box(
-                Modifier.matchParentSize().background(
-                    Brush.horizontalGradient(
-                        0f to LiveWireColors.Canvas.copy(alpha = 0.96f),
-                        0.45f to LiveWireColors.Canvas.copy(alpha = 0.86f),
-                        1f to LiveWireColors.Canvas.copy(alpha = 0.25f),
-                    ),
-                ),
-            )
-            // Darken the top edge too, so the clock in the band's top-right stays readable.
-            Box(
-                Modifier.matchParentSize().background(
-                    Brush.verticalGradient(
-                        0f to LiveWireColors.Canvas.copy(alpha = 0.7f),
-                        0.4f to LiveWireColors.Canvas.copy(alpha = 0f),
-                    ),
-                ),
-            )
-        }
-    }
-
-    // A thin neutral line along the bottom while waiting to start (never amber: not focus).
-    val progress by animateFloatAsState(state.countdown, tween(100, easing = LinearEasing), label = "previewCountdown")
-    if (state.countdown > 0f) {
-        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp)) {
-            Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(LiveWireColors.ProgressFill))
-        }
-    }
-}
-
-/**
- * The "PREVIEW · MUTED" tag, shown while the preview plays. It sits in the band's row, before
- * the key hints, so the one-line band never stacks the two.
- */
-@Composable
-internal fun GuidePreviewTag(state: GuidePreviewState) {
-    val status by state.player.engine.status.collectAsStateWithLifecycle()
-    if (state.player.playingStreamId == null || status.state != PlaybackState.PLAYING) return
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(LiveWireDimens.RadiusCell))
-            .background(LiveWireColors.Canvas.copy(alpha = 0.7f))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+    Box(
+        modifier
+            .aspectRatio(16f / 9f)
+            .clip(shape)
+            .background(LiveWireColors.Surface)
+            .border(LiveWireDimens.RestBorder, LiveWireColors.BorderStrong, shape),
     ) {
-        Text("PREVIEW · MUTED", style = LiveWireTheme.tokens.tag, color = LiveWireTheme.onSurface)
+        Column(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ChannelLogo(channel, Modifier.fillMaxWidth(0.42f).aspectRatio(1.6f), textSize = 14)
+            // Some providers take several seconds to open a stream; say so rather than look stuck.
+            val note = when {
+                failed -> "Preview unavailable"
+                mine && !showing -> "Starting preview…"
+                else -> null
+            }
+            if (note != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(note, style = LiveWireType.Sub, color = LiveWireTheme.onSurfaceMuted, maxLines = 1)
+            }
+        }
+
+        if (alpha > 0f) {
+            Box(Modifier.matchParentSize().alpha(alpha).background(Color.Black)) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        (android.view.LayoutInflater.from(ctx).inflate(R.layout.livewire_player_view, android.widget.FrameLayout(ctx), false) as PlayerView)
+                            .apply {
+                                player = state.player.engine.exoPlayer
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            }
+                    },
+                    onRelease = { it.player = null },
+                )
+                Row(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(5.dp)
+                        .clip(RoundedCornerShape(LiveWireDimens.RadiusCell))
+                        .background(LiveWireColors.Canvas.copy(alpha = 0.72f))
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                ) {
+                    // Smaller than the shared tag style: the window is small and this sits on the picture.
+                    Text(
+                        "PREVIEW · MUTED",
+                        style = LiveWireTheme.tokens.tag.copy(fontSize = 6.5.sp, letterSpacing = 0.12.em),
+                        color = LiveWireTheme.onSurface,
+                    )
+                }
+            }
+        }
+
+        // A thin neutral line along the bottom while waiting to start (never a focus colour).
+        val progress by animateFloatAsState(state.countdown, tween(100, easing = LinearEasing), label = "previewCountdown")
+        if (state.countdown > 0f) {
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp)) {
+                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(LiveWireColors.ProgressFill))
+            }
+        }
     }
 }
