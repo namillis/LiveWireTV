@@ -30,6 +30,9 @@ class LiveChannelCache(
         }
     }
 
+    /** [cfg]'s list if it is in memory and fresh; never loads. */
+    fun cached(cfg: ProviderConfig): List<LiveChannel>? = fresh(keyFor(cfg))
+
     fun clear() = entries.clear()
 
     private fun fresh(key: String): List<LiveChannel>? =

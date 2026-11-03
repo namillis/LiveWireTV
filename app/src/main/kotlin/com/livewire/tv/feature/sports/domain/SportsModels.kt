@@ -45,15 +45,3 @@ data class SportsScoreboard(
     val league: SportsLeague,
     val games: List<SportsGame> = emptyList(),
 )
-
-data class StandingRow(
-    val teamAbbrev: String,
-    val wins: Int,
-    val losses: Int,
-    val rank: String? = null,
-)
-
-data class SportsStandings(
-    val league: SportsLeague,
-    val rows: List<StandingRow> = emptyList(),
-)

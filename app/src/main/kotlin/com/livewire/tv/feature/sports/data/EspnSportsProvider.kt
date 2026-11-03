@@ -7,8 +7,6 @@ import com.livewire.tv.feature.sports.domain.SportsGame
 import com.livewire.tv.feature.sports.domain.SportsLeague
 import com.livewire.tv.feature.sports.domain.SportsProvider
 import com.livewire.tv.feature.sports.domain.SportsScoreboard
-import com.livewire.tv.feature.sports.domain.SportsStandings
-import com.livewire.tv.feature.sports.domain.StandingRow
 import com.livewire.tv.feature.sports.domain.TeamSide
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -63,17 +61,6 @@ class EspnSportsProvider @Inject constructor(
         )
     }
 
-    override suspend fun standings(leagueId: String): SportsStandings = withContext(Dispatchers.IO) {
-        val p = leaguePaths[leagueId] ?: throw IllegalArgumentException("Unknown league: $leagueId")
-        val url = "https://site.api.espn.com/apis/v2/sports/${p.sport}/${p.league}/standings?level=1"
-        val root = json.parseToJsonElement(get(url) ?: "{}").jsonObject
-        val entries = root["standings"]?.jsonObject?.get("entries")?.jsonArray
-            ?: flattenChildren(root)
-        val rows = entries.mapNotNull { mapStandingRow(it.jsonObject) }
-            .sortedWith(compareBy({ it.rank?.toIntOrNull() ?: Int.MAX_VALUE }, { -it.wins }))
-        SportsStandings(SportsLeague(leagueId, leagueId.uppercase(), p.sport), rows)
-    }
-
     // --- mapping ---------------------------------------------------------------
 
     private fun mapGame(ev: JsonObject, leagueId: String): SportsGame? {
@@ -123,29 +110,6 @@ class EspnSportsProvider @Inject constructor(
             away = away?.let(::side) ?: TeamSide("", "", ""),
             broadcastNetworks = networks,
         )
-    }
-
-    private fun mapStandingRow(entry: JsonObject): StandingRow? {
-        val team = entry["team"]?.jsonObject ?: return null
-        val stats = entry["stats"]?.jsonArray ?: return null
-        fun stat(name: String): Int? {
-            val s = stats.map { it.jsonObject }.firstOrNull { it["name"].str() == name } ?: return null
-            return (s["value"].str()?.toDoubleOrNull())?.toInt() ?: s["displayValue"].str()?.toIntOrNull()
-        }
-        val seed = stat("playoffSeed")
-        return StandingRow(
-            teamAbbrev = team["abbreviation"].str().orEmpty(),
-            wins = stat("wins") ?: 0,
-            losses = stat("losses") ?: 0,
-            rank = if (seed != null && seed > 0) seed.toString() else null,
-        )
-    }
-
-    private fun flattenChildren(node: JsonObject): JsonArray {
-        val out = mutableListOf<kotlinx.serialization.json.JsonElement>()
-        node["standings"]?.jsonObject?.get("entries")?.jsonArray?.let { out.addAll(it) }
-        node["children"]?.jsonArray?.forEach { out.addAll(flattenChildren(it.jsonObject)) }
-        return JsonArray(out)
     }
 
     private fun parseIso(s: String?): Long = parseEspnDate(s) ?: System.currentTimeMillis()

@@ -134,6 +134,8 @@ fun SearchScreen(
     var hasResultsFocusable by remember { mutableStateOf(false) }
     // Set on submit: move focus to the first result once the background ranking lands.
     var focusResultsWhenReady by remember { mutableStateOf(false) }
+    // Set when Sports hands over a query: move focus to the results once there are any.
+    var focusPendingResults by remember { mutableStateOf(false) }
 
     // Record a search when the user leaves Search with a committed query (2+ chars). Kept in
     // rememberUpdatedState so the onDispose below reads the query as it was at teardown, not
@@ -153,7 +155,21 @@ fun SearchScreen(
     var pickerReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
 
     LaunchedEffect(Unit) { viewModel.init() }
-    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
+    // Sports' "Search my channels" hands over a query: run it as if it were typed and submitted,
+    // and leave the field unfocused so the on-screen keyboard does not cover the results.
+    // Otherwise the field takes focus.
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        val pending = viewModel.takePendingQuery()
+        if (pending != null) {
+            query = pending
+            viewModel.submit(pending)
+            focusPendingResults = true
+            keyboard?.hide()
+        } else {
+            runCatching { fieldFocus.requestFocus() }
+        }
+    }
 
     fun playChannel(channel: LiveChannel) {
         // Opening a result also commits the current query as a recent search.
@@ -229,6 +245,13 @@ fun SearchScreen(
                 if (focusResultsWhenReady && !state.searching) {
                     focusResultsWhenReady = false
                     if (!grouped.isEmpty()) runCatching { resultsFocus.requestFocus() }
+                }
+                // A handed-over query first runs before the channels load, so wait for results
+                // rather than giving up on the first empty answer.
+                if (focusPendingResults && !state.searching && !grouped.isEmpty()) {
+                    focusPendingResults = false
+                    runCatching { resultsFocus.requestFocus() }
+                    keyboard?.hide()
                 }
             }
 
