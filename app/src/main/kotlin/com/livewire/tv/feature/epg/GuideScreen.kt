@@ -84,6 +84,7 @@ import com.livewire.tv.feature.providers.domain.PlaybackSource
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
 import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireDimens
+import com.livewire.tv.ui.theme.LiveWireProgress
 import com.livewire.tv.ui.theme.LiveWireSurface
 import com.livewire.tv.ui.theme.LiveWireTheme
 import androidx.compose.ui.platform.LocalDensity
@@ -96,14 +97,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val PX_PER_MINUTE = 4          // 4dp per minute = 120dp per 30 min (B · Grid: about 2.8 h on screen)
-private val ROW_HEIGHT = 41.dp               // 55px in the mockup; 9 rows fit under the band
+private val ROW_HEIGHT = 41.dp               // 55px in the mockup; 6½ rows fit under the band
 private val CHANNEL_COL = 180.dp            // number, logo and name
 /** Narrowest text area a cell keeps when its text follows the lane's left edge (stickyTextShift). */
 private val STICKY_TEXT_MIN = 48.dp
 private val SLOT = (30 * PX_PER_MINUTE).dp   // one 30-minute tick
 private val NOW_LANE = 20.dp
 private val AXIS_HEIGHT = 26.dp
-private val DETAILS_BAND_HEIGHT = 46.dp      // one line: badge, channel, title, time, hints
+private val DETAILS_BAND_HEIGHT = 120.dp     // details on the left, the 16:9 preview window on the right
 
 /**
  * The focused guide cell: which channel + programme drives the details band. [channelHasArchive]
@@ -659,7 +660,11 @@ private fun NoMatches(query: String, categoryName: String) {
     }
 }
 
-/** Guide details band (design system §9.1, guide variant ~90dp): focused programme + a synopsis. */
+/**
+ * Guide details band: the focused programme on the left (badge and channel, title, time and
+ * progress, one line of synopsis, then the key hints or the band actions), and the 16:9 preview
+ * window on the right, as tall as the band.
+ */
 @Composable
 private fun GuideDetailsBand(
     focus: GuideFocus,
@@ -676,53 +681,61 @@ private fun GuideDetailsBand(
     // of an archive channel, once OK'd, offers Watch live (focused) / Start over.
     val showStartHint = focus.programmeArchived && prog != null && prog.stopMs <= now
     val showNowActions = bandActions && onNow && focus.channelHasArchive
-    Box(Modifier.fillMaxWidth().height(DETAILS_BAND_HEIGHT)) {
-        // The muted preview sits behind the text, fading in from the right.
-        GuidePreviewLayer(preview)
-        Row(
-            Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Row(
+        Modifier.fillMaxWidth().height(DETAILS_BAND_HEIGHT),
+        horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceL),
+    ) {
+        Column(
+            Modifier.weight(1f).fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
         ) {
-            Row(
-                Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-            when {
-                onNow -> LiveBadge()
-                focus.programmeArchived -> CatchupTag()
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                when {
+                    onNow -> LiveBadge()
+                    focus.programmeArchived -> CatchupTag()
+                }
+                Text(
+                    listOfNotNull(focus.channel.number?.toString(), focus.channel.name).joinToString(" · ").uppercase(),
+                    style = LiveWireType.Overline.copy(fontSize = 9.sp, letterSpacing = 0.12.em),
+                    color = LiveWireTheme.onSurfaceMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Text(
-                listOfNotNull(focus.channel.number?.toString(), focus.channel.name).joinToString(" ").uppercase(),
-                style = LiveWireType.Overline.copy(fontSize = 9.sp, letterSpacing = 0.12.em),
-                color = LiveWireTheme.onSurfaceMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 150.dp),
-            )
-            Text(
                 prog?.title ?: "No programme information",
-                style = LiveWireType.TitleLarge,
+                style = LiveWireType.Heading,
                 color = LiveWireTheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
             )
             if (prog != null) {
                 // A Live Now event's end is a guess: name its start, which carries its own day.
                 val range = if (prog.endIsEstimate) EventTimes.label(prog, now) else "${clockLabel(prog.startMs)} – ${clockLabel(prog.stopMs)}"
                 val day = if (prog.endIsEstimate) null else dayLabel(prog.startMs, now)
                 val left = if (onNow && !prog.endIsEstimate) " · ${minutesLeft(prog, now)}" else ""
-                Text(
-                    listOfNotNull(day, range).joinToString(" ") + left,
-                    style = LiveWireType.Mono.copy(fontSize = 9.75.sp),
-                    color = LiveWireTheme.onSurfaceMuted,
-                    maxLines = 1,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        listOfNotNull(day, range).joinToString(" ") + left,
+                        style = LiveWireType.Mono.copy(fontSize = 9.75.sp),
+                        color = LiveWireTheme.onSurfaceMuted,
+                        maxLines = 1,
+                    )
+                    if (onNow && !prog.endIsEstimate) {
+                        LiveWireProgress(prog.progressAt(now), Modifier.width(120.dp))
+                    }
+                }
+                prog.description?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        it,
+                        style = LiveWireType.Sub,
+                        color = LiveWireTheme.onSurfaceMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            }
-            GuidePreviewTag(preview)
+            Spacer(Modifier.height(2.dp))
             when {
                 showNowActions -> {
                     val liveFocus = remember { FocusRequester() }
@@ -747,6 +760,7 @@ private fun GuideDetailsBand(
                 else -> KeyHints("OK" to "Watch", "◀" to "Earlier")
             }
         }
+        GuidePreviewWindow(preview, focus.channel, Modifier.fillMaxHeight())
     }
 }
 

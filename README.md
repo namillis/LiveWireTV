@@ -35,8 +35,8 @@ The channels and programmes in these screenshots are made up.
   provider has a Live Now category, Home opens on it.
 - **Guide.** A programme grid with a red now-line. You can filter it by
   category or keyword, and it keeps your place when you come back from a
-  channel. Above the grid, a details band describes the focused programme,
-  and after 2 seconds it also plays that channel muted. A downloaded guide is
+  channel. Above the grid, a details band describes the focused programme.
+  After 2 seconds, a small window at its right plays that channel muted. A downloaded guide is
   reused for up to 3 hours, so reopening the Guide in that time doesn't
   download it again.
 - **Player.** Up and Down change channel. Left opens the channel list, and
