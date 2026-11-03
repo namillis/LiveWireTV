@@ -233,6 +233,20 @@ class SportsMatchTest {
         assertTrue(m.isEmpty())
     }
 
+    @Test fun `one matcher serves several games`() {
+        // Sports builds one matcher for all its games; each game must still get only its own.
+        val matcher = ChannelMatcher(
+            listOf(
+                epgCh("1", "US - ESPN HD", "espn"),
+                epgCh("2", "US - TNT HD", "tnt"),
+                epgCh("3", "CA - FOX 13 (KCPQ) SEATTLE", "kcpq"),
+            ),
+            mapOf("kcpq" to listOf(prog("kcpq", "New York Rangers at Boston Bruins"))),
+        )
+        assertEquals(listOf("3", "1"), matcher.match(guideGame).map { it.channel.streamId })
+        assertEquals(listOf("2"), matcher.match(game(listOf("TNT"))).map { it.channel.streamId })
+    }
+
     @Test fun `a shared guide id confirms only the network's own channels`() {
         // Real provider data: ESPN, ESPN 1, ESPN ACC Network and ESPN SEC Network all use
         // the guide id "espn.us", so its listing cannot vouch for the ACC or SEC channel.

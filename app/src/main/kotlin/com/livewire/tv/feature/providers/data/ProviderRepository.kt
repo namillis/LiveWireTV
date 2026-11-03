@@ -63,6 +63,9 @@ class ProviderRepository @Inject constructor(
             .map { ProviderCategory(id = it, name = it) }
     }
 
+    /** The full channel list if it is already in memory and fresh, without loading it. */
+    fun cachedLiveChannels(cfg: ProviderConfig): List<LiveChannel>? = channelCache.cached(cfg)
+
     suspend fun liveChannels(cfg: ProviderConfig, categoryId: String? = null): List<LiveChannel> =
         if (categoryId == null) channelCache.get(cfg) { fetchLiveChannels(cfg, null) }
         else fetchLiveChannels(cfg, categoryId)

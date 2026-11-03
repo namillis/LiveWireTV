@@ -76,10 +76,12 @@ The channels and programmes in these screenshots are made up.
   or later, and games. When the field is empty it shows your recent searches
   and the channels you watched last.
 - **Sports.** Scores and schedules from ESPN for the NFL, college football, the
-  NBA, men's college basketball, MLB, the NHL and the Premier League. Choosing
-  a game opens a picker listing your channels whose names match the game's
-  network or teams, ranked by how closely they match and checked against your
-  guide.
+  NBA, men's college basketball, MLB, the NHL and the Premier League, in one
+  list: on now, coming up, then finished. Chips filter it by league. Each game
+  shows where it will play: the pool's Live Now channel when it has one, else
+  the best of your channels whose names match the game's network or teams,
+  checked against your guide. OK plays it, and Right lists the other channels.
+  If nothing carries a game, OK searches your channels for it.
 - **Providers.** Add more than one Xtream or M3U provider and switch between
   them. Placeholder rows that some providers use as category headers
   (`##### NEWS #####`) are hidden.
@@ -234,7 +236,7 @@ app/src/main/kotlin/com/livewire/tv/
     player/        Player screen, overlay, Options and channel list panels
     favorites/     Favourites storage, hold-OK menu, Channel info, manage screen
     search/        Search and search history
-    sports/        ESPN scoreboard and the channel picker
+    sports/        ESPN scoreboards and matching games to channels
     settings/      Settings screen and stored preferences
     update/        Update check, download, verification and install
 scripts/measure.sh Memory, start-up and APK size measurements on a real device

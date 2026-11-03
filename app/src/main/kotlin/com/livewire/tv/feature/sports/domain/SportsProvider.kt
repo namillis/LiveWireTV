@@ -8,5 +8,4 @@ package com.livewire.tv.feature.sports.domain
 interface SportsProvider {
     suspend fun leagues(): List<SportsLeague>
     suspend fun scoreboard(leagueId: String): SportsScoreboard
-    suspend fun standings(leagueId: String): SportsStandings
 }

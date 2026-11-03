@@ -66,7 +66,15 @@ class SearchViewModel @Inject constructor(
     private val historyStore: RecentHistoryStore,
     private val favorites: com.livewire.tv.feature.favorites.data.FavoritesStore,
     private val settingsStore: com.livewire.tv.feature.settings.data.SettingsStore,
+    private val pendingSearch: com.livewire.tv.feature.search.data.PendingSearch,
 ) : ViewModel() {
+
+    /** A query another screen asked Search to run (Sports' "Search my channels"), taken once. */
+    fun takePendingQuery(): String? = pendingSearch.take()
+
+    /** Channels and guide prepared for matching games to channels, rebuilt in the background. */
+    private var matcher: com.livewire.tv.feature.sports.data.ChannelMatcher? = null
+    private var matcherJob: kotlinx.coroutines.Job? = null
 
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
@@ -222,6 +230,13 @@ class SearchViewModel @Inject constructor(
         val programmes = if (programmesByEpgId.isEmpty()) emptyList()
             else programmesByEpgId.values.flatten()
         index = SearchIndex(channels = channels, programmes = programmes, games = loadedGames)
+        val ch = channels
+        val guide = programmesByEpgId
+        matcherJob?.cancel()
+        matcherJob = viewModelScope.launch {
+            val built = withContext(Dispatchers.Default) { com.livewire.tv.feature.sports.data.ChannelMatcher(ch, guide) }
+            matcher = built
+        }
     }
 
     /**
@@ -313,7 +328,7 @@ class SearchViewModel @Inject constructor(
      * match, which the picker renders as its no-channel empty state.
      */
     fun channelsForGame(game: SportsGame): List<ChannelMatch> =
-        SportsRepository.matchChannels(game, channels, programmesByEpgId)
+        matcher?.match(game) ?: SportsRepository.matchChannels(game, channels, programmesByEpgId)
 
     /**
      * Record [query] as a recent search when it clears the minimum length (2+ chars). Called
