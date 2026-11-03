@@ -76,11 +76,13 @@ import java.util.Locale
  * Controls (§9.7, §7): stream format is a two-segment choice (OK cycles TS↔HLS, white check on
  * the selected segment); guide window is a left/right stepper (D-pad Left/Right when the row is
  * focused decrement/increment within 2–8, OK also steps up); now-playing is a switch with a
- * written On/Off state and a white — never amber — track/knob when on; providers opens the
+ * written On/Off state and a red track + white knob when on; providers opens the
  * manager; about is a dashed, non-focusable info row.
  *
- * Colour discipline (§3.3): amber lives only on the focus ring (via [LiveWireSurface]) and the
- * nav marker (owned by the nav shell). Every colour/spacing value comes from Theme.kt tokens;
+ * Colour discipline: focus is the light fill (via [LiveWireSurface]), and every part of a
+ * control reads a focus-aware LiveWireTheme.control* colour so it flips with its row. Brand red
+ * marks only "on / chosen": On switches and the selected format's check. Every colour/spacing
+ * value comes from Theme.kt tokens;
  * no hardcoded hex here. Content sits inside the 48dp/27dp safe area beside the drawer (§2);
  * Left-from-first-column and Back → drawer are handled by the nav shell, untouched here.
  */
@@ -351,8 +353,8 @@ private fun StreamFormatRow(
 
 /**
  * A two-segment control mirroring the mockup: MPEG-TS | HLS. The selected segment carries a
- * [LiveWireColors.SurfaceRaised] fill, weight-700 label and a white check glyph — never amber.
- * It is presentation only; OK on the enclosing row does the cycling.
+ * [LiveWireTheme.controlSelectedFill] (canvas at rest, solid ink on the focus fill), a weight-700
+ * label and a red check. It is presentation only; OK on the enclosing row does the cycling.
  */
 @Composable
 private fun SegmentedChoice(current: StreamFormat) {
@@ -360,11 +362,11 @@ private fun SegmentedChoice(current: StreamFormat) {
     Row(
         modifier = Modifier
             .clip(shape)
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape),
+            .border(LiveWireDimens.RestBorder, LiveWireTheme.controlBorder, shape),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Segment(text = "MPEG-TS", selected = current == StreamFormat.TS)
-        Box(Modifier.width(1.dp).height(ControlHeight).background(LiveWireColors.Border))
+        Box(Modifier.width(1.dp).height(ControlHeight).background(LiveWireTheme.controlBorder))
         Segment(text = "HLS", selected = current == StreamFormat.HLS)
     }
 }
@@ -374,16 +376,17 @@ private fun Segment(text: String, selected: Boolean) {
     Row(
         modifier = Modifier
             .heightIn(min = ControlHeight)
-            .background(if (selected) LiveWireColors.Canvas else LiveWireColors.SurfaceRaised)
+            .background(if (selected) LiveWireTheme.controlSelectedFill else LiveWireTheme.controlFill)
             .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (selected) {
+            // Red = chosen / on (reads on both the dark row and the light focus fill).
             Text(
                 "✓",
                 style = LiveWireType.Mono,
                 fontWeight = FontWeight.Bold,
-                color = LiveWireTheme.onSurface,
+                color = LiveWireColors.Live,
             )
             Spacer(Modifier.width(LiveWireDimens.SpaceXs))
         }
@@ -391,7 +394,7 @@ private fun Segment(text: String, selected: Boolean) {
             text,
             style = LiveWireType.Mono,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
+            color = if (selected) LiveWireTheme.onControlSelected else LiveWireTheme.onSurfaceMuted,
             maxLines = 1,
         )
     }
@@ -461,7 +464,7 @@ private fun GuideWindowRow(hours: Int, onDecrement: () -> Unit, onIncrement: () 
 /**
  * A compact bordered stepper arrow (~24dp square, mockup 48px ÷ 2) drawn with a chevron glyph.
  * Neutral when idle; when [enabled] its glyph and border brighten to signal it responds to D-pad
- * Left/Right. Never amber.
+ * Left/Right. At its limit the arrow fades. Every part flips with the row on focus.
  */
 @Composable
 private fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
@@ -471,10 +474,10 @@ private fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
             .padding(horizontal = LiveWireDimens.SpaceXs)
             .size(ControlHeight)
             .clip(shape)
-            .background(LiveWireColors.SurfaceRaised)
+            .background(if (enabled) LiveWireTheme.controlWash else LiveWireTheme.controlFill)
             .border(
                 LiveWireDimens.RestBorder,
-                if (enabled) LiveWireColors.BorderStrong else LiveWireColors.Border,
+                if (enabled) LiveWireTheme.controlBorderStrong else LiveWireTheme.controlBorderDisabled,
                 shape,
             ),
         contentAlignment = Alignment.Center,
@@ -483,7 +486,7 @@ private fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
             glyph,
             style = LiveWireType.Title,
             fontWeight = FontWeight.Bold,
-            color = if (enabled) LiveWireTheme.onSurface else LiveWireTheme.onSurfaceMuted,
+            color = if (enabled) LiveWireTheme.onSurface else LiveWireTheme.controlDisabled,
         )
     }
 }
@@ -509,7 +512,7 @@ private fun GuidePreviewRow(on: Boolean, onToggle: () -> Unit) {
     }
 }
 
-/** Now-playing: a switch with a written On/Off state. White track + knob when on, never amber. */
+/** Now-playing: a switch with a written On/Off state. Red track + white knob when on. */
 @Composable
 private fun NowPlayingRow(on: Boolean, onToggle: () -> Unit) {
     SettingRow(
@@ -531,9 +534,10 @@ private fun NowPlayingRow(on: Boolean, onToggle: () -> Unit) {
 }
 
 /**
- * A presentation-only switch matching the mockup (64×34px → ~32×17dp): ON = white track + a
- * canvas-coloured knob to the right (neutral/white, NOT amber); OFF = raised track + muted knob
- * to the left. Toggling is done by OK on the enclosing row.
+ * A presentation-only switch (~34×18dp). ON = brand-red track + white knob to the right, the
+ * same at rest and on the focus fill (red reads on both). OFF = raised track + muted knob to the
+ * left, flipping to an ink track + ink knob on the focus fill. Toggling is done by OK on the
+ * enclosing row.
  */
 @Composable
 private fun NeutralSwitch(on: Boolean) {
@@ -543,8 +547,12 @@ private fun NeutralSwitch(on: Boolean) {
             .width(34.dp)
             .height(18.dp)
             .clip(trackShape)
-            .background(if (on) LiveWireTheme.onSurface else LiveWireColors.SurfaceRaised)
-            .border(LiveWireDimens.RestBorder, LiveWireColors.Border, trackShape),
+            .background(if (on) LiveWireColors.Live else LiveWireTheme.switchOffTrack)
+            .border(
+                LiveWireDimens.RestBorder,
+                if (on) LiveWireColors.Live else LiveWireTheme.controlBorder,
+                trackShape,
+            ),
         contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Box(
@@ -552,7 +560,7 @@ private fun NeutralSwitch(on: Boolean) {
                 .padding(horizontal = 2.dp)
                 .size(14.dp)
                 .clip(RoundedCornerShape(50))
-                .background(if (on) LiveWireColors.Canvas else LiveWireTheme.onSurfaceMuted),
+                .background(if (on) LiveWireColors.OnLive else LiveWireTheme.switchOffKnob),
         )
     }
 }
@@ -570,8 +578,8 @@ private fun FavoritesRow(onOpen: () -> Unit) {
             modifier = Modifier
                 .heightIn(min = ControlHeight)
                 .clip(shape)
-                .background(LiveWireColors.SurfaceRaised)
-                .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+                .background(LiveWireTheme.controlFill)
+                .border(LiveWireDimens.RestBorder, LiveWireTheme.controlBorder, shape)
                 .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -600,8 +608,8 @@ private fun ProvidersRow(summary: String, onOpen: () -> Unit) {    val shape = R
             modifier = Modifier
                 .heightIn(min = ControlHeight)
                 .clip(shape)
-                .background(LiveWireColors.SurfaceRaised)
-                .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+                .background(LiveWireTheme.controlFill)
+                .border(LiveWireDimens.RestBorder, LiveWireTheme.controlBorder, shape)
                 .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -672,8 +680,8 @@ private fun AboutGroup(
             modifier = Modifier
                 .heightIn(min = ControlHeight)
                 .clip(shape)
-                .background(LiveWireColors.SurfaceRaised)
-                .border(LiveWireDimens.RestBorder, LiveWireColors.Border, shape)
+                .background(LiveWireTheme.controlFill)
+                .border(LiveWireDimens.RestBorder, LiveWireTheme.controlBorder, shape)
                 .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -689,7 +697,7 @@ private fun AboutGroup(
 
     if (updatesEnabled) {
         Spacer(Modifier.height(LiveWireDimens.SpaceXs))
-        // Auto-check switch (white when on, never amber).
+        // Auto-check switch (red when on).
         SettingRow(
             title = "Check for updates automatically",
             description = "Once a day when LiveWire starts — never while you're watching",
