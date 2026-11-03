@@ -63,6 +63,18 @@ object LiveWireColors {
     val LineFaint = Color(0xFF1A2439)
     val BorderStrong = Color(0xFF2A3756)
     val Scrim = Color(0xFF05080E).copy(alpha = 0.72f)
+
+    // Controls drawn ON the focus fill (buttons, steppers, switches inside a focused row).
+    /** A control's outline on the focus fill. */
+    val InkBorder = Color(0xFF0A0F1A).copy(alpha = 0.30f)
+    /** A disabled control's outline on the focus fill. */
+    val InkBorderFaint = Color(0xFF0A0F1A).copy(alpha = 0.15f)
+    /** A pressable box (stepper arrow) on the focus fill. */
+    val InkWash = Color(0xFF0A0F1A).copy(alpha = 0.07f)
+    /** An Off switch track on the focus fill. */
+    val InkTrack = Color(0xFF0A0F1A).copy(alpha = 0.12f)
+    /** Disabled glyphs on the focus fill. */
+    val InkFaint = Color(0xFF0A0F1A).copy(alpha = 0.30f)
 }
 
 /** Spacing and shape tokens (section 5). */
@@ -256,4 +268,57 @@ object LiveWireTheme {
     val progressTrack: Color
         @Composable @ReadOnlyComposable get() =
             if (LocalOnFocus.current) LiveWireColors.ProgressTrackOnFocus else LiveWireColors.ProgressTrack
+
+    // ── Controls inside a focusable row. Each part flips with the row so a control on the
+    // light focus fill is the mirror of its rest state (never dark boxes on the light fill).
+
+    /** A button / segment / stepper box fill: raised at rest, clear on the focus fill. */
+    val controlFill: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) Color.Transparent else LiveWireColors.SurfaceRaised
+
+    /** A control's hairline outline. */
+    val controlBorder: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.InkBorder else LiveWireColors.Border
+
+    /** The outline of a control that responds to D-pad (an enabled stepper arrow). */
+    val controlBorderStrong: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.InkBorder else LiveWireColors.BorderStrong
+
+    /** A pressable box (enabled stepper arrow): raised at rest, a faint ink wash on focus. */
+    val controlWash: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.InkWash else LiveWireColors.SurfaceRaised
+
+    /** The chosen segment's fill: canvas at rest, solid ink on the focus fill. */
+    val controlSelectedFill: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.OnFocus else LiveWireColors.Canvas
+
+    /** Text on [controlSelectedFill]: light in both states. */
+    val onControlSelected: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.Focus else LiveWireColors.OnSurface
+
+    /** Disabled glyph (a stepper arrow at its limit). */
+    val controlDisabled: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.InkFaint else LiveWireColors.OnSurfaceMuted
+
+    /** Disabled control outline. */
+    val controlBorderDisabled: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.InkBorderFaint else LiveWireColors.Border
+
+    /** An Off switch track. (On is always [LiveWireColors.Live] with a white knob.) */
+    val switchOffTrack: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.InkTrack else LiveWireColors.SurfaceRaised
+
+    /** An Off switch knob. */
+    val switchOffKnob: Color
+        @Composable @ReadOnlyComposable get() =
+            if (LocalOnFocus.current) LiveWireColors.OnFocusMuted else LiveWireColors.OnSurfaceMuted
 }
