@@ -136,20 +136,23 @@ class XtreamClient @Inject constructor(
             }
         }
 
+    /** A `pool_info` answer: the [features] found, and whether the panel [timedOut] instead of answering. */
+    data class PoolCheck(val features: Set<String>, val timedOut: Boolean = false)
+
     /**
      * The pool extensions this provider supports (see [PoolSignals]), empty for a plain panel.
      * Null when the check failed on the network, so the caller can try again later. A panel
-     * that doesn't answer within [POOL_CHECK_TIMEOUT_MS] counts as plain, so a slow panel
-     * doesn't hold up every first play.
+     * that doesn't answer within [POOL_CHECK_TIMEOUT_MS] counts as plain for now
+     * ([PoolCheck.timedOut]), so a slow panel doesn't hold up every first play.
      */
-    suspend fun poolFeatures(cfg: ProviderConfig): Set<String>? = withContext(Dispatchers.IO) {
+    suspend fun poolFeatures(cfg: ProviderConfig): PoolCheck? = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder().url(cfg.playerApiUrl(action = "pool_info")).build()
             poolHttp.newCall(req).execute().use { resp ->
-                if (resp.code >= 500) null else PoolSignals.parseFeatures(if (resp.isSuccessful) resp.body?.string() else null)
+                if (resp.code >= 500) null else PoolCheck(PoolSignals.parseFeatures(if (resp.isSuccessful) resp.body?.string() else null))
             }
         } catch (_: java.io.InterruptedIOException) {
-            emptySet()
+            PoolCheck(emptySet(), timedOut = true)
         } catch (_: java.io.IOException) {
             null
         }

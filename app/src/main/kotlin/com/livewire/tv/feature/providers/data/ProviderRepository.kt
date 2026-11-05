@@ -32,7 +32,10 @@ class ProviderRepository @Inject constructor(
     private val m3u: M3uClient,
 ) {
     private val channelCache = LiveChannelCache()
-    private val poolFeatures = ConcurrentHashMap<String, Set<String>>()
+    private val poolFeatures = ConcurrentHashMap<String, CachedPoolFeatures>()
+
+    /** Wall clock for the pool-check expiry; tests replace it. */
+    internal var clock: () -> Long = System::currentTimeMillis
 
     /** For fire-and-forget calls that must outlive the screen that started them (pool stop). */
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -119,17 +122,22 @@ class ProviderRepository @Inject constructor(
         if (PoolSignals.SOURCES in poolFeatures(cfg)) xtream.poolSources(cfg, streamId) else emptyList()
 
     /**
-     * The pool extensions [cfg] supports, checked once per app run (see [PoolSignals]). Empty for
-     * M3U and plain Xtream panels. A failed check is retried on the next call instead of cached.
+     * The pool extensions [cfg] supports (see [PoolSignals]). Empty for M3U and plain Xtream
+     * panels. A real answer is kept for the app run. A timeout counts as plain for
+     * [POOL_RECHECK_MS] and is then checked again, so one slow answer doesn't turn Sources and
+     * game info off until restart. A network failure isn't cached at all.
      */
     suspend fun poolFeatures(cfg: ProviderConfig): Set<String> {
         if (cfg.type != ProviderType.XTREAM) return emptySet()
         val key = providerKey(cfg)
-        poolFeatures[key]?.let { return it }
+        poolFeatures[key]?.let { if (clock() < it.expiresAt) return it.features }
         val found = xtream.poolFeatures(cfg) ?: return emptySet()
-        poolFeatures[key] = found
-        return found
+        val expiresAt = if (found.timedOut) clock() + POOL_RECHECK_MS else Long.MAX_VALUE
+        poolFeatures[key] = CachedPoolFeatures(found.features, expiresAt)
+        return found.features
     }
+
+    private class CachedPoolFeatures(val features: Set<String>, val expiresAt: Long)
 
     private suspend fun withPoolSignals(cfg: ProviderConfig, streamId: String, url: String, poolSource: String?): PlaybackSource {
         val features = poolFeatures(cfg)
@@ -263,5 +271,8 @@ class ProviderRepository @Inject constructor(
 
     private companion object {
         const val UNCATEGORIZED = "Uncategorized"
+
+        /** How long a timed-out `pool_info` check counts as a plain panel before it is tried again. */
+        const val POOL_RECHECK_MS = 60_000L
     }
 }
