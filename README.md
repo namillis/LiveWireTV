@@ -30,7 +30,7 @@ The channels and programmes in these screenshots are made up.
   with each channel's number, logo, programme and time left. After 2 seconds
   the preview plays the channel muted. Below it are the programme's details,
   a progress bar and what's up next. A filter above the list switches between
-  Favourites, Recently watched (the last 8 channels you played), your pinned
+  Favorites, Recently watched (the last 8 channels you played), your pinned
   categories and All channels, and Home remembers your last pick. If your
   provider has a Live Now category, Home opens on it.
 - **Guide.** A programme grid with a red now-line. You can filter it by
@@ -40,7 +40,7 @@ The channels and programmes in these screenshots are made up.
   reused for up to 3 hours, so reopening the Guide in that time doesn't
   download it again.
 - **Player.** Up and Down change channel. Left opens the channel list, and
-  Right opens Options: favourite, audio track, subtitles, picture mode (fit,
+  Right opens Options: favorite, audio track, subtitles, picture mode (fit,
   fill, zoom), reload and stream info.
 - **Catch-up and time shift.** Some providers keep a recording of each
   channel for a few days (an archive). On those channels:
@@ -59,13 +59,13 @@ The channels and programmes in these screenshots are made up.
     fast-forward keys seek too.
   - On a channel without an archive, OK pauses and plays as before, and a
     one-time message says the channel can't rewind.
-- **Favourites.** To add one, hold OK on a channel in Home, the Guide or
-  Search and choose Favourite, or use the Favourite row in the player's
-  Options. Favourites appear in Home's list filter, a ★ Favourites
+- **Favorites.** To add one, hold OK on a channel in Home, the Guide or
+  Search and choose Favorite, or use the Favorite row in the player's
+  Options. Favorites appear in Home's list filter, a ★ Favorites
   filter in the Guide and a group at the top of the player's channel list.
-  If you start watching from a favourite, Up and Down in the player move
-  through your favourites only. Reorder or remove them under
-  Settings → Favourites. They're saved separately for each provider, on the
+  If you start watching from a favorite, Up and Down in the player move
+  through your favorites only. Reorder or remove them under
+  Settings → Favorites. They're saved separately for each provider, on the
   device only.
 - **Pinned categories.** To pin a category, hold OK on it in the Guide's
   category column; hold OK again to unpin it. Up to 6 can be pinned, and they
@@ -91,10 +91,10 @@ The channels and programmes in these screenshots are made up.
   backup instead, and Home says so. LiveWire checks the active provider again
   every 2 minutes while it's down and switches back once it answers, with a
   short note on Home when it does.
-  Favourites, pins and recents are saved per provider, so the backup shows its
+  Favorites, pins and recents are saved per provider, so the backup shows its
   own.
 - **Settings.** Stream format (MPEG-TS or HLS), guide window, channel preview
-  (Home and the Guide), now-playing text in lists, favourites, providers, and
+  (Home and the Guide), now-playing text in lists, favorites, providers, and
   About with Check for updates.
 - **Updates.** LiveWire checks git.namillis.me for a new release once a day
   and offers to install it. It installs an update only if the file's checksum
@@ -234,7 +234,7 @@ app/src/main/kotlin/com/livewire/tv/
     catchup/       Archive URLs and past guide listings for catch-up
     home/          Home screen
     player/        Player screen, overlay, Options and channel list panels
-    favorites/     Favourites storage, hold-OK menu, Channel info, manage screen
+    favorites/     Favorites storage, hold-OK menu, Channel info, manage screen
     search/        Search and search history
     sports/        ESPN scoreboards and matching games to channels
     settings/      Settings screen and stored preferences

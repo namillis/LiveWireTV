@@ -39,7 +39,7 @@ class OptionsPanelStateTest {
         assertNull(state.rootTarget(hasSourceRow = true))
     }
 
-    @Test fun `moving to Favourite counts as the user moving`() {
+    @Test fun `moving to Favorite counts as the user moving`() {
         val state = OptionsPanelState()
         state.start()
         state.rootTarget(hasSourceRow = false)

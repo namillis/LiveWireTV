@@ -110,7 +110,7 @@ class PlayerViewModel @Inject constructor(
     private val _channels = MutableStateFlow(ChannelListState())
     val channels: StateFlow<ChannelListState> = _channels.asStateFlow()
 
-    /** Favourited stream ids for the active provider, for the Options row + channel-list group. */
+    /** Favorited stream ids for the active provider, for the Options row + channel-list group. */
     private val _favoriteIds = MutableStateFlow<Set<String>>(emptySet())
     val favoriteIds: StateFlow<Set<String>> = _favoriteIds.asStateFlow()
 
@@ -128,7 +128,7 @@ class PlayerViewModel @Inject constructor(
     private var categoryChannels: List<LiveChannel> = emptyList()
     private var archiveToken: Int = 1
 
-    /** True when the player was opened from a favourite, so ▲/▼ zap within favourites (task §4). */
+    /** True when the player was opened from a favorite, so ▲/▼ zap within favorites (task §4). */
     private var fromFavorites: Boolean = false
     private var favoritesJob: kotlinx.coroutines.Job? = null
 
@@ -159,7 +159,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** Toggle the currently-playing channel's favourite state (Options panel row). */
+    /** Toggle the currently-playing channel's favorite state (Options panel row). */
     fun toggleCurrentFavorite() {
         val cfg = provider ?: return
         val channel = currentChannel() ?: return
@@ -343,16 +343,16 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * The ▲/▼ neighbour list: the favourites (in saved order) when the player was opened from
-     * a favourite and the current channel is still a favourite, otherwise the playing channel's
-     * category. Falling back to the category when the current channel is no longer a favourite
+     * The ▲/▼ neighbour list: the favorites (in saved order) when the player was opened from
+     * a favorite and the current channel is still a favorite, otherwise the playing channel's
+     * category. Falling back to the category when the current channel is no longer a favorite
      * keeps zapping working after the user removes the one they started from.
      */
     private suspend fun neighbourList(): List<LiveChannel> {
         val cfg = provider ?: return categoryChannels
         if (!fromFavorites) return categoryChannels
         val entries = favorites.favorites(cfg.id).first()
-        // Favourites can span categories, so resolve against ALL the provider's channels
+        // Favorites can span categories, so resolve against ALL the provider's channels
         // (cached per provider, so this reuses the channel list Home/Guide already fetched).
         val all = runCatching { providers.liveChannels(cfg) }.getOrDefault(categoryChannels)
         val favChannels = com.livewire.tv.feature.favorites.data.FavoritesLogic

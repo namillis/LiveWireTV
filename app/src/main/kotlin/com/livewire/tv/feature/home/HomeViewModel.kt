@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
- * One list Home can show: a category name + its channels. The favourites, recently watched and
+ * One list Home can show: a category name + its channels. The favorites, recently watched and
  * pool Live Now lists are flagged. See [HomeLists] for the order and the default.
  */
 data class ChannelRail(
@@ -54,8 +54,8 @@ data class ChannelRail(
 
 /**
  * A brief confirmation for the top-right toast; [token] increases on each one. It stays up for
- * [holdMs]: 2 s for a favourite add/remove, longer for a provider switch the user didn't trigger.
- * A provider switch shows no favourites star ([showStar]).
+ * [holdMs]: 2 s for a favorite add/remove, longer for a provider switch the user didn't trigger.
+ * A provider switch shows no favorites star ([showStar]).
  */
 data class FavoriteConfirmation(
     val token: Int = 0,
@@ -76,7 +76,7 @@ data class HomeUiState(
     val guideLoaded: Boolean = false,
     /** Bumps each time a guide load finishes, so cards re-read now-playing after the rails change. */
     val guideVersion: Int = 0,
-    /** Favourited stream ids for the active provider, for the card star marker. */
+    /** Favorited stream ids for the active provider, for the card star marker. */
     val favoriteIds: Set<String> = emptySet(),
     val confirmation: FavoriteConfirmation = FavoriteConfirmation(),
 )
@@ -103,7 +103,7 @@ class HomeViewModel @Inject constructor(
         com.livewire.tv.feature.settings.data.StreamFormat.TS
 
     /**
-     * The provider's full channel list, for resolving favourites and recents by id/name. Falls
+     * The provider's full channel list, for resolving favorites and recents by id/name. Falls
      * back to the rails' channels when the full list can't be loaded.
      */
     private var allChannels: List<LiveChannel> = emptyList()
@@ -131,7 +131,7 @@ class HomeViewModel @Inject constructor(
     private var railsLoadedAtMs = 0L
     private var refreshJob: Job? = null
 
-    /** The store's latest favourites and watch history, so a refresh can re-resolve those rails. */
+    /** The store's latest favorites and watch history, so a refresh can re-resolve those rails. */
     private var favoriteEntries: List<FavoriteEntry> = emptyList()
     private var watched: List<WatchedChannel> = emptyList()
 
@@ -170,7 +170,7 @@ class HomeViewModel @Inject constructor(
             val failover = active.activeFailover
             provider = cfg
             try {
-                // Favourites and recents can sit in any category, so resolve them against every
+                // Favorites and recents can sit in any category, so resolve them against every
                 // channel, downloaded alongside the rails rather than after them.
                 val fullList = async { runCatching { client.liveChannels(cfg) }.getOrNull().orEmpty() }
                 categories = client.liveCategories(cfg)
@@ -293,7 +293,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Keep the favourites rail, the id set and the stored M3U rematches in sync with the store. */
+    /** Keep the favorites rail, the id set and the stored M3U rematches in sync with the store. */
     private fun CoroutineScope.observeFavorites() {
         val cfg = provider ?: return
         launch {
@@ -312,7 +312,7 @@ class HomeViewModel @Inject constructor(
         favorites.applyRematches(cfg.id, resolved)
         val favChannels = resolved.mapNotNull { it.channel }
         favoriteRail = favChannels.takeIf { it.isNotEmpty() }?.let {
-            ChannelRail(HomeLists.FAVORITES_ID, "Favourites", it, isFavorites = true)
+            ChannelRail(HomeLists.FAVORITES_ID, "Favorites", it, isFavorites = true)
         }
     }
 
@@ -406,18 +406,18 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Toggle [channel] in the active provider's favourites and raise a confirmation toast. */
+    /** Toggle [channel] in the active provider's favorites and raise a confirmation toast. */
     fun toggleFavorite(channel: LiveChannel) {
         val cfg = provider ?: return
         viewModelScope.launch {
-            val wasFavourite = favorites.isFavorite(cfg.id, channel.streamId)
+            val wasFavorite = favorites.isFavorite(cfg.id, channel.streamId)
             favorites.toggle(cfg.id, channel)
             confirmToken += 1
             _state.update {
                 it.copy(
                     confirmation = FavoriteConfirmation(
                         token = confirmToken,
-                        message = FavoritesUi.confirmationLabel(nowFavourite = !wasFavourite),
+                        message = FavoritesUi.confirmationLabel(nowFavorite = !wasFavorite),
                     ),
                 )
             }
@@ -451,7 +451,7 @@ class HomeViewModel @Inject constructor(
             qualityLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.qualityLabel(channel.name),
             nowPlaying = ChannelProgrammes.now(channel, now, lookup),
             upNext = ChannelProgrammes.later(channel, now, lookup),
-            isFavourite = channel.streamId in state.value.favoriteIds,
+            isFavorite = channel.streamId in state.value.favoriteIds,
         )
     }
 

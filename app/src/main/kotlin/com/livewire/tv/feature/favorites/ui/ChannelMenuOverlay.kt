@@ -42,8 +42,8 @@ import com.livewire.tv.ui.theme.LiveWireTheme
 
 /**
  * The hold-OK channel menu (mockup option2-home): a small panel with the channel name as a
- * subtitle, then three rows — Favourite (focused by default, label flips to "Remove from
- * Favourites" when already a favourite), Play, Channel info. The rest of the screen is dimmed
+ * subtitle, then three rows — Favorite (focused by default, label flips to "Remove from
+ * Favorites" when already a favorite), Play, Channel info. The rest of the screen is dimmed
  * with [LiveWireColors.Scrim]. Back closes the menu; the caller restores focus to the item
  * the menu was opened from.
  *
@@ -55,8 +55,8 @@ import com.livewire.tv.ui.theme.LiveWireTheme
 @Composable
 fun ChannelMenuOverlay(
     channel: LiveChannel,
-    isFavourite: Boolean,
-    onToggleFavourite: () -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onPlay: () -> Unit,
     onChannelInfo: () -> Unit,
     onDismiss: () -> Unit,
@@ -64,8 +64,8 @@ fun ChannelMenuOverlay(
 ) {
     BackHandler(enabled = true, onBack = onDismiss)
 
-    val favouriteFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { favouriteFocus.requestFocus() } }
+    val favoriteFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { favoriteFocus.requestFocus() } }
 
     Box(
         modifier
@@ -106,10 +106,10 @@ fun ChannelMenuOverlay(
             Spacer(Modifier.height(LiveWireDimens.SpaceXs))
 
             MenuRow(
-                iconRes = if (isFavourite) R.drawable.ic_fav_star_filled else R.drawable.ic_fav_star_outline,
-                label = FavoritesUi.favouriteActionLabel(isFavourite),
-                focusRequester = favouriteFocus,
-                onClick = { onToggleFavourite(); onDismiss() },
+                iconRes = if (isFavorite) R.drawable.ic_fav_star_filled else R.drawable.ic_fav_star_outline,
+                label = FavoritesUi.favoriteActionLabel(isFavorite),
+                focusRequester = favoriteFocus,
+                onClick = { onToggleFavorite(); onDismiss() },
             )
             MenuRow(
                 iconRes = R.drawable.ic_fav_play,

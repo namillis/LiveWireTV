@@ -12,11 +12,11 @@ import com.livewire.tv.ui.theme.LiveWireColors
 import com.livewire.tv.ui.theme.LiveWireTheme
 
 /**
- * The favourite marker (design system §3.3, task §4): a small OUTLINE star shown after a
- * favourite channel's name on cards, in the guide, and in search results. It is white
+ * The favorite marker (design system §3.3, task §4): a small OUTLINE star shown after a
+ * favorite channel's name on cards, in the guide, and in search results. It is white
  * ([LiveWireColors.OnSurfaceMuted]), never amber — amber means focus — and never red.
  *
- * Rendered only when the channel is a favourite; callers guard on their `favoriteIds` set.
+ * Rendered only when the channel is a favorite; callers guard on their `favoriteIds` set.
  */
 @Composable
 fun FavoriteStar(
@@ -26,7 +26,7 @@ fun FavoriteStar(
 ) {
     Icon(
         painter = painterResource(R.drawable.ic_fav_star_outline),
-        contentDescription = "Favourite",
+        contentDescription = "Favorite",
         tint = tint,
         modifier = modifier.size(size),
     )

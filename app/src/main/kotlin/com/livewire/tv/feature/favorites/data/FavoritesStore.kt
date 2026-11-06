@@ -22,7 +22,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * One favourited channel, scoped to the provider it came from (the file is keyed by
+ * One favorited channel, scoped to the provider it came from (the file is keyed by
  * `providerId`, so the provider is not repeated on the entry).
  *
  * [streamId] is the primary key within a provider, but for M3U it is a hash of the stream
@@ -43,17 +43,17 @@ data class FavoriteEntry(
     val position: Int = 0,
 )
 
-/** A favourite paired with its current live channel, or flagged when the channel is gone. */
+/** A favorite paired with its current live channel, or flagged when the channel is gone. */
 data class ResolvedFavorite(
     val entry: FavoriteEntry,
-    /** The current [LiveChannel] this favourite maps to, or null when [unavailable]. */
+    /** The current [LiveChannel] this favorite maps to, or null when [unavailable]. */
     val channel: LiveChannel?,
     /** True when no current channel matches by stream id or by name in this provider. */
     val unavailable: Boolean,
 )
 
 /**
- * Pure list and resolver operations for favourites. Kept separate from the on-disk store so
+ * Pure list and resolver operations for favorites. Kept separate from the on-disk store so
  * ordering, dedupe, reordering, and the re-match rule are unit-testable without Android.
  *
  * Entries for a provider are always held position-first; every transform renumbers
@@ -71,7 +71,7 @@ object FavoritesLogic {
 
     /**
      * Add [entry] to [current] at the end, or move it there and refresh its display fields if
-     * a favourite with the same [FavoriteEntry.streamId] already exists (idempotent add).
+     * a favorite with the same [FavoriteEntry.streamId] already exists (idempotent add).
      */
     fun add(current: List<FavoriteEntry>, entry: FavoriteEntry): List<FavoriteEntry> {
         val ordered = ordered(current)
@@ -91,7 +91,7 @@ object FavoritesLogic {
         return renumber(ordered + entry.copy(position = ordered.size))
     }
 
-    /** Remove the favourite with [streamId], if present, and close the gap in positions. */
+    /** Remove the favorite with [streamId], if present, and close the gap in positions. */
     fun remove(current: List<FavoriteEntry>, streamId: String): List<FavoriteEntry> =
         renumber(ordered(current).filterNot { it.streamId == streamId })
 
@@ -157,19 +157,19 @@ object FavoritesLogic {
     }
 
     /**
-     * Map each favourite (in stored order) to the current live channel it names:
+     * Map each favorite (in stored order) to the current live channel it names:
      *  1. by [FavoriteEntry.streamId] — the fast, exact path;
      *  2. else by an exact [LiveChannel.name] match within this provider — recovers an entry
      *     whose M3U stream id changed on a refresh, and rewrites the stored [streamId] to the
      *     new one so later lookups take the fast path;
      *  3. else mark it [ResolvedFavorite.unavailable] (channel dropped from the provider).
      *
-     * A live channel is claimed by at most one favourite, so two favourites cannot both
+     * A live channel is claimed by at most one favorite, so two favorites cannot both
      * fall back onto the same renamed channel.
      */
     fun resolve(entries: List<FavoriteEntry>, channels: List<LiveChannel>): List<ResolvedFavorite> {
         val byId = channels.associateBy { it.streamId }
-        // First non-favourited channel per name, for the fallback; a name may repeat.
+        // First non-favorited channel per name, for the fallback; a name may repeat.
         val byName = LinkedHashMap<String, LiveChannel>()
         for (channel in channels) byName.putIfAbsent(channel.name, channel)
 
@@ -194,13 +194,13 @@ object FavoritesLogic {
 }
 
 /**
- * Persists favourites per provider as JSON on disk. Mirrors the DataStore-style JSON
+ * Persists favorites per provider as JSON on disk. Mirrors the DataStore-style JSON
  * serialization of [com.livewire.tv.feature.search.data.RecentHistoryStore], but is backed by
  * a plain [File] directory (one file per provider) so it is exercisable in unit tests without
  * an Android `Context`, the same pattern [com.livewire.tv.feature.epg.data.EpgCache] uses.
  *
  * All list and resolver transforms delegate to [FavoritesLogic]; this class only reads,
- * writes, (de)serializes, and publishes reactive views. Favourites are not secret, and the
+ * writes, (de)serializes, and publishes reactive views. Favorites are not secret, and the
  * app sets `allowBackup=false` globally (see the manifest), so — like [RecentHistoryStore] and
  * [EpgCache] — no per-store backup exclusion is needed. Provided by
  * [com.livewire.tv.di.FavoritesModule].
@@ -225,7 +225,7 @@ class FavoritesStore internal constructor(
     /** Entries for [providerId], ordered by position, updated whenever they change. */
     fun favorites(providerId: String): Flow<List<FavoriteEntry>> = flowFor(providerId).asStateFlow()
 
-    /** The set of favourited stream ids for [providerId], for cheap `isFavorite` checks in UI. */
+    /** The set of favorited stream ids for [providerId], for cheap `isFavorite` checks in UI. */
     fun favoriteIds(providerId: String): Flow<Set<String>> =
         favorites(providerId).map { entries -> entries.map { it.streamId }.toSet() }
 
@@ -233,7 +233,7 @@ class FavoritesStore internal constructor(
     suspend fun isFavorite(providerId: String, streamId: String): Boolean =
         flowFor(providerId).value.any { it.streamId == streamId }
 
-    /** Add [channel] to [providerId]'s favourites (idempotent), stamping [now] as its add time. */
+    /** Add [channel] to [providerId]'s favorites (idempotent), stamping [now] as its add time. */
     suspend fun add(providerId: String, channel: LiveChannel, now: Long = System.currentTimeMillis()) =
         update(providerId) { current ->
             FavoritesLogic.add(
@@ -248,11 +248,11 @@ class FavoritesStore internal constructor(
             )
         }
 
-    /** Remove [streamId] from [providerId]'s favourites, if present. */
+    /** Remove [streamId] from [providerId]'s favorites, if present. */
     suspend fun remove(providerId: String, streamId: String) =
         update(providerId) { FavoritesLogic.remove(it, streamId) }
 
-    /** Toggle [channel]'s favourite state for [providerId]. */
+    /** Toggle [channel]'s favorite state for [providerId]. */
     suspend fun toggle(providerId: String, channel: LiveChannel, now: Long = System.currentTimeMillis()) =
         update(providerId) { current ->
             FavoritesLogic.toggle(
@@ -293,7 +293,7 @@ class FavoritesStore internal constructor(
         }
 
     /**
-     * Delete every favourite for [providerId] (memory + disk). Call when the provider is
+     * Delete every favorite for [providerId] (memory + disk). Call when the provider is
      * deleted; hooked next to the guide-cache delete in
      * [com.livewire.tv.feature.providers.ProvidersViewModel.remove].
      */

@@ -67,21 +67,21 @@ fun ChannelListPanel(
     favoriteIds: Set<String> = emptySet(),
 ) {
     Box(modifier.fillMaxSize()) {
-        // Display order: a "Favourites" group (the favourite channels in this category list,
+        // Display order: a "Favorites" group (the favorite channels in this category list,
         // in list order) first, then the full category. The playing/focused channel is tracked
-        // by stream id, not list index, so the Favourites group's duplicates don't confuse the
-        // preview. Favourite rows carry the outline-star marker (mockup option2-player-channels).
+        // by stream id, not list index, so the Favorites group's duplicates don't confuse the
+        // preview. Favorite rows carry the outline-star marker (mockup option2-player-channels).
         val favItems = remember(state.items, favoriteIds) {
             state.items.filter { it.channel.streamId in favoriteIds }
         }
         val displayRows = remember(state.items, favItems) {
             buildList {
                 if (favItems.isNotEmpty()) {
-                    add(ChannelPanelRow.Header("Favourites"))
-                    favItems.forEach { add(ChannelPanelRow.Channel(it, favouriteGroup = true)) }
+                    add(ChannelPanelRow.Header("Favorites"))
+                    favItems.forEach { add(ChannelPanelRow.Channel(it, favoriteGroup = true)) }
                     add(ChannelPanelRow.Header(state.categoryName))
                 }
-                state.items.forEach { add(ChannelPanelRow.Channel(it, favouriteGroup = false)) }
+                state.items.forEach { add(ChannelPanelRow.Channel(it, favoriteGroup = false)) }
             }
         }
         val playingStreamId = state.items.getOrNull(state.playingIndex)?.channel?.streamId
@@ -116,7 +116,7 @@ fun ChannelListPanel(
                     key = { index, row ->
                         when (row) {
                             is ChannelPanelRow.Header -> "h:${row.title}:$index"
-                            is ChannelPanelRow.Channel -> "c:${if (row.favouriteGroup) "fav" else "cat"}:${row.item.channel.streamId}"
+                            is ChannelPanelRow.Channel -> "c:${if (row.favoriteGroup) "fav" else "cat"}:${row.item.channel.streamId}"
                         }
                     },
                 ) { _, row ->
@@ -125,12 +125,12 @@ fun ChannelListPanel(
                         is ChannelPanelRow.Channel -> {
                             val item = row.item
                             // Initial focus goes to the playing channel's row in the category
-                            // group (not its favourites duplicate), so focus restore is stable.
-                            val isInitial = !row.favouriteGroup && item.channel.streamId == playingStreamId
+                            // group (not its favorites duplicate), so focus restore is stable.
+                            val isInitial = !row.favoriteGroup && item.channel.streamId == playingStreamId
                             ChannelRow(
                                 item = item,
                                 watching = item.channel.streamId == playingStreamId,
-                                favourite = item.channel.streamId in favoriteIds,
+                                favorite = item.channel.streamId in favoriteIds,
                                 now = now,
                                 focusRequester = if (isInitial) initialFocus else null,
                                 onFocused = { focusedStreamId = item.channel.streamId },
@@ -158,7 +158,7 @@ fun ChannelListPanel(
             if (state.items.isNotEmpty()) {
                 runCatching {
                     val target = displayRows.indexOfFirst {
-                        it is ChannelPanelRow.Channel && !it.favouriteGroup &&
+                        it is ChannelPanelRow.Channel && !it.favoriteGroup &&
                             it.item.channel.streamId == playingStreamId
                     }.coerceAtLeast(0)
                     listState.scrollToItem(target)
@@ -172,10 +172,10 @@ fun ChannelListPanel(
 /** One row of the channel-list panel's display list: a group header or a channel. */
 private sealed interface ChannelPanelRow {
     data class Header(val title: String) : ChannelPanelRow
-    data class Channel(val item: ChannelListItem, val favouriteGroup: Boolean) : ChannelPanelRow
+    data class Channel(val item: ChannelListItem, val favoriteGroup: Boolean) : ChannelPanelRow
 }
 
-/** A group header inside the channel list (e.g. "FAVOURITES", the category name). Not focusable. */
+/** A group header inside the channel list (e.g. "FAVORITES", the category name). Not focusable. */
 @Composable
 private fun GroupHeader(title: String) {
     Overline(title.uppercase(), modifier = Modifier.fillMaxWidth().padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
@@ -190,7 +190,7 @@ private fun ChannelRow(
     focusRequester: FocusRequester?,
     onFocused: () -> Unit,
     onClick: () -> Unit,
-    favourite: Boolean = false,
+    favorite: Boolean = false,
 ) {
     PlayerFlatRow(
         onClick = onClick,
@@ -219,7 +219,7 @@ private fun ChannelRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (favourite) com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 11.dp)
+                    if (favorite) com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 11.dp)
                     if (watching) WatchingTag()
                 }
                 Spacer(Modifier.height(3.dp))

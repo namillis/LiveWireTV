@@ -6,25 +6,25 @@ import org.junit.Test
 
 /**
  * The fallback focus-target picker used to return focus to the card that opened an overlay,
- * after a favourite toggle may have added/removed the Favourites rail and shifted indices.
+ * after a favorite toggle may have added/removed the Favorites rail and shifted indices.
  */
 class FavoritesFocusTest {
 
-    // rails[0] = Favourites (fav index 0), rails[1..] = category rails.
+    // rails[0] = Favorites (fav index 0), rails[1..] = category rails.
     private val rails = listOf(
-        listOf("cnn", "fox"),   // Favourites rail
+        listOf("cnn", "fox"),   // Favorites rail
         listOf("cnn", "nbc"),   // News
         listOf("espn", "fox"),  // Sports
     )
 
     @Test
-    fun `prefers the item in a category rail over the favourites rail`() {
+    fun `prefers the item in a category rail over the favorites rail`() {
         val t = FavoritesFocus.restoreTarget(rails, favoritesRailIndex = 0, streamId = "cnn")
-        assertEquals(FavoritesFocus.Target(1, 0), t) // News rail, not the Favourites rail at 0
+        assertEquals(FavoritesFocus.Target(1, 0), t) // News rail, not the Favorites rail at 0
     }
 
     @Test
-    fun `finds an item that only exists in the favourites rail`() {
+    fun `finds an item that only exists in the favorites rail`() {
         val onlyFav = listOf(listOf("gone"), listOf("nbc"))
         val t = FavoritesFocus.restoreTarget(onlyFav, favoritesRailIndex = 0, streamId = "gone")
         assertEquals(FavoritesFocus.Target(0, 0), t)

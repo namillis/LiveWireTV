@@ -6,7 +6,7 @@ import com.livewire.tv.feature.providers.domain.ProviderCategory
 /** A category the Guide can be narrowed to, with how many of the loaded channels it holds. */
 data class GuideCategory(val id: String, val name: String, val channelCount: Int)
 
-/** The sentinel category id for the ★ Favourites filter, shown first in the column (task §4). */
+/** The sentinel category id for the ★ Favorites filter, shown first in the column (task §4). */
 const val FAVORITES_CATEGORY_ID = "\u0000favorites"
 
 /**
@@ -22,12 +22,12 @@ internal fun guideCategories(categories: List<ProviderCategory>, channels: List<
 }
 
 /**
- * The ★ Favourites entry for the top of the category column. Its count is the number of
- * favourite rows the grid will actually show — the resolved, available favourites among the
+ * The ★ Favorites entry for the top of the category column. Its count is the number of
+ * favorite rows the grid will actually show — the resolved, available favorites among the
  * loaded [rows] — so the count equals the rows displayed (task §4: don't show 5 for 4).
  */
 internal fun favoritesCategory(rows: List<GuideRow>, favoriteIds: Set<String>): GuideCategory =
-    GuideCategory(FAVORITES_CATEGORY_ID, "Favourites", rows.count { it.channel.streamId in favoriteIds })
+    GuideCategory(FAVORITES_CATEGORY_ID, "Favorites", rows.count { it.channel.streamId in favoriteIds })
 
 /**
  * The rows left after the category and keyword filters. [categoryId] null means all

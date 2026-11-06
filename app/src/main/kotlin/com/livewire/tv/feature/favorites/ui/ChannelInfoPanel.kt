@@ -70,7 +70,7 @@ data class ChannelInfoModel(
     val qualityLabel: String?,
     val nowPlaying: EpgProgramme?,
     val upNext: List<EpgProgramme>,
-    val isFavourite: Boolean,
+    val isFavorite: Boolean,
 )
 
 /**
@@ -78,7 +78,7 @@ data class ChannelInfoModel(
  * a strongly dimmed screen, opened from the hold-OK menu on Home, Guide and Search. It shows the
  * channel identity, cheap stream chips (FORMAT from Settings, QUALITY parsed from the name — no
  * audio language, never probing the stream), the on-now programme with progress, an up-next
- * list, and a Play + Favourite button pair. When there is no guide data it shows the empty
+ * list, and a Play + Favorite button pair. When there is no guide data it shows the empty
  * state. Back closes it; the host restores focus to the card/row that opened it (via [onDismiss]).
  *
  * Fixes vs the mockup (task §4): the backdrop is dimmed more strongly than the mockup (matching
@@ -89,7 +89,7 @@ fun ChannelInfoPanel(
     model: ChannelInfoModel,
     now: Long,
     onPlay: () -> Unit,
-    onToggleFavourite: () -> Unit,
+    onToggleFavorite: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -133,9 +133,9 @@ fun ChannelInfoPanel(
                 }
 
                 Spacer(Modifier.height(LiveWireDimens.SpaceM))
-                // The Favourite button toggles in place (label flips, toast shows, focus stays);
+                // The Favorite button toggles in place (label flips, toast shows, focus stays);
                 // it must NOT close the panel. Only Play and Back close it.
-                Actions(model.isFavourite, playFocus, onPlay, onToggleFavourite)
+                Actions(model.isFavorite, playFocus, onPlay, onToggleFavorite)
                 Spacer(Modifier.height(LiveWireDimens.SpaceS))
                 HintRow()
             }
@@ -288,7 +288,7 @@ private fun EmptyState() {
 }
 
 @Composable
-private fun Actions(isFavourite: Boolean, playFocus: FocusRequester, onPlay: () -> Unit, onToggleFavourite: () -> Unit) {
+private fun Actions(isFavorite: Boolean, playFocus: FocusRequester, onPlay: () -> Unit, onToggleFavorite: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(LiveWireDimens.SpaceM)) {
         ActionButton(
             iconRes = R.drawable.ic_fav_play,
@@ -297,9 +297,9 @@ private fun Actions(isFavourite: Boolean, playFocus: FocusRequester, onPlay: () 
             modifier = Modifier.focusRequester(playFocus),
         )
         ActionButton(
-            iconRes = if (isFavourite) R.drawable.ic_fav_star_filled else R.drawable.ic_fav_star_outline,
-            label = if (isFavourite) "Favourited" else "Favourite",
-            onClick = onToggleFavourite,
+            iconRes = if (isFavorite) R.drawable.ic_fav_star_filled else R.drawable.ic_fav_star_outline,
+            label = if (isFavorite) "Favorited" else "Favorite",
+            onClick = onToggleFavorite,
         )
     }
 }

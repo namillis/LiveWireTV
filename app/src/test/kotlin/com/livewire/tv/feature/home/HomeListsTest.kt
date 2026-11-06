@@ -12,12 +12,12 @@ class HomeListsTest {
         ChannelRail(id, title, ids.map(::ch), isLiveNow = liveNow)
 
     private val live = rail("1", "Live Now", "e1", "e2", liveNow = true)
-    private val fav = rail(HomeLists.FAVORITES_ID, "Favourites", "a")
+    private val fav = rail(HomeLists.FAVORITES_ID, "Favorites", "a")
     private val recent = rail(HomeLists.RECENT_ID, "Recently watched", "b")
     private val news = rail("7", "News", "n1")
     private val all = rail(HomeLists.ALL_ID, "All channels", "a", "b", "n1")
 
-    @Test fun `lists run Live Now, Favourites, Recent, categories, All`() {
+    @Test fun `lists run Live Now, Favorites, Recent, categories, All`() {
         val lists = HomeLists.lists(live, fav, recent, listOf(news), all)
         assertEquals(listOf("1", HomeLists.FAVORITES_ID, HomeLists.RECENT_ID, "7", HomeLists.ALL_ID), lists.map { it.categoryId })
     }
@@ -37,7 +37,7 @@ class HomeListsTest {
         assertEquals("1", HomeLists.defaultSelection(HomeLists.lists(live, fav, recent, listOf(news), all), null))
     }
 
-    @Test fun `without Live Now the default falls back Favourites, Recent, All`() {
+    @Test fun `without Live Now the default falls back Favorites, Recent, All`() {
         assertEquals(HomeLists.FAVORITES_ID, HomeLists.defaultSelection(HomeLists.lists(null, fav, recent, listOf(news), all), null))
         assertEquals(HomeLists.RECENT_ID, HomeLists.defaultSelection(HomeLists.lists(null, null, recent, listOf(news), all), null))
         assertEquals(HomeLists.ALL_ID, HomeLists.defaultSelection(HomeLists.lists(null, null, null, listOf(news), all), null))

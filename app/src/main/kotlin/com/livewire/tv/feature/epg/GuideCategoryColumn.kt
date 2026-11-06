@@ -105,7 +105,7 @@ internal fun GuideCategoryColumn(
     val width by animateDpAsState(if (expanded) EXPANDED_WIDTH else COLLAPSED_WIDTH, label = "categoryWidth")
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCard)
     val fieldRequester = remember { FocusRequester() }
-    // Entry order (mockup option2-guide): ★ Favourites (sentinel id) first when present, then
+    // Entry order (mockup option2-guide): ★ Favorites (sentinel id) first when present, then
     // "All channels" (null id), then the provider categories. A null entry renders All channels.
     val entries: List<GuideCategory?> = remember(categories) {
         val favorites = categories.firstOrNull { it.id == FAVORITES_CATEGORY_ID }

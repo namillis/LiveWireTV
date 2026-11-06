@@ -84,7 +84,7 @@ class OptionsPanelState {
     private var userMoved = false
 
     /**
-     * Report a root row taking focus. [row] is null for rows that open no sub-list (Favourite,
+     * Report a root row taking focus. [row] is null for rows that open no sub-list (Favorite,
      * Reload stream). Focus leaving [placed] after it landed there is the user moving.
      */
     fun onRootRowFocused(row: OptionsView?) {
@@ -96,7 +96,7 @@ class OptionsPanelState {
      * The root row to focus now, or null to leave focus where the user put it.
      *
      * Back from a sub-list returns to the row that opened it. A fresh open focuses Source, not
-     * Favourite, so a quick Right then OK can't toggle Favourite by accident. Source only shows
+     * Favorite, so a quick Right then OK can't toggle Favorite by accident. Source only shows
      * when the channel has two or more streams; otherwise the next row, Audio.
      *
      * The streams load after the panel opens, so [hasSourceRow] can turn true a moment later.
@@ -124,7 +124,7 @@ fun rememberOptionsPanelState(): OptionsPanelState = remember { OptionsPanelStat
  * The Options side panel (design system §9.6, mockup option3-options.png): a right-hand panel
  * with one up/down list, each row showing its current value. OK on a choice row opens a
  * sub-list in the same panel; Back returns to the root, Back again closes the panel (handled
- * by the screen via [OptionsPanelState]). Rows: Favourite (add/remove the current channel),
+ * by the screen via [OptionsPanelState]). Rows: Favorite (add/remove the current channel),
  * Audio, Subtitles, Picture, Reload stream, Stream info. Stream format lives in Settings; a
  * sleep timer is not built.
  *
@@ -240,10 +240,10 @@ private fun RootList(
 
     // Keyed items: when the Source row appears above a focused row, that row keeps its focus.
     LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        item(key = "favourite") {
+        item(key = "favorite") {
             OptionRow(
                 iconRes = if (isFavorite) R.drawable.ic_fav_star_filled else R.drawable.ic_fav_star_outline,
-                label = com.livewire.tv.feature.favorites.ui.FavoritesUi.favouriteActionLabel(isFavorite),
+                label = com.livewire.tv.feature.favorites.ui.FavoritesUi.favoriteActionLabel(isFavorite),
                 value = null,
                 hasChevron = false,
                 onFocused = { onRowFocused(null) },

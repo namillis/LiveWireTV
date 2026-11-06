@@ -53,7 +53,7 @@ object HomeRails {
 
     /**
      * The `railIndex:cardIndex` position for the remembered card [memory] in [rails] (each rail
-     * as its id and its stream ids). Rails come and go (Favourites, Recently watched, pins), so
+     * as its id and its stream ids). Rails come and go (Favorites, Recently watched, pins), so
      * a position saved earlier can point at the wrong card or none. Resolution order: the same
      * channel on the same rail, else the same channel on any rail, else the first card of the
      * first non-empty rail. Null when there are no cards at all.

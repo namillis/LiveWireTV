@@ -70,7 +70,7 @@ enum class TopLevel(val route: String, val label: String, @DrawableRes val icon:
         /**
          * The tab the top bar marks as current for [route], or null when the screen has no bar
          * (onboarding, the player). Sub-screens reached from a section (Providers and
-         * Favourites, opened from Settings) keep the bar with their parent marked.
+         * Favorites, opened from Settings) keep the bar with their parent marked.
          */
         fun barSectionOf(route: String?): TopLevel? = of(route) ?: when (route) {
             Routes.PROVIDERS -> SETTINGS
@@ -91,7 +91,7 @@ enum class TopLevel(val route: String, val label: String, @DrawableRes val icon:
  * - Down returns to the item you left ([focusRestorer] on the content).
  * - Back from a section's content moves focus to the bar. Back from the bar goes to Home,
  *   and on Home it falls through so the app exits.
- * - Sub-screens (Providers, Favourites) keep the bar but their Back pops to Settings.
+ * - Sub-screens (Providers, Favorites) keep the bar but their Back pops to Settings.
  * - The player and onboarding have no bar; the NavHost stays in the same composition slot
  *   either way, so it keeps its state.
  */

@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-/** One row of the manage screen: the stored favourite plus the channel it resolves to. */
+/** One row of the manage screen: the stored favorite plus the channel it resolves to. */
 data class ManageRow(
     val entry: FavoriteEntry,
     /** Position shown to the user, 1-based. */
@@ -42,10 +42,10 @@ data class FavoritesManageUiState(
 )
 
 /**
- * Backs the Settings → Favourites management screen (mockup option1-manage). Reads the active
- * provider's favourites, resolves each to a current [LiveChannel] (flagging the Unavailable
+ * Backs the Settings → Favorites management screen (mockup option1-manage). Reads the active
+ * provider's favorites, resolves each to a current [LiveChannel] (flagging the Unavailable
  * ones), and exposes reorder (move up/down) and remove. All ordering goes through
- * [FavoritesStore]/[FavoritesLogic], so the Home Favourites list and Guide filter stay in the same order.
+ * [FavoritesStore]/[FavoritesLogic], so the Home Favorites list and Guide filter stay in the same order.
  */
 @HiltViewModel
 class FavoritesManageViewModel @Inject constructor(

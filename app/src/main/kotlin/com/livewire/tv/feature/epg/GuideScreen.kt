@@ -280,8 +280,8 @@ private fun GuideContent(
 
     /**
      * Return focus to the row for [streamId] after an overlay (menu / Channel info) closes.
-     * Resolved by stream id, not index, because toggling a favourite under the ★ Favourites
-     * filter adds/removes rows; if that row is gone (unfavourited while filtered) fall back to
+     * Resolved by stream id, not index, because toggling a favorite under the ★ Favorites
+     * filter adds/removes rows; if that row is gone (unfavorited while filtered) fall back to
      * the previously focused row, then the first row. Retries a few frames so the restore lands
      * after the filtered list recomposes, otherwise focus falls to the nav drawer and opens it.
      */
@@ -606,12 +606,12 @@ private fun GuideContent(
         }
     }
 
-        // Hold-OK channel menu (mockup option2): dims the screen, Favourite focused by default.
+        // Hold-OK channel menu (mockup option2): dims the screen, Favorite focused by default.
         menuChannel?.let { channel ->
             com.livewire.tv.feature.favorites.ui.ChannelMenuOverlay(
                 channel = channel,
-                isFavourite = channel.streamId in state.favoriteIds,
-                onToggleFavourite = { onToggleFavorite(channel) },
+                isFavorite = channel.streamId in state.favoriteIds,
+                onToggleFavorite = { onToggleFavorite(channel) },
                 onPlay = {
                     targetFor(channel)?.let { onPlayChannel(it, channel.name, channel.streamId in state.favoriteIds) }
                 },
@@ -631,7 +631,7 @@ private fun GuideContent(
                     targetFor(channel)?.let { onPlayChannel(it, channel.name, channel.streamId in state.favoriteIds) }
                     infoChannel = null
                 },
-                onToggleFavourite = { onToggleFavorite(channel) },
+                onToggleFavorite = { onToggleFavorite(channel) },
                 onDismiss = { infoChannel = null; restoreFocusToStreamId(channel.streamId) },
             )
         }
@@ -644,7 +644,7 @@ private fun GuideContent(
     }
 }
 
-/** The ★ Favourites filter with no favourites yet (mockup guide-empty): a big outline star. */
+/** The ★ Favorites filter with no favorites yet (mockup guide-empty): a big outline star. */
 @Composable
 private fun FavoritesGuideEmpty() {
     Box(Modifier.fillMaxSize().padding(LiveWireDimens.SpaceL), Alignment.Center) {
@@ -652,13 +652,13 @@ private fun FavoritesGuideEmpty() {
             com.livewire.tv.feature.favorites.ui.FavoriteStar(size = 56.dp, tint = LiveWireTheme.onSurfaceMuted)
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
             Text(
-                "No favourites yet",
+                "No favorites yet",
                 style = MaterialTheme.typography.headlineSmall,
                 color = LiveWireTheme.onSurface,
             )
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Text(
-                "Long-press OK on any channel to add it to Favourites",
+                "Long-press OK on any channel to add it to Favorites",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LiveWireTheme.onSurfaceMuted,
             )
@@ -952,7 +952,7 @@ private fun GuideRowView(
     laneStepping: () -> Boolean = { false },
 ) {
     Row(Modifier.height(ROW_HEIGHT).gridLine()) {
-        // Fixed channel column: number, logo, name. Favourites carry a star, archive channels
+        // Fixed channel column: number, logo, name. Favorites carry a star, archive channels
         // the catch-up mark after the name.
         Row(
             Modifier.width(CHANNEL_COL).fillMaxHeight().background(LiveWireColors.Canvas).padding(end = 8.dp),

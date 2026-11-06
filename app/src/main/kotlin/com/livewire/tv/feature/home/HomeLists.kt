@@ -5,7 +5,7 @@ package com.livewire.tv.feature.home
  * runs on the JVM.
  *
  * The dropdown holds, in order: the pool's Live Now category (when the provider sends one),
- * Favourites, Recently watched, the pinned (or first) categories, and All channels. Empty lists
+ * Favorites, Recently watched, the pinned (or first) categories, and All channels. Empty lists
  * are left out.
  */
 object HomeLists {
@@ -33,7 +33,7 @@ object HomeLists {
 
     /**
      * Which list Home opens on: the one picked last time on this provider ([remembered]) while it
-     * still exists, else Live Now, else Favourites, else Recently watched, else All channels,
+     * still exists, else Live Now, else Favorites, else Recently watched, else All channels,
      * else the first list. Null when there are no lists.
      */
     fun defaultSelection(lists: List<ChannelRail>, remembered: String?): String? {

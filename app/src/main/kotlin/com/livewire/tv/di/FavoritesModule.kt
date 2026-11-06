@@ -10,8 +10,8 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * Provides the per-provider favourites store ([FavoritesStore]). A single app-wide instance
- * so every screen that reads or toggles favourites (Home, Guide, Player, Search, the
+ * Provides the per-provider favorites store ([FavoritesStore]). A single app-wide instance
+ * so every screen that reads or toggles favorites (Home, Guide, Player, Search, the
  * management screen) and the Providers screen that clears them on delete share one store.
  */
 @Module

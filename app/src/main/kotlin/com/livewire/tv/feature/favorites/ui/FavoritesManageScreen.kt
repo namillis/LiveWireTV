@@ -61,15 +61,15 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Settings → Favourites (mockup option1-manage): a single focus column of favourite rows, each
+ * Settings → Favorites (mockup option1-manage): a single focus column of favorite rows, each
  * with a logo tile, "★ name", the channel number/now-playing line, and per-row Move + Remove.
  * A row in Move state shows a neutral MOVING tag and up/down steppers; ▲/▼ reorder and OK (or
- * Move again) drops it. An Unavailable favourite (its channel is gone) shows a "?" tile, an
+ * Move again) drops it. An Unavailable favorite (its channel is gone) shows a "?" tile, an
  * UNAVAILABLE tag and only Remove.
  *
  * Colour discipline (§3.3): amber is only the focus ring (via [LiveWireSurface]); the MOVING
  * and UNAVAILABLE tags are neutral/muted, never amber. Order changes go straight to the store,
- * so the Home Favourites list and Guide filter follow. Back returns to Settings (handled by the nav host).
+ * so the Home Favorites list and Guide filter follow. Back returns to Settings (handled by the nav host).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -144,7 +144,7 @@ fun FavoritesManageScreen(
 @Composable
 private fun TopLine(summary: String) {
     Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
-        Text("Favourites", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
+        Text("Favorites", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceM))
         Text(
             summary,
@@ -160,7 +160,7 @@ private fun TopLine(summary: String) {
 @Composable
 private fun Breadcrumb() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Overline("Settings  ›  Favourites")
+        Overline("Settings  ›  Favorites")
     }
 }
 
@@ -364,7 +364,7 @@ private fun LogoTile(name: String, unavailable: Boolean) {
 private fun secondaryLine(row: ManageRow, moving: Boolean): String = when {
     moving -> "Press ▲ ▼ to reposition · OK to drop"
     row.unavailable -> "Not in this provider anymore — remove it or keep for later"
-    else -> row.nowPlayingTitle ?: "In your favourites"
+    else -> row.nowPlayingTitle ?: "In your favorites"
 }
 
 @Composable
@@ -382,10 +382,10 @@ private fun EmptyState() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             FavoriteStar(size = 48.dp)
             Spacer(Modifier.height(LiveWireDimens.SpaceM))
-            Text("No favourites yet", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
+            Text("No favorites yet", style = LiveWireType.Heading, color = LiveWireTheme.onSurface)
             Spacer(Modifier.height(LiveWireDimens.SpaceS))
             Text(
-                "Long-press OK on any channel to add it to Favourites",
+                "Long-press OK on any channel to add it to Favorites",
                 style = LiveWireType.Body,
                 color = LiveWireTheme.onSurfaceMuted,
             )
@@ -396,7 +396,7 @@ private fun EmptyState() {
 @Composable
 private fun HintLine() {
     Text(
-        "Move picks a favourite up, ▲ ▼ reorder, OK drops it. Home and the Guide list them in this order.",
+        "Move picks a favorite up, ▲ ▼ reorder, OK drops it. Home and the Guide list them in this order.",
         style = LiveWireType.Body,
         color = LiveWireTheme.onSurfaceMuted,
         maxLines = 2,

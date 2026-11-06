@@ -67,7 +67,7 @@ data class GuideUiState(
     val pastEnabled: Boolean = false,
     /** The Settings switch for the muted channel preview. */
     val previewEnabled: Boolean = false,
-    /** Favourited stream ids for the active provider, for the row star + ★ Favourites filter. */
+    /** Favorited stream ids for the active provider, for the row star + ★ Favorites filter. */
     val favoriteIds: Set<String> = emptySet(),
     /** Category ids pinned to Home for the active provider, for the column's pin marker. */
     val pinnedIds: Set<String> = emptySet(),
@@ -75,7 +75,7 @@ data class GuideUiState(
     val confirmation: com.livewire.tv.feature.home.FavoriteConfirmation = com.livewire.tv.feature.home.FavoriteConfirmation(),
 ) {
     /**
-     * The category column entries: ★ Favourites first (count = rows it will show), then the
+     * The category column entries: ★ Favorites first (count = rows it will show), then the
      * provider categories. "All channels" is added by the column itself via [totalChannels].
      */
     val columnCategories: List<GuideCategory> by lazy {
@@ -86,9 +86,9 @@ data class GuideUiState(
     val rows: List<GuideRow> by lazy { filterGuideRows(allRows, categoryId, query, favoriteIds) }
     val totalChannels: Int get() = allRows.size
     val categoryName: String get() =
-        if (categoryId == FAVORITES_CATEGORY_ID) "Favourites"
+        if (categoryId == FAVORITES_CATEGORY_ID) "Favorites"
         else categories.firstOrNull { it.id == categoryId }?.name ?: "All channels"
-    /** True when the ★ Favourites filter is on but no favourite is available to show. */
+    /** True when the ★ Favorites filter is on but no favorite is available to show. */
     val favoritesEmpty: Boolean get() = categoryId == FAVORITES_CATEGORY_ID && rows.isEmpty()
 }
 
@@ -204,7 +204,7 @@ class GuideViewModel @Inject constructor(
                         },
                         categories = guideCategories,
                         // A filter from a previous provider (or a vanished category) no longer
-                        // applies — but the ★ Favourites sentinel is always valid.
+                        // applies — but the ★ Favorites sentinel is always valid.
                         categoryId = it.categoryId?.takeIf { id ->
                             id == FAVORITES_CATEGORY_ID || guideCategories.any { c -> c.id == id }
                         },
@@ -371,11 +371,11 @@ class GuideViewModel @Inject constructor(
         }
     }
 
-    /** Toggle [channel] in the active provider's favourites (hold-OK menu) and raise a toast. */
+    /** Toggle [channel] in the active provider's favorites (hold-OK menu) and raise a toast. */
     fun toggleFavorite(channel: LiveChannel) {
         val cfg = provider ?: return
         viewModelScope.launch {
-            val wasFavourite = favorites.isFavorite(cfg.id, channel.streamId)
+            val wasFavorite = favorites.isFavorite(cfg.id, channel.streamId)
             favorites.toggle(cfg.id, channel)
             confirmToken += 1
             _state.update {
@@ -383,7 +383,7 @@ class GuideViewModel @Inject constructor(
                     confirmation = com.livewire.tv.feature.home.FavoriteConfirmation(
                         token = confirmToken,
                         message = com.livewire.tv.feature.favorites.ui.FavoritesUi
-                            .confirmationLabel(nowFavourite = !wasFavourite),
+                            .confirmationLabel(nowFavorite = !wasFavorite),
                     ),
                 )
             }
@@ -412,7 +412,7 @@ class GuideViewModel @Inject constructor(
             qualityLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.qualityLabel(channel.name),
             nowPlaying = ChannelProgrammes.now(channel, now) { programmes },
             upNext = ChannelProgrammes.later(channel, now) { programmes },
-            isFavourite = channel.streamId in _state.value.favoriteIds,
+            isFavorite = channel.streamId in _state.value.favoriteIds,
         )
     }
 
