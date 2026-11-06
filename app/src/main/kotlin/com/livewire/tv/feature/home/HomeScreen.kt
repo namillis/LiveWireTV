@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -115,7 +116,12 @@ fun HomeScreen(
     val updateDialogShowing = com.livewire.tv.feature.update.isDialogState(updateState)
 
     // The ViewModel lives as long as Home's back-stack entry, so coming back keeps the lists.
-    LaunchedEffect(Unit) { viewModel.onShown() }
+    // ON_START, not first composition: a TV keeps the app alive in the background, so reopening
+    // it resumes this same screen and only the lifecycle tells us the user is back.
+    LifecycleStartEffect(Unit) {
+        viewModel.onShown()
+        onStopOrDispose { }
+    }
 
     val list = state.rails.firstOrNull { it.categoryId == state.selectedListId }
     val channels = list?.channels.orEmpty()

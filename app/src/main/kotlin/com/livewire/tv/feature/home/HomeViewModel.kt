@@ -365,11 +365,14 @@ class HomeViewModel @Inject constructor(
             categoryRails = rails
             liveNowRail = live
             allChannels = channels
-            if (!changed) return@launch
-            rebuildAllRail()
-            rebuildFavoriteRail(cfg)
-            rebuildRecentRail(cfg)
-            publishRails()
+            if (changed) {
+                rebuildAllRail()
+                rebuildFavoriteRail(cfg)
+                rebuildRecentRail(cfg)
+                publishRails()
+            }
+            // Same channels doesn't mean same programmes: after time away the now-playing lines
+            // are out of date even when the lists are not, so the guide always reloads.
             loadGuide()
         }
     }

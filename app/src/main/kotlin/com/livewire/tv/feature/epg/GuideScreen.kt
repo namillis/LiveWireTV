@@ -69,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -135,7 +136,12 @@ fun GuideScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     // Re-runs on every return to the Guide; the ViewModel keeps the grid when it is still
     // fresh, so coming back from the player does not reload it or lose the user's place.
-    LaunchedEffect(Unit) { viewModel.load() }
+    // Also re-runs when the app comes back from the background (ON_START), so a guide left open
+    // overnight reloads instead of showing yesterday's grid.
+    LifecycleStartEffect(Unit) {
+        viewModel.load()
+        onStopOrDispose { }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
