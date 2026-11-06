@@ -97,7 +97,7 @@ private const val DETAILS_SETTLE_MS = 150L
 /**
  * Home in B · Grid: a large muted preview of the focused channel with its details below on the
  * left, and the On now list on the right. A filter dropdown above the list switches between
- * Live Now (the pool's), Favourites, Recently watched, the pinned categories and All channels.
+ * Live Now (the pool's), Favorites, Recently watched, the pinned categories and All channels.
  * OK plays, hold OK opens the channel menu.
  */
 @kotlin.OptIn(kotlinx.coroutines.FlowPreview::class)
@@ -268,8 +268,8 @@ fun HomeScreen(
         menuChannel?.let { channel ->
             ChannelMenuOverlay(
                 channel = channel,
-                isFavourite = channel.streamId in state.favoriteIds,
-                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                isFavorite = channel.streamId in state.favoriteIds,
+                onToggleFavorite = { viewModel.toggleFavorite(channel) },
                 onPlay = {
                     viewModel.playbackTarget(channel)?.let { onPlayChannel(it, channel.name, channel.streamId in state.favoriteIds) }
                 },
@@ -290,7 +290,7 @@ fun HomeScreen(
                     viewModel.playbackTarget(channel)?.let { onPlayChannel(it, channel.name, channel.streamId in state.favoriteIds) }
                     infoChannel = null
                 },
-                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                onToggleFavorite = { viewModel.toggleFavorite(channel) },
                 onDismiss = {
                     infoChannel = null
                     lastFocusedId = channel.streamId

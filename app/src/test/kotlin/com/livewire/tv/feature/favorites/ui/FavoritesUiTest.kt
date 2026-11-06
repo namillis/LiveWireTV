@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** The pure favourites UI helpers: the entry builder and the menu/toast labels. */
+/** The pure favorites UI helpers: the entry builder and the menu/toast labels. */
 class FavoritesUiTest {
 
     private fun channel(id: String, name: String = id, epg: String? = null) =
@@ -26,14 +26,14 @@ class FavoritesUiTest {
     }
 
     @Test
-    fun `favourite action label flips with current state`() {
-        assertEquals("Add to Favourites", FavoritesUi.favouriteActionLabel(isFavourite = false))
-        assertEquals("Remove from Favourites", FavoritesUi.favouriteActionLabel(isFavourite = true))
+    fun `favorite action label flips with current state`() {
+        assertEquals("Add to Favorites", FavoritesUi.favoriteActionLabel(isFavorite = false))
+        assertEquals("Remove from Favorites", FavoritesUi.favoriteActionLabel(isFavorite = true))
     }
 
     @Test
     fun `confirmation label matches the resulting state`() {
-        assertEquals("Added to Favourites", FavoritesUi.confirmationLabel(nowFavourite = true))
-        assertEquals("Removed from Favourites", FavoritesUi.confirmationLabel(nowFavourite = false))
+        assertEquals("Added to Favorites", FavoritesUi.confirmationLabel(nowFavorite = true))
+        assertEquals("Removed from Favorites", FavoritesUi.confirmationLabel(nowFavorite = false))
     }
 }

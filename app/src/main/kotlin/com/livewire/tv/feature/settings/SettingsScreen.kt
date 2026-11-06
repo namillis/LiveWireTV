@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,14 +106,26 @@ fun SettingsScreen(
     // Focus the first row (Stream format) when Settings opens, so the PLAYBACK header is visible
     // and the first D-pad press acts on a setting instead of falling into the nav drawer — the
     // same pattern Home uses for its first card.
+    //
+    // Coming back from Favorites or Providers, focus the row that opened it instead: the list
+    // keeps its scroll, so the first row is usually off screen and focus would otherwise fall to
+    // the top bar, where the next Back leaves Settings for Home.
     val firstRowFocus = remember { FocusRequester() }
-    var firstRowHasFocus by remember { mutableStateOf(false) }
+    val favoritesRowFocus = remember { FocusRequester() }
+    val providersRowFocus = remember { FocusRequester() }
+    var returnTo by rememberSaveable { mutableStateOf<String?>(null) }
+    var targetHasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
+        val target = when (returnTo) {
+            RETURN_FAVORITES -> favoritesRowFocus
+            RETURN_PROVIDERS -> providersRowFocus
+            else -> firstRowFocus
+        }
         var held = 0
         repeat(30) {
-            if (firstRowHasFocus) held++ else {
+            if (targetHasFocus) held++ else {
                 held = 0
-                runCatching { firstRowFocus.requestFocus() }
+                runCatching { target.requestFocus() }
             }
             if (held >= 3) return@LaunchedEffect
             kotlinx.coroutines.delay(50)
@@ -142,10 +155,14 @@ fun SettingsScreen(
                     viewModel = viewModel,
                     updateViewModel = updateViewModel,
                     updateState = updateState,
-                    onOpenProviders = onOpenProviders,
-                    onOpenFavorites = onOpenFavorites,
+                    onOpenProviders = { returnTo = RETURN_PROVIDERS; onOpenProviders() },
+                    onOpenFavorites = { returnTo = RETURN_FAVORITES; onOpenFavorites() },
                     firstRowFocus = firstRowFocus,
-                    onFirstRowFocusChanged = { firstRowHasFocus = it },
+                    favoritesRowFocus = favoritesRowFocus,
+                    providersRowFocus = providersRowFocus,
+                    onRowFocusChanged = { row, focused ->
+                        if (row == (returnTo ?: RETURN_FIRST)) targetHasFocus = focused
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 HintLine()
@@ -194,9 +211,14 @@ private fun SettingsList(
     onOpenProviders: () -> Unit,
     onOpenFavorites: () -> Unit,
     firstRowFocus: FocusRequester,
-    onFirstRowFocusChanged: (Boolean) -> Unit,
+    favoritesRowFocus: FocusRequester,
+    providersRowFocus: FocusRequester,
+    onRowFocusChanged: (row: String, focused: Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    fun tracked(row: String, requester: FocusRequester) = Modifier
+        .focusRequester(requester)
+        .onFocusChanged { onRowFocusChanged(row, it.isFocused) }
     LazyColumn(
         // widthIn WITHOUT fillMaxWidth: the column measures up to ListMaxWidth and no wider, so
         // the list occupies ~62% of the content area and leaves the right side empty like the
@@ -216,7 +238,7 @@ private fun SettingsList(
                     current = s.streamFormat,
                     onCycle = { viewModel.setStreamFormat(SettingsFormat.toggleStreamFormat(s.streamFormat)) },
                     focusRequester = firstRowFocus,
-                    onFocusChanged = onFirstRowFocusChanged,
+                    onFocusChanged = { onRowFocusChanged(RETURN_FIRST, it) },
                 )
             }
         }
@@ -237,8 +259,8 @@ private fun SettingsList(
             }
         }
         item("favorites") {
-            SettingsGroup("Favourites") {
-                FavoritesRow(onOpen = onOpenFavorites)
+            SettingsGroup("Favorites") {
+                FavoritesRow(onOpen = onOpenFavorites, modifier = tracked(RETURN_FAVORITES, favoritesRowFocus))
             }
         }
         item("providers") {
@@ -250,6 +272,7 @@ private fun SettingsList(
                         else -> "$providerSummary — add, edit, or switch"
                     },
                     onOpen = onOpenProviders,
+                    modifier = tracked(RETURN_PROVIDERS, providersRowFocus),
                 )
             }
         }
@@ -565,14 +588,15 @@ private fun NeutralSwitch(on: Boolean) {
     }
 }
 
-/** Favourites: a "Manage ›" affordance. OK opens the Settings → Favourites screen. */
+/** Favorites: a "Manage ›" affordance. OK opens the Settings → Favorites screen. */
 @Composable
-private fun FavoritesRow(onOpen: () -> Unit) {
+private fun FavoritesRow(onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
     SettingRow(
-        title = "Manage favourites",
-        description = "Reorder or remove your favourite channels",
+        title = "Manage favorites",
+        description = "Reorder or remove your favorite channels",
         onClick = onOpen,
+        modifier = modifier,
     ) {
         Row(
             modifier = Modifier
@@ -598,11 +622,13 @@ private fun FavoritesRow(onOpen: () -> Unit) {
 
 /** Providers: a "Manage ›" affordance. OK opens the provider manager screen. */
 @Composable
-private fun ProvidersRow(summary: String, onOpen: () -> Unit) {    val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
+private fun ProvidersRow(summary: String, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
     SettingRow(
         title = "Manage providers",
         description = summary,
         onClick = onOpen,
+        modifier = modifier,
     ) {
         Row(
             modifier = Modifier
@@ -800,6 +826,11 @@ private fun Hint(keys: String, label: String) {
 // ── Layout constants tuned to the mockup at this target's density 2.0 (1920px ≈ 960dp). ──
 /** ~62% of the content area beside the rail (mockup .list ≈ 1000px → ~500dp). */
 private val ListMaxWidth = 520.dp
+
+/** Which row Settings focuses when it shows: the first row, or the one a sub-screen was opened from. */
+private const val RETURN_FIRST = "first"
+private const val RETURN_FAVORITES = "favorites"
+private const val RETURN_PROVIDERS = "providers"
 /** Gap between section groups (mockup 34px → ~17dp; trimmed so all 5 groups + hint fit). */
 private val GroupGap = 13.dp
 /** Gap under a group's overline header (mockup 16px → ~8dp). */

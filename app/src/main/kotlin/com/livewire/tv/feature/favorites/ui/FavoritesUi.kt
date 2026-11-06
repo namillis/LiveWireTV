@@ -4,7 +4,7 @@ import com.livewire.tv.feature.favorites.data.FavoriteEntry
 import com.livewire.tv.feature.providers.domain.LiveChannel
 
 /**
- * Pure helpers shared by every favourites entry point (Home, Guide, Search, Player). Kept out
+ * Pure helpers shared by every favorites entry point (Home, Guide, Search, Player). Kept out
  * of the Compose files so the add-time stamping and the menu's label logic are unit-testable
  * without an emulator.
  */
@@ -25,18 +25,18 @@ object FavoritesUi {
             addedAt = now,
         )
 
-    /** The Favourite row's label: toggles between adding and removing (mockup option2-home). */
-    fun favouriteActionLabel(isFavourite: Boolean): String =
-        if (isFavourite) "Remove from Favourites" else "Add to Favourites"
+    /** The Favorite row's label: toggles between adding and removing (mockup option2-home). */
+    fun favoriteActionLabel(isFavorite: Boolean): String =
+        if (isFavorite) "Remove from Favorites" else "Add to Favorites"
 
     /** The brief add/remove confirmation text, top-right (mockup toast). */
-    fun confirmationLabel(nowFavourite: Boolean): String =
-        if (nowFavourite) "Added to Favourites" else "Removed from Favourites"
+    fun confirmationLabel(nowFavorite: Boolean): String =
+        if (nowFavorite) "Added to Favorites" else "Removed from Favorites"
 }
 
 /**
- * The three rows of the hold-OK channel menu (mockup option2-home). [FAVOURITE] is focused by
- * default; its label flips to "Remove from Favourites" when the channel is already a favourite.
+ * The three rows of the hold-OK channel menu (mockup option2-home). [FAVORITE] is focused by
+ * default; its label flips to "Remove from Favorites" when the channel is already a favorite.
  * [CHANNEL_INFO]'s panel is not designed yet, so its callback only closes the menu for now.
  */
-enum class ChannelMenuItem { FAVOURITE, PLAY, CHANNEL_INFO }
+enum class ChannelMenuItem { FAVORITE, PLAY, CHANNEL_INFO }

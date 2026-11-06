@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * Which tab the top bar marks as current, and where Back goes from the bar. Sub-screens
- * (Providers, Favourites) keep the bar with Settings marked without becoming tabs.
+ * (Providers, Favorites) keep the bar with Settings marked without becoming tabs.
  */
 class TopBarSectionTest {
 

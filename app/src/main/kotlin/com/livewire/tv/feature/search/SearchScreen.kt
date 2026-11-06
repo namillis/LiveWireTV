@@ -306,8 +306,8 @@ fun SearchScreen(
         menuChannel?.let { channel ->
             com.livewire.tv.feature.favorites.ui.ChannelMenuOverlay(
                 channel = channel,
-                isFavourite = channel.streamId in favoriteIds,
-                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                isFavorite = channel.streamId in favoriteIds,
+                onToggleFavorite = { viewModel.toggleFavorite(channel) },
                 onPlay = { playChannel(channel) },
                 // The Channel info panel (Option A) opens from here. Close the menu as the panel
                 // takes over; no card-focus restore (the panel owns focus).
@@ -322,7 +322,7 @@ fun SearchScreen(
                 model = viewModel.channelInfoFor(channel),
                 now = System.currentTimeMillis(),
                 onPlay = { playChannel(channel); infoChannel = null },
-                onToggleFavourite = { viewModel.toggleFavorite(channel) },
+                onToggleFavorite = { viewModel.toggleFavorite(channel) },
                 onDismiss = { infoChannel = null; restoreFocusToStreamId(channel.streamId) },
             )
         }

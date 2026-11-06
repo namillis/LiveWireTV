@@ -79,7 +79,7 @@ class SearchViewModel @Inject constructor(
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
-    /** Favourited stream ids for the active provider, for the result star + hold-OK menu. */
+    /** Favorited stream ids for the active provider, for the result star + hold-OK menu. */
     private val _favoriteIds = MutableStateFlow<Set<String>>(emptySet())
     val favoriteIds: StateFlow<Set<String>> = _favoriteIds.asStateFlow()
 
@@ -275,16 +275,16 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    /** Toggle [channel] in the active provider's favourites (hold-OK menu) and raise a toast. */
+    /** Toggle [channel] in the active provider's favorites (hold-OK menu) and raise a toast. */
     fun toggleFavorite(channel: LiveChannel) {
         val cfg = provider ?: return
         viewModelScope.launch {
-            val wasFavourite = favorites.isFavorite(cfg.id, channel.streamId)
+            val wasFavorite = favorites.isFavorite(cfg.id, channel.streamId)
             favorites.toggle(cfg.id, channel)
             confirmToken += 1
             _confirmation.value = com.livewire.tv.feature.home.FavoriteConfirmation(
                 token = confirmToken,
-                message = com.livewire.tv.feature.favorites.ui.FavoritesUi.confirmationLabel(nowFavourite = !wasFavourite),
+                message = com.livewire.tv.feature.favorites.ui.FavoritesUi.confirmationLabel(nowFavorite = !wasFavorite),
             )
         }
     }
@@ -304,7 +304,7 @@ class SearchViewModel @Inject constructor(
             qualityLabel = com.livewire.tv.feature.favorites.ui.ChannelInfo.qualityLabel(channel.name),
             nowPlaying = ChannelProgrammes.now(channel, now, lookup),
             upNext = ChannelProgrammes.later(channel, now, lookup),
-            isFavourite = channel.streamId in _favoriteIds.value,
+            isFavorite = channel.streamId in _favoriteIds.value,
         )
     }
     /** What's on now on [channel] (for the CHANNELS rail card's "N min left"), or null. */

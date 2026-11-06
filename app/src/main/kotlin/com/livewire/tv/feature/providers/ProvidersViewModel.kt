@@ -79,7 +79,7 @@ class ProvidersViewModel @Inject constructor(
             repository.forget()
             // Delete only this provider's cached guide (memory + disk); other providers keep theirs.
             epgCache.clearProvider(id)
-            // …and its favourites, which are keyed by this provider id and otherwise orphaned.
+            // …and its favorites, which are keyed by this provider id and otherwise orphaned.
             favoritesStore.removeProvider(id)
             pinnedCategories.removeProvider(id)
             homeList.removeProvider(id)

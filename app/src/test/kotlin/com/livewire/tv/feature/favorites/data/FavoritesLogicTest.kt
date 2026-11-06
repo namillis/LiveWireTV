@@ -8,8 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pure list and resolver behaviour for favourites: add/remove/toggle, reordering, ordering
- * stability, and the stream-id-then-name re-match that recovers an M3U favourite whose id
+ * Pure list and resolver behaviour for favorites: add/remove/toggle, reordering, ordering
+ * stability, and the stream-id-then-name re-match that recovers an M3U favorite whose id
  * changed on a playlist refresh. No Android; every case runs on the JVM.
  */
 class FavoritesLogicTest {
@@ -167,7 +167,7 @@ class FavoritesLogicTest {
     }
 
     @Test
-    fun `resolve marks a favourite Unavailable when neither id nor name matches`() {
+    fun `resolve marks a favorite Unavailable when neither id nor name matches`() {
         val stored = FavoritesLogic.add(emptyList(), entry("gone", name = "Gone TV"))
         val resolved = FavoritesLogic.resolve(stored, listOf(channel("x", name = "Other")))
         assertEquals(1, resolved.size)
@@ -176,8 +176,8 @@ class FavoritesLogicTest {
     }
 
     @Test
-    fun `resolve never claims one live channel for two favourites`() {
-        // Two favourites, one lost its id; only one live channel named "Dup" exists.
+    fun `resolve never claims one live channel for two favorites`() {
+        // Two favorites, one lost its id; only one live channel named "Dup" exists.
         var stored = FavoritesLogic.add(emptyList(), entry("dup-id", name = "Dup"))
         stored = FavoritesLogic.add(stored, entry("other-old", name = "Dup"))
         val channels = listOf(channel("dup-id", name = "Dup"))

@@ -35,7 +35,7 @@ import com.livewire.tv.ui.theme.LiveWireDimens
 import kotlinx.coroutines.delay
 
 /**
- * A brief top-right confirmation shown after a favourite is added or removed (task §4). It
+ * A brief top-right confirmation shown after a favorite is added or removed (task §4). It
  * sits in the top safe area, over no cards, is not focusable, and fades out after ~2 s. The
  * star is white, never amber.
  *
@@ -48,11 +48,11 @@ fun FavoriteToastHost(
     message: String,
     modifier: Modifier = Modifier,
     // True while a surface that already confirms the change (the Channel info panel's
-    // Favourite/Favourited button) covers the toast's corner; the toast would sit on its title.
+    // Favorite/Favorited button) covers the toast's corner; the toast would sit on its title.
     suppressed: Boolean = false,
     // How long the toast stays before fading. Longer for a notice the user didn't trigger.
     holdMs: Long = 2_000L,
-    // The star belongs to favourite changes; other notices (a provider switch) go without it.
+    // The star belongs to favorite changes; other notices (a provider switch) go without it.
     showStar: Boolean = true,
 ) {
     var visible by remember { mutableStateOf(false) }

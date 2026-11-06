@@ -54,7 +54,7 @@ class FavoritesStoreTest {
     }
 
     @Test
-    fun `remove drops one favourite`() = runTest {
+    fun `remove drops one favorite`() = runTest {
         val store = store()
         store.add("p1", channel("a"))
         store.add("p1", channel("b"))
@@ -73,7 +73,7 @@ class FavoritesStoreTest {
     }
 
     @Test
-    fun `favourites are isolated per provider`() = runTest {
+    fun `favorites are isolated per provider`() = runTest {
         val store = store()
         store.add("p1", channel("a"))
         store.add("p2", channel("b"))
@@ -108,7 +108,7 @@ class FavoritesStoreTest {
     }
 
     @Test
-    fun `removeProvider persists so a fresh instance sees no favourites`() = runTest {
+    fun `removeProvider persists so a fresh instance sees no favorites`() = runTest {
         val dir = tmp.newFolder()
         FavoritesStore(dir).apply {
             add("p1", channel("a"))
