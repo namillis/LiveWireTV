@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
@@ -93,7 +94,11 @@ fun SportsScreen(
     // The key hints describe the focused game, so they show only while a game has focus.
     var listFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { viewModel.init() }
+    // ON_START so scores refresh when the app comes back from the background, not only on entry.
+    LifecycleStartEffect(Unit) {
+        viewModel.init()
+        onStopOrDispose { }
+    }
 
     val sections = remember(state.games, state.leagues, state.filter) { SportsList.arrange(state.games, state.leagues, state.filter) }
     val chips = remember(state.games, state.leagues) { SportsList.chips(state.games, state.leagues) }
