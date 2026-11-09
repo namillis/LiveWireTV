@@ -8,8 +8,13 @@ import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.providers.domain.ServerInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -23,7 +28,9 @@ import javax.inject.Singleton
 /**
  * Talks directly to the user's Xtream provider panel (player_api.php). No LiveWire
  * backend. Xtream returns heterogeneous shapes (object for user_info, arrays for
- * categories/streams) and providers vary, so we parse tolerantly from JsonElement.
+ * categories/streams) and providers vary, so we parse tolerantly. The large lists (streams,
+ * categories) are decoded from the response stream into [XtreamStream] / [XtreamCategory],
+ * whose fields accept a string or a number; the small objects are read from a JsonElement.
  * Kotlin port of the Flutter XtreamClient.
  */
 @Singleton
@@ -74,41 +81,55 @@ class XtreamClient @Inject constructor(
     }
 
     suspend fun liveCategories(cfg: ProviderConfig): List<ProviderCategory> = withContext(Dispatchers.IO) {
-        val body = get(cfg.playerApiUrl(action = "get_live_categories")) ?: return@withContext emptyList()
-        val arr = json.parseToJsonElement(body) as? JsonArray ?: return@withContext emptyList()
-        arr.mapNotNull { el ->
-            val o = el as? JsonObject ?: return@mapNotNull null
-            ProviderCategory(
-                id = o["category_id"].str().orEmpty(),
-                name = o["category_name"].str().orEmpty(),
-            )
-        }
+        val rows = getList(cfg.playerApiUrl(action = "get_live_categories"), XtreamCategory.serializer())
+        rows.map { ProviderCategory(id = it.categoryId.orEmpty(), name = it.categoryName.orEmpty()) }
     }
 
     suspend fun liveChannels(cfg: ProviderConfig, categoryId: String? = null): List<LiveChannel> =
         withContext(Dispatchers.IO) {
             val extra = if (categoryId != null) mapOf("category_id" to categoryId) else emptyMap()
-            val body = get(cfg.playerApiUrl(action = "get_live_streams", extra = extra))
-                ?: return@withContext emptyList()
-            val arr = json.parseToJsonElement(body) as? JsonArray ?: return@withContext emptyList()
-            arr.mapNotNull { el ->
-                val o = el as? JsonObject ?: return@mapNotNull null
-                val archived = o["tv_archive"].str()?.let { it == "1" || it == "1.0" || it.toIntOrNull() == 1 } ?: false
-                val archiveDays = if (archived) o["tv_archive_duration"].str()?.toIntOrNull() ?: 0 else 0
-                val streamId = o["stream_id"].str().orEmpty()
-                LiveChannel(
-                    streamId = streamId,
-                    name = o["name"].str().orEmpty(),
-                    logoUrl = o["stream_icon"].str()?.ifBlank { null },
-                    epgChannelId = o["epg_channel_id"].str()?.ifBlank { null },
-                    categoryId = o["category_id"].str().orEmpty(),
-                    archiveDays = archiveDays,
-                    number = o["num"].str()?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
-                    // Kept only for a pool that lists event_info (ProviderRepository applies the gate).
-                    poolEvent = PoolSignals.parseEvent(o["pool_event"], streamId),
-                )
+            getList(cfg.playerApiUrl(action = "get_live_streams", extra = extra), XtreamStream.serializer())
+                .map { it.toLiveChannel() }
+        }
+
+    private fun XtreamStream.toLiveChannel(): LiveChannel {
+        val archived = tvArchive?.let { it == "1" || it == "1.0" || it.toIntOrNull() == 1 } ?: false
+        val archiveDays = if (archived) tvArchiveDuration?.toIntOrNull() ?: 0 else 0
+        val id = streamId.orEmpty()
+        return LiveChannel(
+            streamId = id,
+            name = name.orEmpty(),
+            logoUrl = streamIcon?.ifBlank { null },
+            epgChannelId = epgChannelId?.ifBlank { null },
+            categoryId = categoryId.orEmpty(),
+            archiveDays = archiveDays,
+            number = num?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
+            // Kept only for a pool that lists event_info (ProviderRepository applies the gate).
+            poolEvent = PoolSignals.parseEvent(poolEvent, id),
+        )
+    }
+
+    /**
+     * Decodes a JSON array response into [T] rows straight from the response stream, without
+     * holding the body as one String or building a JSON tree. Empty on an HTTP error or a body
+     * that isn't an array of objects (a panel answers a bad login with an object). Network
+     * errors are thrown, as for every other call.
+     */
+    @OptIn(ExperimentalSerializationApi::class)
+    private fun <T> getList(url: String, row: KSerializer<T>): List<T> {
+        val req = Request.Builder().url(url).build()
+        http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return emptyList()
+            val body = resp.body ?: return emptyList()
+            return try {
+                json.decodeFromStream(ListSerializer(row), body.byteStream())
+            } catch (_: SerializationException) {
+                emptyList()
+            } catch (_: IllegalArgumentException) {
+                emptyList()
             }
         }
+    }
 
     /**
      * Per-channel past programme listing from `get_simple_data_table`, used to know which
