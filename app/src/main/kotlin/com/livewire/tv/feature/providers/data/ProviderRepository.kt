@@ -30,8 +30,8 @@ import javax.inject.Singleton
 class ProviderRepository @Inject constructor(
     private val xtream: XtreamClient,
     private val m3u: M3uClient,
+    private val channelCache: LiveChannelCache,
 ) {
-    private val channelCache = LiveChannelCache()
     private val poolFeatures = ConcurrentHashMap<String, CachedPoolFeatures>()
 
     /** Wall clock for the pool-check expiry; tests replace it. */
@@ -69,9 +69,22 @@ class ProviderRepository @Inject constructor(
     /** The full channel list if it is already in memory and fresh, without loading it. */
     fun cachedLiveChannels(cfg: ProviderConfig): List<LiveChannel>? = channelCache.cached(cfg)
 
+    /**
+     * The full channel list when [categoryId] is null, else one category's channels. The full list
+     * comes from [LiveChannelCache]: it can be an older copy, or one saved by the last app run,
+     * while a refresh runs in the background ([liveChannelUpdates] delivers the new list).
+     */
     suspend fun liveChannels(cfg: ProviderConfig, categoryId: String? = null): List<LiveChannel> =
         if (categoryId == null) channelCache.get(cfg) { fetchLiveChannels(cfg, null) }
         else fetchLiveChannels(cfg, categoryId)
+
+    /** The full channel list, downloaded again unless the in-memory copy is fresh. Empty on failure. */
+    suspend fun freshLiveChannels(cfg: ProviderConfig): List<LiveChannel> =
+        channelCache.fresh(cfg) { fetchLiveChannels(cfg, null) }
+
+    /** The latest full channel list for [cfg], then each one a refresh brings in. */
+    fun liveChannelUpdates(cfg: ProviderConfig): kotlinx.coroutines.flow.Flow<List<LiveChannel>> =
+        channelCache.updates(cfg)
 
     private suspend fun fetchLiveChannels(cfg: ProviderConfig, categoryId: String?): List<LiveChannel> =
         // Providers pad their live lists with category-separator rows
@@ -243,6 +256,9 @@ class ProviderRepository @Inject constructor(
         poolFeatures.clear()
         m3u.clear()
     }
+
+    /** Drops [providerId]'s saved channel list, after the provider is edited or deleted. */
+    suspend fun forgetProvider(providerId: String) = channelCache.clearProvider(providerId)
 
     private fun M3uEntry.groupName(): String = group ?: UNCATEGORIZED
 

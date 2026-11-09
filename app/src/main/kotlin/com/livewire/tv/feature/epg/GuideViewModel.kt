@@ -174,6 +174,9 @@ class GuideViewModel @Inject constructor(
                 val categories = runCatching { client.liveCategories(configured) }.getOrDefault(emptyList())
                 val channels = client.liveChannels(configured).distinctBy { it.streamId }
                 val guideCategories = guideCategories(categories, channels)
+                providerCategories = categories
+                rowChannels = channels
+                loadedGuide = null
 
                 // Catch-up: when any channel offers an archive, open the window further into the
                 // past so archived programmes are visible and the user can scroll left into them.
@@ -217,14 +220,17 @@ class GuideViewModel @Inject constructor(
                 }
                 observeFavorites(configured.id)
                 observePins(configured.id)
+                observeChannelList(configured)
                 // A missing or broken guide should not hide the channel list (M3U
                 // playlists often ship without one); rows then show no programmes.
                 val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
                 val guide = runCatching { epg.fetch(configured, forwardWindow, ids, forceRefresh) }.getOrNull()
+                loadedGuide = guide
                 _state.update {
                     if (guide == null) it.copy(programmesLoaded = true) else it.copy(
                         programmesLoaded = true,
-                        allRows = channels.map { channel ->
+                        // rowChannels, not channels: a newer list may have landed during the download.
+                        allRows = rowChannels.map { channel ->
                             GuideRow(
                                 channel = channel,
                                 programmes = ChannelProgrammes.listings(channel, guide::programmesFor),
@@ -251,6 +257,37 @@ class GuideViewModel @Inject constructor(
 
     /** Archive channels whose past listings were already requested since the last load. */
     private val pastRequested = HashSet<String>()
+
+    /** What the rows were built from, so [observeChannelList] can rebuild them. */
+    private var rowChannels: List<LiveChannel> = emptyList()
+    private var providerCategories: List<com.livewire.tv.feature.providers.domain.ProviderCategory> = emptyList()
+    private var loadedGuide: com.livewire.tv.feature.epg.domain.EpgGuide? = null
+    private var channelsJob: Job? = null
+
+    /**
+     * Rebuild the rows when a newer channel list lands. At launch the Guide can be given the list
+     * the last run saved while the cache refreshes it; the new one brings pool events and any
+     * channel changes. Rows whose channel didn't change are kept, past listings included.
+     */
+    private fun observeChannelList(cfg: ProviderConfig) {
+        channelsJob?.cancel()
+        channelsJob = viewModelScope.launch {
+            client.liveChannelUpdates(cfg).collect { update ->
+                val next = update.distinctBy { it.streamId }
+                if (provider != cfg || next == rowChannels) return@collect
+                rowChannels = next
+                val guide = loadedGuide
+                val old = _state.value.allRows.associateBy { it.channel.streamId }
+                val rows = next.map { channel ->
+                    old[channel.streamId]?.takeIf { it.channel == channel } ?: run {
+                        pastRequested.remove(channel.streamId)
+                        GuideRow(channel, ChannelProgrammes.listings(channel) { id -> guide?.programmesFor(id).orEmpty() })
+                    }
+                }
+                _state.update { it.copy(allRows = rows, categories = guideCategories(providerCategories, next)) }
+            }
+        }
+    }
 
     /**
      * Fetch [streamId]'s past listings (on demand, memory-only) when its row comes on screen, and

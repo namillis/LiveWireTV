@@ -187,6 +187,7 @@ class HomeViewModel @Inject constructor(
                 rebuildAllRail()
                 publishRails()
                 railsLoadedAtMs = System.currentTimeMillis()
+                observeChannelList(cfg)
                 observeFavorites()
                 observeRecent()
                 observePins(cfg, pinned)
@@ -293,6 +294,25 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Swap in a newer full channel list when one lands. At launch Home is first given the list
+     * saved by the last run, and the cache refreshes it in the background; this puts the new list
+     * (with its pool events) into All channels, Favorites and Recently watched.
+     */
+    private fun CoroutineScope.observeChannelList(cfg: ProviderConfig) {
+        launch {
+            client.liveChannelUpdates(cfg).collect { channels ->
+                if (channels == allChannels) return@collect
+                allChannels = channels
+                rebuildAllRail()
+                rebuildFavoriteRail(cfg)
+                rebuildRecentRail(cfg)
+                publishRails()
+                loadGuide()
+            }
+        }
+    }
+
     /** Keep the favorites rail, the id set and the stored M3U rematches in sync with the store. */
     private fun CoroutineScope.observeFavorites() {
         val cfg = provider ?: return
@@ -349,7 +369,8 @@ class HomeViewModel @Inject constructor(
         refreshJob = viewModelScope.launch {
             // A provider switch is load()'s job, not this one's.
             if (active.current() != cfg) return@launch
-            val fullList = async { runCatching { client.liveChannels(cfg) }.getOrNull().orEmpty() }
+            // The fresh list, not the cache's older copy, or this would compare the old list with itself.
+            val fullList = async { runCatching { client.freshLiveChannels(cfg) }.getOrNull().orEmpty() }
             val pinned = pins.pinned(cfg.id).first()
             railCache.clear()
             val live = runCatching { loadLiveNowRail(cfg) }.getOrNull()
