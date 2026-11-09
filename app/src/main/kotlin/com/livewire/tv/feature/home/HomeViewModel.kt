@@ -421,11 +421,7 @@ class HomeViewModel @Inject constructor(
     private suspend fun loadGuide() {
         val cfg = provider ?: return
         if (!showNowPlaying) return
-        val now = System.currentTimeMillis()
-        val window = EpgWindow(
-            startMs = now - TimeUnit.HOURS.toMillis(2),
-            endMs = now + TimeUnit.HOURS.toMillis(12),
-        )
+        val window = guideWindow(System.currentTimeMillis())
         val favChannels = FavoritesLogic.resolve(favorites.favorites(cfg.id).first(), allChannels).mapNotNull { it.channel }
         val shown = _state.value.rails.firstOrNull { it.categoryId == _state.value.selectedListId }?.channels.orEmpty()
         val onHome = categoryRails.flatMap { it.channels } + favChannels + recentRail?.channels.orEmpty() +
@@ -486,11 +482,28 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    private companion object {
+    internal companion object {
         /** How many rows of a long list (All channels) get guide data. */
-        const val GUIDE_ROWS_FOR_ALL = 300
+        private const val GUIDE_ROWS_FOR_ALL = 300
 
         /** How long the "isn't responding" and "is back" notices stay on screen. */
-        const val PROVIDER_NOTICE_MS = 6_000L
+        private const val PROVIDER_NOTICE_MS = 6_000L
+
+        /**
+         * How far ahead Home needs the guide: the hero's UP NEXT and the channel info panel's
+         * next three programmes. On the pool's guide, 6 hours gives 99.9% of channels their UP
+         * NEXT and 94% all three, the same reach as Search and the player. Longer cost a bigger
+         * download from a pool that sends only the cached window (`guide_window`).
+         */
+        private val GUIDE_AHEAD_MS = TimeUnit.HOURS.toMillis(6)
+
+        /**
+         * The guide window Home asks for at [nowMs]. It starts at now: a programme on now
+         * overlaps it whenever it started. Home opens first, so this window also sets what the
+         * shared guide cache keeps for the other screens; the margins of
+         * [com.livewire.tv.feature.epg.data.EpgCachePolicy.downloadWindow]
+         * cover the Guide, Search, Sports and the player from it.
+         */
+        fun guideWindow(nowMs: Long): EpgWindow = EpgWindow(nowMs, nowMs + GUIDE_AHEAD_MS)
     }
 }
