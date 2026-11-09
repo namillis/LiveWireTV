@@ -6,6 +6,7 @@ import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -31,14 +32,17 @@ class EpgRepository @Inject constructor(
 ) {
     /**
      * Fetch the guide and return it filtered to [channelIds] (all channels when null) and to
-     * [window]. Returns a cached guide when one is fresh; otherwise downloads and parses the
-     * provider's full guide once, caches it per provider, and filters the result. Throws on
-     * network/parse failure or when the provider has no guide (and nothing is cached).
+     * [window]. Returns a cached guide when one covers the request, even past its TTL: a stale
+     * one is then refreshed in the background and [updates] fires if the guide changed.
+     * Otherwise downloads and parses the provider's full guide once, caches it per provider,
+     * and filters the result. Throws on network/parse failure or when the provider has no
+     * guide (and nothing is cached).
      *
      * The cache holds ONE superset entry per provider (all channels, a widened window), so
      * every screen shares it: Guide and Search no longer download the guide once each.
      *
-     * @param forceRefresh bypasses the cache and re-downloads (used by an explicit refresh).
+     * @param forceRefresh waits for a refresh instead of serving the cached guide (used by an
+     *   explicit refresh). An unchanged guide is answered with a 304 and kept.
      */
     suspend fun fetch(
         cfg: ProviderConfig,
@@ -48,6 +52,8 @@ class EpgRepository @Inject constructor(
     ): EpgGuide {
         val url = providers.guideUrl(cfg) ?: error("No guide configured for this provider")
         val key = EpgCachePolicy.keyFor(cfg, url)
+        // A forced refresh treats the cached guide as stale and waits for the refresh. It still
+        // sends the ETag, so an unchanged guide comes back as a 304 without a download.
         val ttl = if (forceRefresh) 0L else EpgCachePolicy.DEFAULT_TTL_MS
         // Parse a superset window (widened by the TTL and by the lead/trail that spans both the
         // Guide's and Search's windows), so a differently-windowed sibling screen — and the same
@@ -64,24 +70,53 @@ class EpgRepository @Inject constructor(
             requestedChannelIds = channelIds,
             parsedChannelIds = null,
             ttlMs = ttl,
-        ) {
-            download(url, parsedWindow, channelIds = null)
+            serveStale = !forceRefresh,
+        ) { ifNoneMatch ->
+            download(url, parsedWindow, channelIds = null, ifNoneMatch)
         }
     }
+
+    /**
+     * Emits when a refresh brought [cfg] a changed guide. A screen that showed the older one
+     * calls [fetch] again and is served the new guide from memory.
+     */
+    fun updates(cfg: ProviderConfig): Flow<Unit> = cache.updates(cfg.id)
 
     private suspend fun download(
         url: String,
         window: EpgWindow?,
         channelIds: Set<String>?,
-    ): EpgGuide = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url).build()
-        http.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "Provider guide request failed" }
-            val body = response.body ?: error("Empty EPG response")
-            decodedStream(body.byteStream(), response.header("Content-Encoding")).use { xml ->
-                InputStreamReader(xml, Charsets.UTF_8).use { reader ->
-                    XmltvParser.parse(reader, window, channelIds)
+        ifNoneMatch: String?,
+    ): GuideDownload = withContext(Dispatchers.IO) { downloadGuide(http, url, window, channelIds, ifNoneMatch) }
+
+    internal companion object {
+        private const val HTTP_NOT_MODIFIED = 304
+
+        /**
+         * Downloads and parses the guide at [url]. With [ifNoneMatch] (the cached guide's ETag)
+         * it is sent as If-None-Match, and a 304 comes back as [GuideDownload.NotModified] with
+         * nothing downloaded or parsed. Blocking; call off the main thread.
+         */
+        fun downloadGuide(
+            http: OkHttpClient,
+            url: String,
+            window: EpgWindow?,
+            channelIds: Set<String>?,
+            ifNoneMatch: String?,
+        ): GuideDownload {
+            val request = Request.Builder().url(url)
+                .apply { if (ifNoneMatch != null) header("If-None-Match", ifNoneMatch) }
+                .build()
+            return http.newCall(request).execute().use { response ->
+                if (ifNoneMatch != null && response.code == HTTP_NOT_MODIFIED) return@use GuideDownload.NotModified
+                check(response.isSuccessful) { "Provider guide request failed" }
+                val body = response.body ?: error("Empty EPG response")
+                val guide = decodedStream(body.byteStream(), response.header("Content-Encoding")).use { xml ->
+                    InputStreamReader(xml, Charsets.UTF_8).use { reader ->
+                        XmltvParser.parse(reader, window, channelIds)
+                    }
                 }
+                GuideDownload.Loaded(guide, response.header("ETag"))
             }
         }
     }

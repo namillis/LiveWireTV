@@ -6,7 +6,17 @@ import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -16,6 +26,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.encodeToStream
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,7 +53,18 @@ private data class CachedGuide(
     // Channel ids the guide was parsed with; null means no filter (all channels kept). A
     // request is only servable from this entry when its channels are a subset of these.
     val channelIds: Set<String>? = null,
+    // The guide response's ETag, sent back as If-None-Match when the entry is refreshed.
+    val etag: String? = null,
 )
+
+/** What a guide download brought back. */
+sealed interface GuideDownload {
+    /** A parsed guide, with the response's ETag when the server sent one. */
+    data class Loaded(val guide: EpgGuide, val etag: String? = null) : GuideDownload
+
+    /** HTTP 304: the guide hasn't changed since the ETag that was sent. */
+    data object NotModified : GuideDownload
+}
 
 /**
  * Caches the parsed EPG guide per provider so the guide opens instantly after the first
@@ -52,12 +75,21 @@ private data class CachedGuide(
  * JSON entry (survives process death, keyed by a non-secret hash of the provider). A
  * per-key [Mutex] also single-flights concurrent loads: if the guide is opened twice in
  * quick succession, only one download runs and both callers share its result.
+ *
+ * An entry older than its TTL that still covers the request is returned straight away, and one
+ * background refresh runs under the same lock; [updates] tells the screens when it brings a new
+ * guide. The refresh sends the entry's ETag as If-None-Match, so an unchanged guide costs one
+ * small request and no parse.
  */
 @Singleton
 class EpgCache internal constructor(
     /** Directory the on-disk JSON entries live in. In the app this is `<cacheDir>/epg_cache`;
      *  tests pass a temp directory so the cache is exercisable without an Android Context. */
     private val dir: File,
+    /** Runs background refreshes, which must outlive the screen that started them. */
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    /** Runs the disk reads and writes. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     @Inject constructor(@ApplicationContext context: Context) : this(File(context.cacheDir, "epg_cache"))
 
@@ -65,7 +97,24 @@ class EpgCache internal constructor(
 
     private val lock = Mutex()
     private val locks = HashMap<String, Mutex>()
-    private val memory = HashMap<String, CachedGuide>()
+    // Concurrent: background refreshes for different providers can write at the same time.
+    private val memory = ConcurrentHashMap<String, CachedGuide>()
+
+    /** Entries with a background refresh queued or running. */
+    private val refreshing = ConcurrentHashMap.newKeySet<String>()
+    /** When an entry's background refresh last failed, so a dead provider isn't retried on every open. */
+    private val failedAt = ConcurrentHashMap<String, Long>()
+    /** Bumped by [clear] and [clearProvider], so a download that was running then isn't stored. */
+    private val clears = AtomicInteger()
+    private val versions = ConcurrentHashMap<String, MutableStateFlow<Int>>()
+
+    /**
+     * Emits each time a refresh replaces [providerId]'s guide with a changed one, so a screen
+     * showing the old guide can fetch again (it is then served from memory).
+     */
+    fun updates(providerId: String): Flow<Unit> = versionFor(providerId).drop(1).map { }
+
+    private fun versionFor(providerId: String) = versions.getOrPut(providerId) { MutableStateFlow(0) }
 
     /** Per-key lock, so two providers can load in parallel but one provider single-flights. */
     private suspend fun lockFor(entry: EntryId): Mutex = lock.withLock {
@@ -73,11 +122,16 @@ class EpgCache internal constructor(
     }
 
     /**
-     * Runs [load] under this provider's single-flight lock. If a fresh cached guide exists
-     * (memory first, then disk) whose parsed window covers [window] and whose parsed channel
-     * set covers [requestedChannelIds], it is returned — filtered to those channels and that
-     * window — without calling [load] at all. Otherwise [load] downloads+parses the guide for
-     * [parsedWindow] (over [parsedChannelIds]), the result is stored, then filtered and returned.
+     * Runs [load] under this provider's single-flight lock. If a cached guide exists (memory
+     * first, then disk) whose parsed window covers [window] and whose parsed channel set covers
+     * [requestedChannelIds], it is returned — filtered to those channels and that window. When
+     * that entry is older than [ttlMs] it is still returned at once, and one background refresh
+     * calls [load] with the entry's ETag ([serveStale] false waits for that refresh instead).
+     * Without such an entry, [load] downloads+parses the guide for [parsedWindow] (over
+     * [parsedChannelIds]), the result is stored, then filtered and returned.
+     *
+     * [load] receives the ETag to send as If-None-Match, or null for a full download. It answers
+     * [GuideDownload.NotModified] only when it was given an ETag.
      *
      * Because the key is per provider (not per channel set), Guide and Search share one entry:
      * whichever opens first downloads the superset, and the other is served from it filtered
@@ -88,8 +142,10 @@ class EpgCache internal constructor(
      *   returned guide is filtered to these (null returns all cached channels).
      * @param parsedChannelIds channels [load] parses; null means all. Must be a superset of
      *   [requestedChannelIds] (typically null, i.e. all channels) so any caller can be served.
-     * @param ttlMs freshness window; a non-positive value disables the cache (always loads).
+     * @param ttlMs freshness window; a non-positive value makes every entry stale.
      * @param nowMs injectable clock for tests.
+     * @param serveStale return a stale entry at once and refresh it in the background. False
+     *   (an explicit refresh) waits for the refresh, which still sends the ETag.
      */
     suspend fun getOrLoad(
         key: String,
@@ -100,14 +156,90 @@ class EpgCache internal constructor(
         parsedChannelIds: Set<String>? = null,
         ttlMs: Long = EpgCachePolicy.DEFAULT_TTL_MS,
         nowMs: Long = System.currentTimeMillis(),
-        load: suspend () -> EpgGuide,
+        serveStale: Boolean = true,
+        load: suspend (ifNoneMatch: String?) -> GuideDownload,
     ): EpgGuide {
         val entry = EntryId(providerId, key)
         return lockFor(entry).withLock {
-            read(entry, window, requestedChannelIds, nowMs, ttlMs)?.let { return@withLock it }
-            val guide = load()
-            write(entry, guide, parsedWindow, parsedChannelIds, nowMs)
-            guide.filtered(requestedChannelIds, window)
+            val epoch = clears.get()
+            val cached = covering(entry, window, requestedChannelIds)
+            when {
+                cached == null -> {
+                    // Nothing usable. No ETag: an unchanged guide still wouldn't cover this request.
+                    val loaded = load(null) as? GuideDownload.Loaded ?: error("Guide not modified, but nothing cached")
+                    write(entry, loaded, parsedWindow, parsedChannelIds, nowMs, epoch)
+                    loaded.guide.filtered(requestedChannelIds, window)
+                }
+                EpgCachePolicy.isFresh(cached.cachedAtMs, nowMs, ttlMs) -> cached.toGuide().filtered(requestedChannelIds, window)
+                serveStale -> {
+                    refreshInBackground(entry, parsedWindow, parsedChannelIds, ttlMs, nowMs, load)
+                    cached.toGuide().filtered(requestedChannelIds, window)
+                }
+                else -> when (val result = revalidate(entry, cached, parsedWindow, parsedChannelIds, nowMs, epoch, load)) {
+                    is GuideDownload.Loaded -> result.guide.filtered(requestedChannelIds, window)
+                    GuideDownload.NotModified -> cached.toGuide().filtered(requestedChannelIds, window)
+                }
+            }
+        }
+    }
+
+    /**
+     * Refreshes [cached] with its ETag. A 304 marks it fresh again in memory: the disk copy keeps
+     * its old time, so the next launch revalidates it once, which is another 304. A new guide
+     * replaces it and [updates] fires. Call under the entry's lock.
+     */
+    private suspend fun revalidate(
+        entry: EntryId,
+        cached: CachedGuide,
+        parsedWindow: EpgWindow?,
+        parsedChannelIds: Set<String>?,
+        nowMs: Long,
+        epoch: Int,
+        load: suspend (ifNoneMatch: String?) -> GuideDownload,
+    ): GuideDownload {
+        val result = load(cached.etag)
+        if (epoch != clears.get()) return result
+        when (result) {
+            GuideDownload.NotModified -> memory[entry.mapKey] = cached.copy(cachedAtMs = nowMs)
+            is GuideDownload.Loaded -> {
+                write(entry, result, parsedWindow, parsedChannelIds, nowMs, epoch)
+                versionFor(entry.providerId).update { it + 1 }
+            }
+        }
+        return result
+    }
+
+    private fun refreshInBackground(
+        entry: EntryId,
+        parsedWindow: EpgWindow?,
+        parsedChannelIds: Set<String>?,
+        ttlMs: Long,
+        nowMs: Long,
+        load: suspend (ifNoneMatch: String?) -> GuideDownload,
+    ) {
+        val mapKey = entry.mapKey
+        failedAt[mapKey]?.let { if (nowMs - it in 0 until RETRY_AFTER_MS) return }
+        if (!refreshing.add(mapKey)) return
+        val epoch = clears.get()
+        scope.launch {
+            try {
+                lockFor(entry).withLock {
+                    // Cleared, or refreshed by someone else while this waited.
+                    val current = memory[mapKey] ?: return@withLock
+                    if (epoch != clears.get() || EpgCachePolicy.isFresh(current.cachedAtMs, nowMs, ttlMs)) return@withLock
+                    try {
+                        revalidate(entry, current, parsedWindow, parsedChannelIds, nowMs, epoch, load)
+                        failedAt.remove(mapKey)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // The stale guide stays up; the next open after RETRY_AFTER_MS tries again.
+                        failedAt[mapKey] = nowMs
+                    }
+                }
+            } finally {
+                refreshing.remove(mapKey)
+            }
         }
     }
 
@@ -117,22 +249,20 @@ class EpgCache internal constructor(
         val mapKey: String get() = EpgCachePolicy.providerPrefixFor(providerId) + key
     }
 
-    /** Fresh cached guide for [entry] covering [window] and [requested] channels, filtered to
-     *  them; or null when absent, stale, too narrow a window, or missing requested channels. */
+    /** The cached guide for [entry] if it covers [window] and [requested] channels, fresh or
+     *  not; null when absent, too narrow a window, or missing requested channels. Memory decides
+     *  when it has the entry, since the disk copy holds the same guide. */
     @OptIn(ExperimentalSerializationApi::class)
-    private suspend fun read(
+    private suspend fun covering(
         entry: EntryId,
         window: EpgWindow?,
         requested: Set<String>?,
-        nowMs: Long,
-        ttlMs: Long,
-    ): EpgGuide? {
-        fun usable(c: CachedGuide) =
-            EpgCachePolicy.isFresh(c.cachedAtMs, nowMs, ttlMs) &&
-                EpgCachePolicy.covers(c.windowStartMs, c.windowEndMs, window) &&
+    ): CachedGuide? {
+        fun covers(c: CachedGuide) =
+            EpgCachePolicy.covers(c.windowStartMs, c.windowEndMs, window) &&
                 EpgCachePolicy.coversChannels(c.channelIds, requested)
-        memory[entry.mapKey]?.let { if (usable(it)) return it.toGuide().filtered(requested, window) }
-        val onDisk = withContext(Dispatchers.IO) {
+        memory[entry.mapKey]?.let { return it.takeIf(::covers) }
+        val onDisk = withContext(io) {
             // Decode straight from the file stream rather than reading it into one ~18 MB
             // String first: readText() + decodeFromString would hold the whole JSON text AND
             // the decoded object graph live at the same time, which is a large part of the
@@ -141,22 +271,24 @@ class EpgCache internal constructor(
                 fileFor(entry).inputStream().buffered().use { json.decodeFromStream<CachedGuide>(it) }
             }.getOrNull()
         } ?: return null
-        if (!usable(onDisk)) return null
         memory[entry.mapKey] = onDisk
-        return onDisk.toGuide().filtered(requested, window)
+        return onDisk.takeIf(::covers)
     }
 
+    /** Stores [download] in memory and on disk, unless the cache was cleared since [epoch]. */
     @OptIn(ExperimentalSerializationApi::class)
     private suspend fun write(
         entry: EntryId,
-        guide: EpgGuide,
+        download: GuideDownload.Loaded,
         parsedWindow: EpgWindow?,
         parsedChannelIds: Set<String>?,
         nowMs: Long,
+        epoch: Int,
     ) {
-        val cached = guide.toCached(nowMs, parsedWindow, parsedChannelIds)
+        if (epoch != clears.get()) return
+        val cached = download.guide.toCached(nowMs, parsedWindow, parsedChannelIds, download.etag)
         memory[entry.mapKey] = cached
-        withContext(Dispatchers.IO) {
+        withContext(io) {
             runCatching {
                 dir.mkdirs()
                 // Encode to the file stream instead of building one large String in memory
@@ -169,9 +301,11 @@ class EpgCache internal constructor(
 
     /** Drops all cached guides, for example after a provider is deleted. */
     suspend fun clear() = lock.withLock {
+        clears.incrementAndGet()
         memory.clear()
+        failedAt.clear()
         locks.clear()
-        withContext(Dispatchers.IO) { runCatching { dir.deleteRecursively() } }
+        withContext(io) { runCatching { dir.deleteRecursively() } }
     }
 
     /**
@@ -182,10 +316,12 @@ class EpgCache internal constructor(
      */
     suspend fun clearProvider(providerId: String) = lock.withLock {
         val prefix = EpgCachePolicy.providerPrefixFor(providerId)
+        clears.incrementAndGet()
         memory.keys.removeAll { it.startsWith(prefix) }
+        failedAt.keys.removeAll { it.startsWith(prefix) }
         // Locks stay: dropping one while a load holds it would let the next open start a
         // second, concurrent download for the same entry.
-        withContext(Dispatchers.IO) {
+        withContext(io) {
             runCatching {
                 dir.listFiles { f -> EpgCachePolicy.isForProvider(f.name, providerId) }?.forEach { it.delete() }
             }
@@ -218,11 +354,12 @@ class EpgCache internal constructor(
         )
     }
 
-    private fun EpgGuide.toCached(nowMs: Long, parsedWindow: EpgWindow?, parsedChannelIds: Set<String>?): CachedGuide = CachedGuide(
+    private fun EpgGuide.toCached(nowMs: Long, parsedWindow: EpgWindow?, parsedChannelIds: Set<String>?, etag: String?): CachedGuide = CachedGuide(
         cachedAtMs = nowMs,
         windowStartMs = parsedWindow?.startMs,
         windowEndMs = parsedWindow?.endMs,
         channelIds = parsedChannelIds,
+        etag = etag,
         channels = channels.distinctBy { it.id }.map { CachedChannel(id = it.id, n = it.displayName, i = it.iconUrl) },
         // Providers list some channel ids more than once; write each channel's programmes
         // once, or a reloaded guide shows every programme twice (overlapping cells).
@@ -248,5 +385,10 @@ class EpgCache internal constructor(
             ch.id to programmes
         }
         return EpgGuide(channels = keptChannels, programmesByChannel = byChannel)
+    }
+
+    internal companion object {
+        /** How long after a failed background refresh the next open may try again. */
+        const val RETRY_AFTER_MS = 60_000L
     }
 }
