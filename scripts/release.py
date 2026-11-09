@@ -12,8 +12,10 @@ Steps:
   1. Check that the worktree is clean and HEAD is on origin/main, that tag
      v<version> either doesn't exist yet or already points at HEAD, and that no
      release exists for it.
-  2. Run unit tests, lint and the release build with versionName <version> and
-     versionCode MAJOR*10000 + MINOR*100 + PATCH, signed with the release key.
+  2. Run the release build with versionName <version> and versionCode
+     MAJOR*10000 + MINOR*100 + PATCH, signed with the release key. Unit tests and
+     lint run too, unless CI already passed them on this commit (waiting for CI
+     if it is still running): repeating them doubled the release time.
   3. Check the APK: package com.livewire.tv, the expected version, and the
      release certificate below. A build signed with any other key is refused,
      because it could not update existing installs.
@@ -42,6 +44,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -55,6 +58,8 @@ REPO = "namillis/LiveWireTV"
 API = f"https://{HOST}/api/v1/repos/{REPO}"
 BUILD_TOOLS = "36.0.0"
 MIN_SDK = 23
+# How long a release waits for CI still running on its commit before testing it itself.
+CI_WAIT_SECONDS = 15 * 60
 
 ROOT = Path(__file__).resolve().parent.parent
 APK_DIR = ROOT / "app" / "build" / "outputs" / "apk" / "release"
@@ -107,7 +112,31 @@ def release_notes(tag: str) -> str:
             f"Sideload: download the APK and run `adb install -r livewire-{tag[1:]}.apk`.\n")
 
 
-def build(ver: str, code: int, keystore: str, password: str) -> None:
+def ci_state(sha: str) -> str | None:
+    """CI's combined status on Forgejo for sha ("success", "pending", "failure", "error"), or None
+    when CI never reported on it (a commit pushed nowhere CI runs, or a local-only release)."""
+    status = api("GET", f"/commits/{sha}/status") or {}
+    return status.get("state") if status.get("statuses") else None
+
+
+def ci_passed(sha: str) -> bool:
+    """True when CI's tests and lint passed on sha, waiting up to CI_WAIT_SECONDS while CI is still
+    running. Exits when CI failed on it. False when CI never ran on it or did not finish in time,
+    so the build runs the tests and lint itself."""
+    deadline = time.monotonic() + CI_WAIT_SECONDS
+    while True:
+        state = ci_state(sha)
+        if state == "success":
+            return True
+        if state in ("failure", "error"):
+            die(f"CI failed on {sha[:12]}; fix main before releasing")
+        if state is None or time.monotonic() > deadline:
+            return False
+        print(f"release: waiting for CI on {sha[:12]} ({state})")
+        time.sleep(15)
+
+
+def build(ver: str, code: int, keystore: str, password: str, checks: bool) -> None:
     env = dict(os.environ)
     env.update({
         "KEYSTORE_FILE": keystore,
@@ -116,11 +145,15 @@ def build(ver: str, code: int, keystore: str, password: str) -> None:
         "KEY_PASSWORD": password,
     })
     log = DIST / "build.log"
-    print(f"release: running tests, lint and the release build (log: {log})")
+    # The version properties change BuildConfig, so nothing from CI's cached debug build is reused:
+    # running the tests and lint here repeats CI's whole run. Run them only when CI has not.
+    tasks = ["clean", ":app:testDebugUnitTest", ":app:lintDebug"] if checks else ["clean"]
+    what = "tests, lint and the release build" if checks else "the release build (CI already passed tests and lint)"
+    print(f"release: running {what} (log: {log})")
     with open(log, "w") as fh:
         rc = subprocess.run(
             [str(ROOT / "gradlew"), "--console=plain", f"-PversionName={ver}", f"-PversionCode={code}",
-             "clean", ":app:testDebugUnitTest", ":app:lintDebug", ":app:assembleRelease"],
+             *tasks, ":app:assembleRelease"],
             cwd=ROOT, env=env, stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL).returncode
     if rc != 0:
         die(f"Gradle failed (exit {rc}); see {log}")
@@ -247,7 +280,7 @@ def main() -> None:
     password = secret("LIVEWIRE_KEYSTORE_PASS") or die("set LIVEWIRE_KEYSTORE_PASS or LIVEWIRE_KEYSTORE_PASS_FILE")
 
     DIST.mkdir(exist_ok=True)
-    build(ver, code, keystore, password)
+    build(ver, code, keystore, password, checks=not ci_passed(sha))
     files = package(ver, code)
 
     if args.dry_run:
