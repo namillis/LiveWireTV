@@ -167,20 +167,12 @@ class SearchViewModel @Inject constructor(
 
             // 2) Guide and sports are independent, so run them concurrently and fold each
             //    into the index as it arrives (rebuilding against whatever is loaded so far).
+            // Only programmes on channels the user can actually open are useful results.
+            val guideIds = loadedChannels.mapNotNullTo(HashSet()) { it.epgChannelId }
+            if (configuredProvider != null) observeGuideUpdates(configuredProvider, guideIds)
             val epgJob = launch {
                 if (configuredProvider == null) return@launch
-                val programmes = runCatching {
-                    val now = System.currentTimeMillis()
-                    val window = EpgWindow(
-                        startMs = now - TimeUnit.HOURS.toMillis(2),
-                        endMs = now + TimeUnit.HOURS.toMillis(6),
-                    )
-                    // Only programmes on channels the user can actually open are useful results.
-                    val ids = loadedChannels.mapNotNullTo(HashSet()) { it.epgChannelId }
-                    val guide = epg.fetch(configuredProvider, window, ids)
-                    buildList { guide.channels.forEach { addAll(guide.programmesFor(it.id)) } }
-                }.getOrDefault(emptyList())
-                onProgrammesLoaded(programmes)
+                onProgrammesLoaded(loadProgrammes(configuredProvider, guideIds))
             }
             val sportsJob = launch {
                 val games = runCatching {
@@ -194,6 +186,33 @@ class SearchViewModel @Inject constructor(
             // Only a load that produced channels counts as done; an empty or failed one is
             // retried on the next visit to Search.
             if (loadedChannels.isNotEmpty()) loadedFor = configuredProvider
+        }
+    }
+
+    /** Programmes from 2h ago to 6h ahead on [ids], or none when the guide can't be loaded. */
+    private suspend fun loadProgrammes(cfg: ProviderConfig, ids: Set<String>): List<EpgProgramme> = runCatching {
+        val now = System.currentTimeMillis()
+        val window = EpgWindow(
+            startMs = now - TimeUnit.HOURS.toMillis(2),
+            endMs = now + TimeUnit.HOURS.toMillis(6),
+        )
+        val guide = epg.fetch(cfg, window, ids)
+        buildList { guide.channels.forEach { addAll(guide.programmesFor(it.id)) } }
+    }.getOrDefault(emptyList())
+
+    private var guideUpdatesJob: Job? = null
+
+    /**
+     * Re-index the programmes when a background refresh brings a newer guide. Search is first
+     * given the cached guide, even an old one, while the refresh runs.
+     */
+    private fun observeGuideUpdates(cfg: ProviderConfig, ids: Set<String>) {
+        guideUpdatesJob?.cancel()
+        guideUpdatesJob = viewModelScope.launch {
+            epg.updates(cfg).collect {
+                val programmes = loadProgrammes(cfg, ids)
+                if (provider == cfg && programmes.isNotEmpty()) onProgrammesLoaded(programmes)
+            }
         }
     }
 

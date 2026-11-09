@@ -192,6 +192,8 @@ class HomeViewModel @Inject constructor(
                 observeRecent()
                 observePins(cfg, pinned)
                 if (failover != null) watchForRecovery(cfg, failover.primary)
+                // Before the first loadGuide, so a refresh it starts can't land unseen.
+                observeGuideUpdates(cfg)
                 loadGuide()
             } catch (e: CancellationException) {
                 throw e
@@ -311,6 +313,14 @@ class HomeViewModel @Inject constructor(
                 loadGuide()
             }
         }
+    }
+
+    /**
+     * Reload now-playing when a background refresh brings a newer guide. Home is first shown
+     * the cached guide, even an old one, while the refresh runs.
+     */
+    private fun CoroutineScope.observeGuideUpdates(cfg: ProviderConfig) {
+        launch { epg.updates(cfg).collect { loadGuide() } }
     }
 
     /** Keep the favorites rail, the id set and the stored M3U rematches in sync with the store. */

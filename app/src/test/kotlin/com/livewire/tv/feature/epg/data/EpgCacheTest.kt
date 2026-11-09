@@ -7,6 +7,10 @@ import com.livewire.tv.feature.epg.domain.EpgWindow
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -44,6 +48,10 @@ class EpgCacheTest {
     private val parsedWindow = EpgCachePolicy.downloadWindow(guideWindow, ttl)!!
 
     private fun cache() = EpgCache(tmp.newFolder())
+
+    /** A cache whose background refreshes and disk I/O run on the test scheduler. */
+    private fun TestScope.testCache(dir: java.io.File = tmp.newFolder()) =
+        EpgCache(dir, scope = this, io = StandardTestDispatcher(testScheduler))
 
     /** A small guide across five channels, one programme each inside every screen's window. */
     private val xmltv = buildString {
@@ -85,7 +93,7 @@ class EpgCacheTest {
         nowMs = nowMs,
     ) {
         loads.incrementAndGet()
-        parseSuperset()
+        GuideDownload.Loaded(parseSuperset())
     }
 
     private val guideIds = setOf("a", "b")            // Guide: a couple of categories
@@ -129,7 +137,7 @@ class EpgCacheTest {
         ) {
             loads.incrementAndGet()
             gate.await()
-            parseSuperset()
+            GuideDownload.Loaded(parseSuperset())
         }
 
         val g = async { blockingFetch(guideIds, guideWindow) }
@@ -167,13 +175,151 @@ class EpgCacheTest {
         assertEquals("An uncovered window reloads", 2, loads.get())
     }
 
-    @Test fun `a stale entry (past TTL) reloads`() = runTest {
-        val c = cache()
+    /** A guide with one programme on channel "a", titled [title]. */
+    private fun guideTitled(title: String): EpgGuide = XmltvParser.parse(
+        "<?xml version=\"1.0\"?><tv><channel id=\"a\"><display-name>A</display-name></channel>" +
+            "<programme start=\"${fmt(now)}\" stop=\"${fmt(now + hour)}\" channel=\"a\"><title>$title</title></programme></tv>",
+        parsedWindow,
+        channelIds = null,
+    )
+
+    /** One cache call for channel "a" at [nowMs], recording the ETag each load was sent. */
+    private suspend fun open(
+        c: EpgCache,
+        nowMs: Long,
+        sent: MutableList<String?>,
+        serveStale: Boolean = true,
+        window: EpgWindow = guideWindow,
+        ttlMs: Long = ttl,
+        answer: (ifNoneMatch: String?) -> GuideDownload,
+    ): EpgGuide = c.getOrLoad(
+        key, providerId, window, parsedWindow, setOf("a"), null, ttlMs, nowMs, serveStale,
+    ) { ifNoneMatch -> sent += ifNoneMatch; answer(ifNoneMatch) }
+
+    private fun EpgGuide.title() = programmesFor("a").single().title
+
+    @Test fun `a stale entry is served at once and refreshed in the background`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+
+        val stale = open(c, now + ttl + 1, sent) { GuideDownload.Loaded(guideTitled("New"), etag = "\"v2\"") }
+        assertEquals("the stale guide comes back without waiting", "Old", stale.title())
+        assertEquals(listOf<String?>(null), sent)
+
+        advanceUntilIdle()
+        assertEquals("the refresh sent the stored ETag", listOf(null, "\"v1\""), sent)
+        val fresh = open(c, now + ttl + 2, sent) { error("fresh again: no load") }
+        assertEquals("New", fresh.title())
+    }
+
+    @Test fun `a 304 marks the entry fresh without replacing it`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+        val updates = mutableListOf<Unit>()
+        val watcher = launch { c.updates(providerId).collect { updates += it } }
+
+        open(c, now + ttl + 1, sent) { GuideDownload.NotModified }
+        advanceUntilIdle()
+        assertEquals(listOf(null, "\"v1\""), sent)
+        assertEquals("Old", open(c, now + ttl + 2, sent) { error("fresh after the 304") }.title())
+        assertTrue("an unchanged guide doesn't tell the screens to reload", updates.isEmpty())
+        watcher.cancel()
+    }
+
+    @Test fun `a changed guide from a refresh tells the screens`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+        val updates = mutableListOf<Unit>()
+        val watcher = launch { c.updates(providerId).collect { updates += it } }
+        val other = mutableListOf<Unit>()
+        val otherWatcher = launch { c.updates("prov-2").collect { other += it } }
+
+        open(c, now + ttl + 1, sent) { GuideDownload.Loaded(guideTitled("New"), etag = "\"v2\"") }
+        advanceUntilIdle()
+        assertEquals(1, updates.size)
+        assertTrue("another provider's screens aren't told", other.isEmpty())
+        watcher.cancel()
+        otherWatcher.cancel()
+    }
+
+    @Test fun `opens during a refresh don't start another`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+        repeat(3) { open(c, now + ttl + 1, sent) { GuideDownload.NotModified } }
+        advanceUntilIdle()
+        assertEquals(listOf(null, "\"v1\""), sent)
+    }
+
+    @Test fun `a failed refresh keeps the stale guide and waits before trying again`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+        val later = now + ttl + 1
+
+        assertEquals("Old", open(c, later, sent) { throw java.io.IOException("down") }.title())
+        advanceUntilIdle()
+        assertEquals("Old", open(c, later + 1_000, sent) { throw java.io.IOException("down") }.title())
+        advanceUntilIdle()
+        assertEquals("no second attempt within the retry wait", 2, sent.size)
+
+        open(c, later + EpgCache.RETRY_AFTER_MS, sent) { GuideDownload.NotModified }
+        advanceUntilIdle()
+        assertEquals(3, sent.size)
+    }
+
+    @Test fun `a forced refresh waits and still sends the ETag`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+
+        // EpgRepository passes a zero TTL with serveStale = false for a forced refresh.
+        val unchanged = open(c, now + 1, sent, serveStale = false, ttlMs = 0) { GuideDownload.NotModified }
+        assertEquals("Old", unchanged.title())
+        val changed = open(c, now + 2, sent, serveStale = false, ttlMs = 0) { GuideDownload.Loaded(guideTitled("New"), etag = "\"v2\"") }
+        assertEquals("the new guide comes back from the same call", "New", changed.title())
+        assertEquals(listOf(null, "\"v1\"", "\"v1\""), sent)
+    }
+
+    @Test fun `an uncovered window downloads in full without an ETag`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+        val beyond = EpgWindow(parsedWindow.endMs - hour, parsedWindow.endMs + 4 * hour)
+        open(c, now + ttl + 1, sent, window = beyond) { GuideDownload.Loaded(guideTitled("New"), etag = "\"v2\"") }
+        assertEquals(listOf(null, null), sent)
+    }
+
+    @Test fun `the ETag survives a restart`() = runTest {
+        val dir = tmp.newFolder()
+        val sent = mutableListOf<String?>()
+        open(testCache(dir), now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+
+        val restarted = testCache(dir)
+        assertEquals("Old", open(restarted, now + ttl + 1, sent) { GuideDownload.NotModified }.title())
+        advanceUntilIdle()
+        assertEquals(listOf(null, "\"v1\""), sent)
+    }
+
+    @Test fun `a refresh that lands after clearProvider is dropped`() = runTest {
+        val c = testCache()
+        val sent = mutableListOf<String?>()
+        open(c, now, sent) { GuideDownload.Loaded(guideTitled("Old"), etag = "\"v1\"") }
+        val gate = CompletableDeferred<Unit>()
+        c.getOrLoad(key, providerId, guideWindow, parsedWindow, setOf("a"), null, ttl, now + ttl + 1) {
+            gate.await(); GuideDownload.Loaded(guideTitled("New"), etag = "\"v2\"")
+        }
+        runCurrent()
+        c.clearProvider(providerId)
+        gate.complete(Unit)
+        advanceUntilIdle()
+
         val loads = AtomicInteger()
-        fetch(c, guideIds, guideWindow, loads, nowMs = now)
-        assertEquals(1, loads.get())
-        fetch(c, guideIds, guideWindow, loads, nowMs = now + ttl + 1)
-        assertEquals("A stale entry reloads", 2, loads.get())
+        fetch(c, setOf("a"), guideWindow, loads, nowMs = now + ttl + 2)
+        assertEquals("nothing was stored, so the next open downloads", 1, loads.get())
     }
 
     @Test fun `clearProvider invalidates the entry so the next open reloads`() = runTest {
@@ -192,16 +338,16 @@ class EpgCacheTest {
         val c = cache()
         val loads = AtomicInteger()
         // Two providers, distinct keys.
-        c.getOrLoad("k1", "prov-1", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); parseSuperset() }
-        c.getOrLoad("k2", "prov-2", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); parseSuperset() }
+        c.getOrLoad("k1", "prov-1", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); GuideDownload.Loaded(parseSuperset()) }
+        c.getOrLoad("k2", "prov-2", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); GuideDownload.Loaded(parseSuperset()) }
         assertEquals(2, loads.get())
 
         c.clearProvider("prov-1")
 
         // prov-2 still cached (no reload); prov-1 reloads.
-        c.getOrLoad("k2", "prov-2", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); parseSuperset() }
+        c.getOrLoad("k2", "prov-2", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); GuideDownload.Loaded(parseSuperset()) }
         assertEquals("prov-2 survives prov-1's delete", 2, loads.get())
-        c.getOrLoad("k1", "prov-1", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); parseSuperset() }
+        c.getOrLoad("k1", "prov-1", searchWindow, parsedWindow, searchIds, null, ttl, now) { loads.incrementAndGet(); GuideDownload.Loaded(parseSuperset()) }
         assertEquals("prov-1 reloads after its delete", 3, loads.get())
     }
 
@@ -215,14 +361,14 @@ class EpgCacheTest {
         val c = cache()
         val loads = AtomicInteger()
         val g = c.getOrLoad(key, providerId, searchWindow, parsedWindow, setOf("a"), null, ttl, now) {
-            loads.incrementAndGet(); XmltvParser.parse(dupXml, parsedWindow, channelIds = null)
+            loads.incrementAndGet(); GuideDownload.Loaded(XmltvParser.parse(dupXml, parsedWindow, channelIds = null))
         }
         assertEquals(setOf("a"), g.channels.map { it.id }.toSet())
         assertEquals("channel a's single programme is not duplicated on cache write", 1, g.programmesFor("a").size)
 
         // Reopen from cache: still one, not two.
         val again = c.getOrLoad(key, providerId, searchWindow, parsedWindow, setOf("a"), null, ttl, now) {
-            loads.incrementAndGet(); XmltvParser.parse(dupXml, parsedWindow, channelIds = null)
+            loads.incrementAndGet(); GuideDownload.Loaded(XmltvParser.parse(dupXml, parsedWindow, channelIds = null))
         }
         assertEquals(1, loads.get())
         assertEquals(1, again.programmesFor("a").size)
@@ -239,7 +385,7 @@ class EpgCacheTest {
         val c = cache()
         val loads = AtomicInteger()
         val guide = c.getOrLoad(key, providerId, guideWindow, parsedWindow, setOf("a"), null, ttl, now) {
-            loads.incrementAndGet(); XmltvParser.parse(xml, parsedWindow, channelIds = null)
+            loads.incrementAndGet(); GuideDownload.Loaded(XmltvParser.parse(xml, parsedWindow, channelIds = null))
         }
         assertEquals("only the programme within the Guide window survives the read filter", 1, guide.programmesFor("a").size)
         assertEquals("Soon", guide.programmesFor("a").first().title)
@@ -259,7 +405,7 @@ class EpgCacheTest {
         val writer = EpgCache(dir)
         val loads = AtomicInteger()
         writer.getOrLoad(key, providerId, searchWindow, parsedWindow, null, null, ttl, now) {
-            loads.incrementAndGet(); XmltvParser.parse(xml, parsedWindow, channelIds = null)
+            loads.incrementAndGet(); GuideDownload.Loaded(XmltvParser.parse(xml, parsedWindow, channelIds = null))
         }
         assertEquals(1, loads.get())
 

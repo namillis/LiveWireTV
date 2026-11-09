@@ -224,6 +224,7 @@ class GuideViewModel @Inject constructor(
                 // A missing or broken guide should not hide the channel list (M3U
                 // playlists often ship without one); rows then show no programmes.
                 val ids = channels.mapNotNullTo(HashSet()) { it.epgChannelId }
+                observeGuideUpdates(configured, forwardWindow, ids)
                 val guide = runCatching { epg.fetch(configured, forwardWindow, ids, forceRefresh) }.getOrNull()
                 loadedGuide = guide
                 _state.update {
@@ -257,6 +258,35 @@ class GuideViewModel @Inject constructor(
 
     /** Archive channels whose past listings were already requested since the last load. */
     private val pastRequested = HashSet<String>()
+
+    private var guideUpdatesJob: Job? = null
+
+    /**
+     * Put a newer guide into the rows when a background refresh brings one. The Guide is first
+     * shown the cached guide, even an old one, while the refresh runs. Past listings are
+     * requested again for the rows that had them (ArchiveRepository still has them in memory).
+     */
+    private fun observeGuideUpdates(cfg: ProviderConfig, window: EpgWindow, ids: Set<String>) {
+        guideUpdatesJob?.cancel()
+        guideUpdatesJob = viewModelScope.launch {
+            epg.updates(cfg).collect {
+                val guide = runCatching { epg.fetch(cfg, window, ids) }.getOrNull() ?: return@collect
+                if (provider != cfg) return@collect
+                // So a channel list landing later builds its new rows from this guide.
+                loadedGuide = guide
+                val hadPast = pastRequested.toList()
+                pastRequested.clear()
+                _state.update { st ->
+                    st.copy(
+                        allRows = st.allRows.map { row ->
+                            GuideRow(row.channel, ChannelProgrammes.listings(row.channel, guide::programmesFor))
+                        },
+                    )
+                }
+                hadPast.forEach(::requestPastListings)
+            }
+        }
+    }
 
     /** What the rows were built from, so [observeChannelList] can rebuild them. */
     private var rowChannels: List<LiveChannel> = emptyList()
