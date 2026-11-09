@@ -171,4 +171,91 @@ class EpgCachePolicyTest {
         assertFalse(EpgCachePolicy.isForProvider("${prefix}key.txt", "prov-1"))
         assertFalse(EpgCachePolicy.isForProvider("key.json", "prov-1"))
     }
+
+    // --- The pool's guide_window -------------------------------------------------------------
+
+    private val minute = TimeUnit.MINUTES.toMillis(1)
+
+    /** 2026-11-09 14:00 UTC, on the hour. */
+    private val h14 = 1_794_232_800_000L
+
+    @Test fun `the Guide's window rounds outward to whole hours`() {
+        // 14:46: the Guide's 4-hour view from 14:00 is parsed over 12:00 .. 03:00 next day.
+        val now = h14 + 46 * minute
+        val parsed = EpgCachePolicy.downloadWindow(EpgWindow(h14, h14 + 4 * hour), ttl)!!
+        val request = EpgCachePolicy.poolGuideRequest(parsed, now)
+        assertEquals(EpgCachePolicy.PoolGuideRequest(pastHours = 2, futureHours = 12), request)
+        // The pool's window, 12:00 .. 03:00, holds all of it.
+        assertEquals(parsed, EpgCachePolicy.poolGuideCovered(request, parsed, serverNowMs = now))
+    }
+
+    @Test fun `Home's window asks for 4 hours back and 21 ahead`() {
+        val now = h14 + 46 * minute
+        val parsed = EpgCachePolicy.downloadWindow(EpgWindow(now - 2 * hour, now + 12 * hour), ttl)!!
+        assertEquals(EpgCachePolicy.PoolGuideRequest(4, 21), EpgCachePolicy.poolGuideRequest(parsed, now))
+    }
+
+    @Test fun `a window starting on the hour needs no extra hour`() {
+        val parsed = EpgWindow(h14 - 2 * hour, h14 + 3 * hour)
+        assertEquals(EpgCachePolicy.PoolGuideRequest(2, 2), EpgCachePolicy.poolGuideRequest(parsed, h14))
+    }
+
+    @Test fun `requests are clamped to the pool's limits, and the held window says so`() {
+        val now = h14 + 10 * minute
+        val parsed = EpgWindow(now - 10 * hour, now + 48 * hour)
+        val request = EpgCachePolicy.poolGuideRequest(parsed, now)
+        assertEquals(EpgCachePolicy.PoolGuideRequest(6, 36), request)
+        // 08:00 .. 03:00 two days on: the parts of the parsed window past 6 back and 36 ahead are missing.
+        assertEquals(
+            EpgWindow(h14 - 6 * hour, h14 + 37 * hour),
+            EpgCachePolicy.poolGuideCovered(request, parsed, now),
+        )
+    }
+
+    @Test fun `a window wholly in the future asks for no past hours and at least one ahead`() {
+        val parsed = EpgWindow(h14 + 2 * hour, h14 + 90 * minute + 2 * hour)
+        assertEquals(EpgCachePolicy.PoolGuideRequest(0, 3), EpgCachePolicy.poolGuideRequest(parsed, h14 + 5 * minute))
+        val soon = EpgWindow(h14 + 10 * minute, h14 + 20 * minute)
+        assertEquals(EpgCachePolicy.PoolGuideRequest(0, 1), EpgCachePolicy.poolGuideRequest(soon, h14 + 5 * minute))
+    }
+
+    @Test fun `a pool clock an hour ahead holds less of the past and more of the future`() {
+        // The TV thinks it is 14:58; the pool is already at 15:00 (a clock off by 2 minutes).
+        val parsed = EpgWindow(h14 - 2 * hour - 20 * minute, h14 + 10 * hour)
+        val request = EpgCachePolicy.poolGuideRequest(parsed, h14 + 58 * minute)
+        assertEquals(EpgCachePolicy.PoolGuideRequest(3, 9), request)
+        // The pool sent 12:00 .. 01:00, so the 20 minutes before 12:00 are missing.
+        assertEquals(EpgWindow(h14 - 2 * hour, parsed.endMs), EpgCachePolicy.poolGuideCovered(request, parsed, h14 + hour + 2 * minute))
+    }
+
+    @Test fun `a pool clock an hour behind holds less of the future`() {
+        val parsed = EpgWindow(h14 - 2 * hour, h14 + 10 * hour + 30 * minute)
+        val request = EpgCachePolicy.poolGuideRequest(parsed, h14 + 1 * minute)
+        assertEquals(EpgCachePolicy.PoolGuideRequest(2, 10), request)
+        // The pool, still at 13:59, sent 11:00 .. 00:00: the last 30 minutes are missing.
+        assertEquals(EpgWindow(parsed.startMs, h14 + 10 * hour), EpgCachePolicy.poolGuideCovered(request, parsed, h14 - 1 * minute))
+    }
+
+    @Test fun `the held window is never wider than what either side has`() {
+        // Every pairing of TV clock, pool clock (up to 50 minutes apart) and window shape.
+        val rnd = java.util.Random(7)
+        repeat(5_000) {
+            val now = h14 + rnd.nextInt(24 * 60) * minute
+            val serverNow = now + (rnd.nextInt(101) - 50) * minute
+            val start = now - rnd.nextInt(10 * 60) * minute
+            val parsed = EpgWindow(start, start + (1 + rnd.nextInt(48 * 60)) * minute)
+            val request = EpgCachePolicy.poolGuideRequest(parsed, now)
+            val held = EpgCachePolicy.poolGuideCovered(request, parsed, serverNow) ?: return@repeat
+            // The pool's own window: from its hour minus past_hours to its next hour plus future_hours.
+            val serverHour = serverNow / hour * hour
+            val sentStart = serverHour - request.pastHours * hour
+            val sentEnd = serverHour + hour + request.futureHours * hour
+            assertTrue(held.startMs >= sentStart && held.endMs <= sentEnd)
+            assertTrue(held.startMs >= parsed.startMs && held.endMs <= parsed.endMs)
+            // Same clocks and nothing clamped: everything that was asked for arrives.
+            if (serverNow / hour == now / hour && request.pastHours < 6 && request.futureHours < 36) {
+                assertEquals(parsed, held)
+            }
+        }
+    }
 }

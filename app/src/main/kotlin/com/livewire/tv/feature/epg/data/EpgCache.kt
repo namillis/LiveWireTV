@@ -59,8 +59,13 @@ private data class CachedGuide(
 
 /** What a guide download brought back. */
 sealed interface GuideDownload {
-    /** A parsed guide, with the response's ETag when the server sent one. */
-    data class Loaded(val guide: EpgGuide, val etag: String? = null) : GuideDownload
+    /**
+     * A parsed guide, with the response's ETag when the server sent one. [window], when set, is
+     * the window the guide actually holds, because the server sent less than it was parsed for
+     * (a pool's `guide_window`). The cache records it instead of the parsed window, so it never
+     * claims programmes it doesn't have.
+     */
+    data class Loaded(val guide: EpgGuide, val etag: String? = null, val window: EpgWindow? = null) : GuideDownload
 
     /** HTTP 304: the guide hasn't changed since the ETag that was sent. */
     data object NotModified : GuideDownload
@@ -286,7 +291,9 @@ class EpgCache internal constructor(
         epoch: Int,
     ) {
         if (epoch != clears.get()) return
-        val cached = download.guide.toCached(nowMs, parsedWindow, parsedChannelIds, download.etag)
+        // The window the server actually sent, when it sent less than was parsed for.
+        val held = download.window ?: parsedWindow
+        val cached = download.guide.toCached(nowMs, held, parsedChannelIds, download.etag)
         memory[entry.mapKey] = cached
         withContext(io) {
             runCatching {

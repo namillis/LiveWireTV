@@ -116,6 +116,46 @@ object EpgCachePolicy {
             )
         }
 
+    /** `past_hours` and `future_hours` for a pool that lists `guide_window`. */
+    data class PoolGuideRequest(val pastHours: Int, val futureHours: Int)
+
+    /** The pool's limits: it clamps anything outside them. */
+    const val POOL_MAX_PAST_HOURS = 6
+    const val POOL_MIN_FUTURE_HOURS = 1
+    const val POOL_MAX_FUTURE_HOURS = 36
+
+    private val HOUR_MS = TimeUnit.HOURS.toMillis(1)
+
+    /**
+     * What to ask a pool that lists `guide_window` for, so it sends [parsed] and little more. The
+     * pool's window runs from the start of its current hour minus `past_hours` to the end of
+     * that hour plus `future_hours`. Both are rounded outward to whole hours from [nowMs], then
+     * clamped to the pool's limits, which cuts a window that reaches further.
+     */
+    fun poolGuideRequest(parsed: EpgWindow, nowMs: Long): PoolGuideRequest {
+        val hourStart = Math.floorDiv(nowMs, HOUR_MS) * HOUR_MS
+        val past = ceilHours(hourStart - parsed.startMs).coerceIn(0, POOL_MAX_PAST_HOURS)
+        val future = ceilHours(parsed.endMs - (hourStart + HOUR_MS)).coerceIn(POOL_MIN_FUTURE_HOURS, POOL_MAX_FUTURE_HOURS)
+        return PoolGuideRequest(past, future)
+    }
+
+    /**
+     * The part of [parsed] a pool answer to [request] holds, when the pool's clock read
+     * [serverNowMs] (its `Date` header). Programmes outside [parsed] are dropped while parsing,
+     * so it is never wider than [parsed]. It is narrower when the request was clamped, or when
+     * the pool's hour differed from the one [poolGuideRequest] assumed (a TV clock that is off,
+     * or a request that crossed the hour). Null when they don't overlap at all.
+     */
+    fun poolGuideCovered(request: PoolGuideRequest, parsed: EpgWindow, serverNowMs: Long): EpgWindow? {
+        val hourStart = Math.floorDiv(serverNowMs, HOUR_MS) * HOUR_MS
+        val start = maxOf(parsed.startMs, hourStart - request.pastHours * HOUR_MS)
+        val end = minOf(parsed.endMs, hourStart + HOUR_MS + request.futureHours * HOUR_MS)
+        return if (end > start) EpgWindow(start, end) else null
+    }
+
+    /** Whole hours in [ms], rounded up; negative for a negative span. */
+    private fun ceilHours(ms: Long): Int = (-Math.floorDiv(-ms, HOUR_MS)).toInt()
+
     /**
      * True when an entry stored at [cachedAtMs] is still fresh at [nowMs] for the given [ttlMs].
      * A non-positive TTL disables caching (nothing is ever fresh); a cached timestamp in the

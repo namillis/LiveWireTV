@@ -26,6 +26,12 @@ object PoolSignals {
     /** Live Now channels in `get_live_streams` carry a `pool_event` describing the game ([parseEvent]). */
     const val EVENT_INFO = "event_info"
 
+    /**
+     * `xmltv.php` takes `past_hours` and `future_hours` and then sends only that part of the guide
+     * (see [com.livewire.tv.feature.epg.data.EpgCachePolicy.poolGuideRequest]).
+     */
+    const val GUIDE_WINDOW = "guide_window"
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /**

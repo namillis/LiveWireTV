@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.epg.data
 
+import com.livewire.tv.feature.epg.domain.EpgWindow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -55,6 +56,46 @@ class GuideDownloadTest {
     @Test fun `a server without ETags gives a null ETag`() {
         val result = EpgRepository.downloadGuide(server(null), url, null, null, ifNoneMatch = null)
         assertNull((result as GuideDownload.Loaded).etag)
+    }
+
+    /** 2026-11-09 14:00 UTC. */
+    private val h14 = 1_794_232_800_000L
+    private val hour = 3_600_000L
+
+    /** A server that stamps its responses with [serverNowMs] as the `Date` header. */
+    private fun serverAt(serverNowMs: Long) = OkHttpClient.Builder().addInterceptor { chain ->
+        val req = chain.request().also { requests += it }
+        val date = java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
+            .format(java.time.Instant.ofEpochMilli(serverNowMs).atZone(java.time.ZoneOffset.UTC))
+        Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+            .header("Date", date).body(xml.toResponseBody("application/xml".toMediaType())).build()
+    }.build()
+
+    @Test fun `a pool request adds the hours to the URL and keeps the login`() {
+        val parsed = EpgWindow(h14 - 2 * hour, h14 + 13 * hour)
+        val pool = EpgCachePolicy.PoolGuideRequest(pastHours = 2, futureHours = 12)
+        val result = EpgRepository.downloadGuide(serverAt(h14 + 1_000), url, parsed, null, null, pool) { h14 }
+        val sent = requests.single().url
+        assertEquals("u", sent.queryParameter("username"))
+        assertEquals("p", sent.queryParameter("password"))
+        assertEquals("2", sent.queryParameter("past_hours"))
+        assertEquals("12", sent.queryParameter("future_hours"))
+        assertEquals("the pool sent all of it", parsed, (result as GuideDownload.Loaded).window)
+    }
+
+    @Test fun `the held window follows the pool's clock, not the TV's`() {
+        val parsed = EpgWindow(h14 - 2 * hour, h14 + 13 * hour)
+        val pool = EpgCachePolicy.PoolGuideRequest(pastHours = 2, futureHours = 12)
+        // The TV still thinks it is 14:59; the pool has moved on to 15:01, so it sent 13:00 .. 04:00.
+        val result = EpgRepository.downloadGuide(serverAt(h14 + hour + 60_000), url, parsed, null, null, pool) { h14 + hour - 60_000 }
+        assertEquals(EpgWindow(h14 - hour, parsed.endMs), (result as GuideDownload.Loaded).window)
+    }
+
+    @Test fun `without a pool request the URL and the held window are unchanged`() {
+        val parsed = EpgWindow(h14 - 2 * hour, h14 + 13 * hour)
+        val result = EpgRepository.downloadGuide(serverAt(h14), url, parsed, null, null)
+        assertEquals(url, requests.single().url.toString())
+        assertNull((result as GuideDownload.Loaded).window)
     }
 
     @Test fun `an error response still throws`() {
