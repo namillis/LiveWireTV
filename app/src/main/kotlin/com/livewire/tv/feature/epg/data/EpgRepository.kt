@@ -4,10 +4,12 @@ import com.livewire.tv.core.net.decodedStream
 import com.livewire.tv.feature.epg.domain.EpgGuide
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.ProviderRepository
+import com.livewire.tv.feature.providers.domain.PoolSignals
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.InputStreamReader
@@ -23,6 +25,9 @@ import javax.inject.Singleton
  * and take 10-20s to download but change only over hours, so every open after the first
  * is served from cache instead of re-downloading. The cache also single-flights concurrent
  * opens so the guide is never downloaded twice at once.
+ *
+ * A pool that lists `guide_window` ([PoolSignals.GUIDE_WINDOW]) is asked for only the window
+ * the cache keeps, instead of its full 6 hours back and 36 ahead.
  */
 @Singleton
 class EpgRepository @Inject constructor(
@@ -30,6 +35,9 @@ class EpgRepository @Inject constructor(
     private val providers: ProviderRepository,
     private val cache: EpgCache,
 ) {
+    /** Wall clock for working out the pool's guide window; tests replace it. */
+    internal var clock: () -> Long = System::currentTimeMillis
+
     /**
      * Fetch the guide and return it filtered to [channelIds] (all channels when null) and to
      * [window]. Returns a cached guide when one covers the request, even past its TTL: a stale
@@ -72,7 +80,7 @@ class EpgRepository @Inject constructor(
             ttlMs = ttl,
             serveStale = !forceRefresh,
         ) { ifNoneMatch ->
-            download(url, parsedWindow, channelIds = null, ifNoneMatch)
+            download(cfg, url, parsedWindow, ifNoneMatch)
         }
     }
 
@@ -82,12 +90,22 @@ class EpgRepository @Inject constructor(
      */
     fun updates(cfg: ProviderConfig): Flow<Unit> = cache.updates(cfg.id)
 
+    /**
+     * Downloads the guide for [window]. A pool that lists `guide_window` is asked for that window
+     * only; everything else gets the full guide, as before.
+     */
     private suspend fun download(
+        cfg: ProviderConfig,
         url: String,
         window: EpgWindow?,
-        channelIds: Set<String>?,
         ifNoneMatch: String?,
-    ): GuideDownload = withContext(Dispatchers.IO) { downloadGuide(http, url, window, channelIds, ifNoneMatch) }
+    ): GuideDownload {
+        val pool = window?.takeIf { PoolSignals.GUIDE_WINDOW in providers.poolFeatures(cfg) }
+            ?.let { EpgCachePolicy.poolGuideRequest(it, clock()) }
+        return withContext(Dispatchers.IO) {
+            downloadGuide(http, url, window, channelIds = null, ifNoneMatch, pool, clock)
+        }
+    }
 
     internal companion object {
         private const val HTTP_NOT_MODIFIED = 304
@@ -95,7 +113,11 @@ class EpgRepository @Inject constructor(
         /**
          * Downloads and parses the guide at [url]. With [ifNoneMatch] (the cached guide's ETag)
          * it is sent as If-None-Match, and a 304 comes back as [GuideDownload.NotModified] with
-         * nothing downloaded or parsed. Blocking; call off the main thread.
+         * nothing downloaded or parsed.
+         *
+         * With [pool], `past_hours` and `future_hours` are added to the URL, and the result's
+         * [GuideDownload.Loaded.window] is the part of [window] the pool sent, worked out from
+         * its `Date` header ([clock] when it has none). Blocking; call off the main thread.
          */
         fun downloadGuide(
             http: OkHttpClient,
@@ -103,20 +125,36 @@ class EpgRepository @Inject constructor(
             window: EpgWindow?,
             channelIds: Set<String>?,
             ifNoneMatch: String?,
+            pool: EpgCachePolicy.PoolGuideRequest? = null,
+            clock: () -> Long = System::currentTimeMillis,
         ): GuideDownload {
-            val request = Request.Builder().url(url)
+            val windowed = pool?.let { p ->
+                url.toHttpUrlOrNull()?.newBuilder()
+                    ?.addQueryParameter("past_hours", p.pastHours.toString())
+                    ?.addQueryParameter("future_hours", p.futureHours.toString())
+                    ?.build()
+            }
+            val request = Request.Builder()
+                .apply { if (windowed != null) url(windowed) else url(url) }
                 .apply { if (ifNoneMatch != null) header("If-None-Match", ifNoneMatch) }
                 .build()
             return http.newCall(request).execute().use { response ->
                 if (ifNoneMatch != null && response.code == HTTP_NOT_MODIFIED) return@use GuideDownload.NotModified
                 check(response.isSuccessful) { "Provider guide request failed" }
+                val held = if (windowed != null && pool != null && window != null) {
+                    val serverNow = response.headers.getDate("Date")?.time ?: clock()
+                    EpgCachePolicy.poolGuideCovered(pool, window, serverNow)
+                        ?: error("The pool's guide window doesn't overlap the one asked for")
+                } else {
+                    null
+                }
                 val body = response.body ?: error("Empty EPG response")
                 val guide = decodedStream(body.byteStream(), response.header("Content-Encoding")).use { xml ->
                     InputStreamReader(xml, Charsets.UTF_8).use { reader ->
                         XmltvParser.parse(reader, window, channelIds)
                     }
                 }
-                GuideDownload.Loaded(guide, response.header("ETag"))
+                GuideDownload.Loaded(guide, response.header("ETag"), held)
             }
         }
     }
