@@ -29,7 +29,7 @@ class PoolFeaturesCacheTest {
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
                 .body(poolInfo.toResponseBody("application/json".toMediaType())).build()
         }.build()
-        return ProviderRepository(XtreamClient(http), M3uClient(http)).also { it.clock = { now } }
+        return ProviderRepository(XtreamClient(http), M3uClient(http), LiveChannelCache(dir = null)).also { it.clock = { now } }
     }
 
     @Test
