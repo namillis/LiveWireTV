@@ -183,20 +183,30 @@ class XtreamClient @Inject constructor(
             }
         }
 
-    /** A `pool_info` answer: the [features] found, and whether the panel [timedOut] instead of answering. */
-    data class PoolCheck(val features: Set<String>, val timedOut: Boolean = false)
+    /**
+     * A `pool_info` answer: the [features] found, and whether the panel [timedOut] instead of
+     * answering. [retryAfterMs] is set when the panel answered HTTP 429 (too many requests): no
+     * answer yet, ask again after that long.
+     */
+    data class PoolCheck(val features: Set<String>, val timedOut: Boolean = false, val retryAfterMs: Long? = null)
 
     /**
      * The pool extensions this provider supports (see [PoolSignals]), empty for a plain panel.
      * Null when the check failed on the network, so the caller can try again later. A panel
      * that doesn't answer within [POOL_CHECK_TIMEOUT_MS] counts as plain for now
-     * ([PoolCheck.timedOut]), so a slow panel doesn't hold up every first play.
+     * ([PoolCheck.timedOut]), so a slow panel doesn't hold up every first play. A 429 also
+     * counts as plain for now, for as long as its `Retry-After` asks ([PoolCheck.retryAfterMs]).
      */
     suspend fun poolFeatures(cfg: ProviderConfig): PoolCheck? = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder().url(cfg.playerApiUrl(action = "pool_info")).build()
             poolHttp.newCall(req).execute().use { resp ->
-                if (resp.code >= 500) null else PoolCheck(PoolSignals.parseFeatures(if (resp.isSuccessful) resp.body?.string() else null))
+                when {
+                    resp.code == HTTP_TOO_MANY_REQUESTS ->
+                        PoolCheck(emptySet(), retryAfterMs = retryAfterMs(resp) ?: DEFAULT_RETRY_AFTER_MS)
+                    resp.code >= 500 -> null
+                    else -> PoolCheck(PoolSignals.parseFeatures(if (resp.isSuccessful) resp.body?.string() else null))
+                }
             }
         } catch (_: java.io.InterruptedIOException) {
             PoolCheck(emptySet(), timedOut = true)
@@ -212,11 +222,19 @@ class XtreamClient @Inject constructor(
     /**
      * Whether the panel accepts this login within [REACH_TIMEOUT_MS]. False when it's down, too
      * slow, answers with an error, or refuses the login: any of those means it can't be used now.
+     *
+     * A 429 (too many requests) that asks to wait at most [BUSY_RETRY_AFTER_MAX_MS] counts as
+     * reachable: the panel is up and only rate-limiting this login for a moment, so switching to
+     * the backup would be wrong. A longer wait (the pool locks a login out for 15 minutes after
+     * repeated bad passwords) means it can't be used now.
      */
     suspend fun reachable(cfg: ProviderConfig): Boolean = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder().url(cfg.playerApiUrl()).build()
             reachHttp.newCall(req).execute().use { resp ->
+                if (resp.code == HTTP_TOO_MANY_REQUESTS) {
+                    return@use (retryAfterMs(resp) ?: DEFAULT_RETRY_AFTER_MS) <= BUSY_RETRY_AFTER_MAX_MS
+                }
                 if (!resp.isSuccessful) return@use false
                 val root = json.parseToJsonElement(resp.body?.string().orEmpty()) as? JsonObject ?: return@use false
                 val auth = (root["user_info"] as? JsonObject)?.get("auth").str()
@@ -256,7 +274,25 @@ class XtreamClient @Inject constructor(
     private companion object {
         const val POOL_CHECK_TIMEOUT_MS = 3_000L
         const val REACH_TIMEOUT_MS = 6_000L
+
+        const val HTTP_TOO_MANY_REQUESTS = 429
+
+        /** How long to wait after a 429 that names no `Retry-After`. */
+        const val DEFAULT_RETRY_AFTER_MS = 60_000L
+
+        /** The longest 429 wait that still counts as "busy" rather than "can't be used now". */
+        const val BUSY_RETRY_AFTER_MAX_MS = 2 * 60_000L
     }
+}
+
+/**
+ * The wait a response's `Retry-After` asks for, in ms: either seconds, or an HTTP date. Null
+ * when it's missing or unreadable; never negative.
+ */
+internal fun retryAfterMs(resp: okhttp3.Response, nowMs: Long = System.currentTimeMillis()): Long? {
+    val raw = resp.header("Retry-After")?.trim() ?: return null
+    raw.toLongOrNull()?.let { return (it * 1000).coerceAtLeast(0) }
+    return resp.headers.getDate("Retry-After")?.let { (it.time - nowMs).coerceAtLeast(0) }
 }
 
 /** Xtream fields arrive as strings or numbers depending on the provider — read either. */
