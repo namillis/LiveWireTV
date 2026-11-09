@@ -10,8 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.decodeFromStream
@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.BufferedInputStream
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -111,22 +112,47 @@ class XtreamClient @Inject constructor(
 
     /**
      * Decodes a JSON array response into [T] rows straight from the response stream, without
-     * holding the body as one String or building a JSON tree. Empty on an HTTP error or a body
-     * that isn't an array of objects (a panel answers a bad login with an object). Network
-     * errors are thrown, as for every other call.
+     * holding the body as one String or building a JSON tree. Errors match the tree parse this
+     * replaced: an HTTP error gives an empty list, and so does a body that is valid JSON but not
+     * an array (a panel answers a bad login with an object). A body that isn't JSON, or an array
+     * cut off part way, throws. `null` items are skipped; any other item that isn't an object
+     * throws, where the tree parse skipped it.
      */
     @OptIn(ExperimentalSerializationApi::class)
-    private fun <T> getList(url: String, row: KSerializer<T>): List<T> {
+    private fun <T : Any> getList(url: String, row: KSerializer<T>): List<T> {
         val req = Request.Builder().url(url).build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return emptyList()
-            val body = resp.body ?: return emptyList()
-            return try {
-                json.decodeFromStream(ListSerializer(row), body.byteStream())
-            } catch (_: SerializationException) {
-                emptyList()
-            } catch (_: IllegalArgumentException) {
-                emptyList()
+            val stream = (resp.body ?: return emptyList()).byteStream().buffered()
+            if (!startsWithArray(stream)) {
+                // Small by nature (an object or an error page): parse it as text, as before, so
+                // JSON gives an empty list and anything else throws.
+                json.parseToJsonElement(stream.readBytes().toString(Charsets.UTF_8))
+                return emptyList()
+            }
+            return json.decodeFromStream(ListSerializer(row.nullable), stream).filterNotNull()
+        }
+    }
+
+    /**
+     * Skips leading whitespace and a UTF-8 byte order mark, then tells whether the body starts
+     * with `[`. Leaves [stream] at that first character either way.
+     */
+    private fun startsWithArray(stream: BufferedInputStream): Boolean {
+        while (true) {
+            stream.mark(3)
+            when (val b = stream.read()) {
+                -1 -> return false
+                ' '.code, '\t'.code, '\n'.code, '\r'.code -> continue
+                0xEF -> {
+                    if (stream.read() == 0xBB && stream.read() == 0xBF) continue
+                    stream.reset()
+                    return false
+                }
+                else -> {
+                    stream.reset()
+                    return b == '['.code
+                }
             }
         }
     }

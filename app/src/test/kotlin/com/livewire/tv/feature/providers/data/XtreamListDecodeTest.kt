@@ -12,7 +12,9 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
+import kotlinx.serialization.SerializationException
 
 /** `get_live_streams` and `get_live_categories` decoded from the stream into typed rows. */
 class XtreamListDecodeTest {
@@ -83,12 +85,26 @@ class XtreamListDecodeTest {
         assertEquals("5", event.channelId)
     }
 
-    @Test fun `a bad login object, an error page or an HTTP error give an empty list`() {
+    @Test fun `a bad login object, JSON null or an HTTP error give an empty list, as before`() {
         assertTrue(channels("""{"user_info":{"auth":0}}""").isEmpty())
-        assertTrue(channels("<html>Forbidden</html>").isEmpty())
+        assertTrue(channels("null").isEmpty())
         assertTrue(channels("[]").isEmpty())
         assertTrue(channels("""[{"stream_id":1,"name":"A"}]""", code = 403).isEmpty())
-        assertTrue("a cut-off body", channels("""[{"stream_id":1,"name":"A"},{"stream_""").isEmpty())
+    }
+
+    @Test fun `a body that isn't JSON, or an array cut off, throws as before`() {
+        for (body in listOf("", "<html><body>Bad Gateway</body></html>", """[{"stream_id":1,"name":"A"},{"stream_""")) {
+            try {
+                channels(body)
+                fail("expected a failure for: $body")
+            } catch (_: SerializationException) {
+            }
+        }
+    }
+
+    @Test fun `null items are skipped and a byte order mark is ignored`() {
+        val ch = channels("\uFEFF  [null,{\"stream_id\":\"1\",\"name\":\"A\",\"category_id\":\"1\"},null]")
+        assertEquals(listOf("1"), ch.map { it.streamId })
     }
 
     @Test fun `text with escapes and non-ASCII names decodes`() {
