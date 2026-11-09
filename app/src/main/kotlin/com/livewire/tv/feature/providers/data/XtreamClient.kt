@@ -8,14 +8,20 @@ import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.providers.domain.ServerInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.BufferedInputStream
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,7 +29,9 @@ import javax.inject.Singleton
 /**
  * Talks directly to the user's Xtream provider panel (player_api.php). No LiveWire
  * backend. Xtream returns heterogeneous shapes (object for user_info, arrays for
- * categories/streams) and providers vary, so we parse tolerantly from JsonElement.
+ * categories/streams) and providers vary, so we parse tolerantly. The large lists (streams,
+ * categories) are decoded from the response stream into [XtreamStream] / [XtreamCategory],
+ * whose fields accept a string or a number; the small objects are read from a JsonElement.
  * Kotlin port of the Flutter XtreamClient.
  */
 @Singleton
@@ -74,41 +82,80 @@ class XtreamClient @Inject constructor(
     }
 
     suspend fun liveCategories(cfg: ProviderConfig): List<ProviderCategory> = withContext(Dispatchers.IO) {
-        val body = get(cfg.playerApiUrl(action = "get_live_categories")) ?: return@withContext emptyList()
-        val arr = json.parseToJsonElement(body) as? JsonArray ?: return@withContext emptyList()
-        arr.mapNotNull { el ->
-            val o = el as? JsonObject ?: return@mapNotNull null
-            ProviderCategory(
-                id = o["category_id"].str().orEmpty(),
-                name = o["category_name"].str().orEmpty(),
-            )
-        }
+        val rows = getList(cfg.playerApiUrl(action = "get_live_categories"), XtreamCategory.serializer())
+        rows.map { ProviderCategory(id = it.categoryId.orEmpty(), name = it.categoryName.orEmpty()) }
     }
 
     suspend fun liveChannels(cfg: ProviderConfig, categoryId: String? = null): List<LiveChannel> =
         withContext(Dispatchers.IO) {
             val extra = if (categoryId != null) mapOf("category_id" to categoryId) else emptyMap()
-            val body = get(cfg.playerApiUrl(action = "get_live_streams", extra = extra))
-                ?: return@withContext emptyList()
-            val arr = json.parseToJsonElement(body) as? JsonArray ?: return@withContext emptyList()
-            arr.mapNotNull { el ->
-                val o = el as? JsonObject ?: return@mapNotNull null
-                val archived = o["tv_archive"].str()?.let { it == "1" || it == "1.0" || it.toIntOrNull() == 1 } ?: false
-                val archiveDays = if (archived) o["tv_archive_duration"].str()?.toIntOrNull() ?: 0 else 0
-                val streamId = o["stream_id"].str().orEmpty()
-                LiveChannel(
-                    streamId = streamId,
-                    name = o["name"].str().orEmpty(),
-                    logoUrl = o["stream_icon"].str()?.ifBlank { null },
-                    epgChannelId = o["epg_channel_id"].str()?.ifBlank { null },
-                    categoryId = o["category_id"].str().orEmpty(),
-                    archiveDays = archiveDays,
-                    number = o["num"].str()?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
-                    // Kept only for a pool that lists event_info (ProviderRepository applies the gate).
-                    poolEvent = PoolSignals.parseEvent(o["pool_event"], streamId),
-                )
+            getList(cfg.playerApiUrl(action = "get_live_streams", extra = extra), XtreamStream.serializer())
+                .map { it.toLiveChannel() }
+        }
+
+    private fun XtreamStream.toLiveChannel(): LiveChannel {
+        val archived = tvArchive?.let { it == "1" || it == "1.0" || it.toIntOrNull() == 1 } ?: false
+        val archiveDays = if (archived) tvArchiveDuration?.toIntOrNull() ?: 0 else 0
+        val id = streamId.orEmpty()
+        return LiveChannel(
+            streamId = id,
+            name = name.orEmpty(),
+            logoUrl = streamIcon?.ifBlank { null },
+            epgChannelId = epgChannelId?.ifBlank { null },
+            categoryId = categoryId.orEmpty(),
+            archiveDays = archiveDays,
+            number = num?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
+            // Kept only for a pool that lists event_info (ProviderRepository applies the gate).
+            poolEvent = PoolSignals.parseEvent(poolEvent, id),
+        )
+    }
+
+    /**
+     * Decodes a JSON array response into [T] rows straight from the response stream, without
+     * holding the body as one String or building a JSON tree. Errors match the tree parse this
+     * replaced: an HTTP error gives an empty list, and so does a body that is valid JSON but not
+     * an array (a panel answers a bad login with an object). A body that isn't JSON, or an array
+     * cut off part way, throws. `null` items are skipped; any other item that isn't an object
+     * throws, where the tree parse skipped it.
+     */
+    @OptIn(ExperimentalSerializationApi::class)
+    private fun <T : Any> getList(url: String, row: KSerializer<T>): List<T> {
+        val req = Request.Builder().url(url).build()
+        http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return emptyList()
+            val stream = (resp.body ?: return emptyList()).byteStream().buffered()
+            if (!startsWithArray(stream)) {
+                // Small by nature (an object or an error page): parse it as text, as before, so
+                // JSON gives an empty list and anything else throws.
+                json.parseToJsonElement(stream.readBytes().toString(Charsets.UTF_8))
+                return emptyList()
+            }
+            return json.decodeFromStream(ListSerializer(row.nullable), stream).filterNotNull()
+        }
+    }
+
+    /**
+     * Skips leading whitespace and a UTF-8 byte order mark, then tells whether the body starts
+     * with `[`. Leaves [stream] at that first character either way.
+     */
+    private fun startsWithArray(stream: BufferedInputStream): Boolean {
+        while (true) {
+            stream.mark(3)
+            when (val b = stream.read()) {
+                -1 -> return false
+                ' '.code, '\t'.code, '\n'.code, '\r'.code -> continue
+                0xEF -> {
+                    if (stream.read() == 0xBB && stream.read() == 0xBF) continue
+                    stream.reset()
+                    return false
+                }
+                else -> {
+                    stream.reset()
+                    return b == '['.code
+                }
             }
         }
+    }
 
     /**
      * Per-channel past programme listing from `get_simple_data_table`, used to know which
