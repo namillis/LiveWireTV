@@ -37,7 +37,7 @@ class LiveNowEventsTest {
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(code).message("x")
                 .body(body.toResponseBody("application/json".toMediaType())).build()
         }.build()
-        return ProviderRepository(XtreamClient(http), M3uClient(http))
+        return ProviderRepository(XtreamClient(http), M3uClient(http), LiveChannelCache(dir = null))
     }
 
     private val cfg = ProviderConfig(id = "pool", name = "Pool", baseUrl = "https://iptv.example", username = "tv3", password = "p")

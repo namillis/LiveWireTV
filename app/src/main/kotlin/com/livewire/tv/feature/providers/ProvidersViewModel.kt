@@ -60,8 +60,12 @@ class ProvidersViewModel @Inject constructor(
                 storage.add(cfg)
                 // Editing a provider can change its credentials or endpoint, which makes its
                 // cached guide unreachable (the guide URL is part of the cache key). Drop that
-                // provider's entries so a stale guide is never served after an edit.
-                if (existingId != null) epgCache.clearProvider(existingId)
+                // provider's entries so a stale guide is never served after an edit. The same
+                // goes for its saved channel list.
+                if (existingId != null) {
+                    epgCache.clearProvider(existingId)
+                    repository.forgetProvider(existingId)
+                }
                 load()
                 _state.update { it.copy(validating = false) }
                 onDone()
@@ -77,8 +81,10 @@ class ProvidersViewModel @Inject constructor(
         storage.remove(id)
         viewModelScope.launch {
             repository.forget()
-            // Delete only this provider's cached guide (memory + disk); other providers keep theirs.
+            // Delete only this provider's cached guide and channel list (memory + disk); other
+            // providers keep theirs.
             epgCache.clearProvider(id)
+            repository.forgetProvider(id)
             // …and its favorites, which are keyed by this provider id and otherwise orphaned.
             favoritesStore.removeProvider(id)
             pinnedCategories.removeProvider(id)
