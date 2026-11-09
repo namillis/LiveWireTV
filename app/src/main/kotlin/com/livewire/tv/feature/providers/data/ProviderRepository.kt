@@ -138,14 +138,20 @@ class ProviderRepository @Inject constructor(
      * The pool extensions [cfg] supports (see [PoolSignals]). Empty for M3U and plain Xtream
      * panels. A real answer is kept for the app run. A timeout counts as plain for
      * [POOL_RECHECK_MS] and is then checked again, so one slow answer doesn't turn Sources and
-     * game info off until restart. A network failure isn't cached at all.
+     * game info off until restart. A 429 (too many requests) counts as plain for as long as its
+     * `Retry-After` asks, between [POOL_RECHECK_MS] and [POOL_RECHECK_MAX_MS], and is then
+     * checked again the same way. A network failure isn't cached at all.
      */
     suspend fun poolFeatures(cfg: ProviderConfig): Set<String> {
         if (cfg.type != ProviderType.XTREAM) return emptySet()
         val key = providerKey(cfg)
         poolFeatures[key]?.let { if (clock() < it.expiresAt) return it.features }
         val found = xtream.poolFeatures(cfg) ?: return emptySet()
-        val expiresAt = if (found.timedOut) clock() + POOL_RECHECK_MS else Long.MAX_VALUE
+        val expiresAt = when {
+            found.retryAfterMs != null -> clock() + found.retryAfterMs.coerceIn(POOL_RECHECK_MS, POOL_RECHECK_MAX_MS)
+            found.timedOut -> clock() + POOL_RECHECK_MS
+            else -> Long.MAX_VALUE
+        }
         poolFeatures[key] = CachedPoolFeatures(found.features, expiresAt)
         return found.features
     }
@@ -290,5 +296,8 @@ class ProviderRepository @Inject constructor(
 
         /** How long a timed-out `pool_info` check counts as a plain panel before it is tried again. */
         const val POOL_RECHECK_MS = 60_000L
+
+        /** The longest a 429 on `pool_info` counts as a plain panel, whatever its `Retry-After`. */
+        const val POOL_RECHECK_MAX_MS = 15 * 60_000L
     }
 }
