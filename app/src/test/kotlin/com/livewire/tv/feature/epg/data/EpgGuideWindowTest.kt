@@ -3,6 +3,7 @@ package com.livewire.tv.feature.epg.data
 import com.livewire.tv.feature.epg.domain.EpgWindow
 import com.livewire.tv.feature.providers.data.LiveChannelCache
 import com.livewire.tv.feature.providers.data.M3uClient
+import com.livewire.tv.feature.providers.data.ProviderFileStore
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.data.XtreamClient
 import com.livewire.tv.feature.providers.domain.ProviderConfig
@@ -55,7 +56,7 @@ class EpgGuideWindowTest {
             Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(code).message("x").header("Date", date)
                 .body(body.toResponseBody("text/plain".toMediaType())).build()
         }.build()
-        val providers = ProviderRepository(XtreamClient(http), M3uClient(http), LiveChannelCache(dir = null))
+        val providers = ProviderRepository(XtreamClient(http), M3uClient(http), LiveChannelCache(dir = null), ProviderFileStore(dir = null))
         return EpgRepository(http, providers, EpgCache(tmp.newFolder())).also { it.clock = { now } }
     }
 

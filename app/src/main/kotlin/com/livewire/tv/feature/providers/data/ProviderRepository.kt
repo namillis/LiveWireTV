@@ -11,13 +11,21 @@ import com.livewire.tv.feature.providers.domain.ProviderAuthResult
 import com.livewire.tv.feature.providers.domain.ProviderCategory
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.providers.domain.ProviderType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,13 +39,22 @@ class ProviderRepository @Inject constructor(
     private val xtream: XtreamClient,
     private val m3u: M3uClient,
     private val channelCache: LiveChannelCache,
+    private val files: ProviderFileStore,
 ) {
-    private val poolFeatures = ConcurrentHashMap<String, CachedPoolFeatures>()
+    /** What this run knows about each provider's pool features; see [poolFeatures]. */
+    private val poolStates = ConcurrentHashMap<String, PoolState>()
+    /** The `pool_info` check running for each provider, so there is only ever one at a time. */
+    private val poolChecks = ConcurrentHashMap<String, Deferred<Unit>>()
+    /** Providers whose saved feature list was already looked for this run. */
+    private val poolFilesRead: MutableSet<String> = java.util.Collections.newSetFromMap(ConcurrentHashMap())
+    private val poolFileLock = Mutex()
+    /** Bumped by [forget] and [forgetProvider], so a check that was running then stores nothing. */
+    private val poolClears = AtomicInteger()
 
     /** Wall clock for the pool-check expiry; tests replace it. */
     internal var clock: () -> Long = System::currentTimeMillis
 
-    /** For fire-and-forget calls that must outlive the screen that started them (pool stop). */
+    /** For calls that must outlive the screen that started them (pool stop, pool checks). */
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Checks that the provider is reachable and usable before it is saved. */
@@ -136,27 +153,98 @@ class ProviderRepository @Inject constructor(
 
     /**
      * The pool extensions [cfg] supports (see [PoolSignals]). Empty for M3U and plain Xtream
-     * panels. A real answer is kept for the app run. A timeout counts as plain for
-     * [POOL_RECHECK_MS] and is then checked again, so one slow answer doesn't turn Sources and
-     * game info off until restart. A 429 (too many requests) counts as plain for as long as its
-     * `Retry-After` asks, between [POOL_RECHECK_MS] and [POOL_RECHECK_MAX_MS], and is then
-     * checked again the same way. A network failure isn't cached at all.
+     * panels.
+     *
+     * Each real `pool_info` answer is saved per provider ([ProviderFileStore]). A launch uses the
+     * saved list straight away and asks again in the background, so a slow or busy pool doesn't
+     * turn the features off; the new answer replaces it. A real answer is the pool's feature
+     * list, or empty for a plain panel; it is then kept for the app run.
+     *
+     * A timeout, a 429, a server or network error, or a refused login isn't an answer. With a
+     * saved list, that list stays in use and the check is tried again after [POOL_RECHECK_MS] (a
+     * 429's `Retry-After`, kept between [POOL_RECHECK_MS] and [POOL_RECHECK_MAX_MS]). With
+     * nothing saved, the provider counts as plain for that long; a network error isn't kept at
+     * all, so the next call asks again. Only one check runs at a time per provider.
      */
     suspend fun poolFeatures(cfg: ProviderConfig): Set<String> {
         if (cfg.type != ProviderType.XTREAM) return emptySet()
         val key = providerKey(cfg)
-        poolFeatures[key]?.let { if (clock() < it.expiresAt) return it.features }
-        val found = xtream.poolFeatures(cfg) ?: return emptySet()
-        val expiresAt = when {
-            found.retryAfterMs != null -> clock() + found.retryAfterMs.coerceIn(POOL_RECHECK_MS, POOL_RECHECK_MAX_MS)
-            found.timedOut -> clock() + POOL_RECHECK_MS
-            else -> Long.MAX_VALUE
+        val state = poolStates[key] ?: savedPoolState(cfg, key)
+        when {
+            state == null -> Unit
+            state.answered -> return state.features
+            state.saved -> {
+                if (clock() >= state.retryAt) poolCheck(cfg, key)
+                return state.features
+            }
+            clock() < state.retryAt -> return state.features
         }
-        poolFeatures[key] = CachedPoolFeatures(found.features, expiresAt)
-        return found.features
+        // Nothing saved, and no answer to use: ask and wait, as before saved lists existed.
+        poolCheck(cfg, key).await()
+        return poolStates[key]?.features.orEmpty()
     }
 
-    private class CachedPoolFeatures(val features: Set<String>, val expiresAt: Long)
+    /** Waits for a `pool_info` check that is running for [cfg], if any. For tests. */
+    internal suspend fun awaitPoolCheck(cfg: ProviderConfig) {
+        poolChecks[providerKey(cfg)]?.await()
+    }
+
+    /**
+     * What this run knows about one provider's features. [answered]: a real answer arrived this
+     * run. [saved]: [features] is the list an earlier run saved, in use until an answer comes.
+     * Otherwise the last check failed with nothing saved, and [features] (empty) is used until
+     * [retryAt]. A saved list is checked again once the clock passes [retryAt].
+     */
+    private class PoolState(val features: Set<String>, val answered: Boolean, val saved: Boolean, val retryAt: Long)
+
+    /** The saved feature list as this run's state, read once per provider; null when none was saved. */
+    private suspend fun savedPoolState(cfg: ProviderConfig, key: String): PoolState? = poolFileLock.withLock {
+        poolStates[key]?.let { return@withLock it }
+        if (!poolFilesRead.add(key)) return@withLock null
+        val saved = files.read(cfg, POOL_FEATURES_FILE, featureListSerializer) ?: return@withLock null
+        PoolState(saved.toSet(), answered = false, saved = true, retryAt = 0L).also { poolStates[key] = it }
+    }
+
+    /** Starts a `pool_info` check for [cfg], or returns the one already running. */
+    private fun poolCheck(cfg: ProviderConfig, key: String): Deferred<Unit> {
+        poolChecks[key]?.let { return it }
+        val check = background.async(start = CoroutineStart.LAZY) { runPoolCheck(cfg, key) }
+        poolChecks.putIfAbsent(key, check)?.let { running ->
+            check.cancel()
+            return running
+        }
+        check.invokeOnCompletion { poolChecks.remove(key, check) }
+        check.start()
+        return check
+    }
+
+    private suspend fun runPoolCheck(cfg: ProviderConfig, key: String) {
+        val clears = poolClears.get()
+        val found = try {
+            xtream.poolFeatures(cfg)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        if (clears != poolClears.get()) return
+        val before = poolStates[key]
+        when {
+            found != null && found.answered -> {
+                poolStates[key] = PoolState(found.features, answered = true, saved = false, retryAt = Long.MAX_VALUE)
+                files.write(cfg, POOL_FEATURES_FILE, featureListSerializer, found.features.sorted())
+            }
+            // Not an answer: keep using the saved list, and ask again later.
+            before?.saved == true -> poolStates[key] = PoolState(before.features, false, saved = true, retryAt = clock() + retryWait(found))
+            found != null -> poolStates[key] = PoolState(emptySet(), false, saved = false, retryAt = clock() + retryWait(found))
+            // A network error with nothing saved isn't kept: the next call asks again.
+        }
+    }
+
+    private fun retryWait(found: XtreamClient.PoolCheck?): Long =
+        found?.retryAfterMs?.coerceIn(POOL_RECHECK_MS, POOL_RECHECK_MAX_MS) ?: POOL_RECHECK_MS
+
+    private val featureListSerializer = ListSerializer(String.serializer())
 
     private suspend fun withPoolSignals(cfg: ProviderConfig, streamId: String, url: String, poolSource: String?): PlaybackSource {
         val features = poolFeatures(cfg)
@@ -259,12 +347,21 @@ class ProviderRepository @Inject constructor(
 
     suspend fun forget() {
         channelCache.clear()
-        poolFeatures.clear()
+        poolClears.incrementAndGet()
+        poolStates.clear()
+        poolFilesRead.clear()
         m3u.clear()
     }
 
-    /** Drops [providerId]'s saved channel list, after the provider is edited or deleted. */
-    suspend fun forgetProvider(providerId: String) = channelCache.clearProvider(providerId)
+    /** Drops [providerId]'s saved channel list and pool features, after the provider is edited or deleted. */
+    suspend fun forgetProvider(providerId: String) {
+        channelCache.clearProvider(providerId)
+        poolClears.incrementAndGet()
+        val prefix = "$providerId:"
+        poolStates.keys.removeAll { it.startsWith(prefix) }
+        poolFilesRead.removeAll { it.startsWith(prefix) }
+        files.clearProvider(providerId)
+    }
 
     private fun M3uEntry.groupName(): String = group ?: UNCATEGORIZED
 
@@ -299,5 +396,8 @@ class ProviderRepository @Inject constructor(
 
         /** The longest a 429 on `pool_info` counts as a plain panel, whatever its `Retry-After`. */
         const val POOL_RECHECK_MAX_MS = 15 * 60_000L
+
+        /** [ProviderFileStore] kind for the last real `pool_info` feature list. */
+        const val POOL_FEATURES_FILE = "pool_features"
     }
 }
