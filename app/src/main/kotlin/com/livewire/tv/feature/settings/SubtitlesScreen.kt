@@ -128,7 +128,7 @@ fun SubtitlesScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             description = "How big captions are drawn",
                             value = style.size,
                             label = style.size.label,
-                            onChange = { v -> update { it.copy(size = v) } },
+                            onChange = { next -> update { it.copy(size = next(it.size)) } },
                             modifier = Modifier.focusRequester(firstRowFocus),
                         )
                     }
@@ -139,7 +139,7 @@ fun SubtitlesScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             value = style.color,
                             label = { it.label },
                             swatch = { Color(it.argb) },
-                            onChange = { v -> update { it.copy(color = v) } },
+                            onChange = { next -> update { it.copy(color = next(it.color)) } },
                         )
                     }
                     item("background") {
@@ -148,7 +148,7 @@ fun SubtitlesScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             options = CaptionBackground.entries,
                             value = style.background,
                             label = { it.label },
-                            onChange = { v -> update { it.copy(background = v) } },
+                            onChange = { next -> update { it.copy(background = next(it.background)) } },
                         )
                     }
                     item("edge") {
@@ -158,7 +158,7 @@ fun SubtitlesScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             options = CaptionEdge.entries,
                             value = style.edge,
                             label = { it.label },
-                            onChange = { v -> update { it.copy(edge = v) } },
+                            onChange = { next -> update { it.copy(edge = next(it.edge)) } },
                         )
                     }
                     item("font") {
@@ -167,7 +167,7 @@ fun SubtitlesScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             options = CaptionFont.entries,
                             value = style.font,
                             label = { it.label },
-                            onChange = { v -> update { it.copy(font = v) } },
+                            onChange = { next -> update { it.copy(font = next(it.font)) } },
                         )
                     }
                     item("placement") {
@@ -176,7 +176,7 @@ fun SubtitlesScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             options = CaptionPlacement.entries,
                             value = style.placement,
                             label = { it.label },
-                            onChange = { v -> update { it.copy(placement = v) } },
+                            onChange = { next -> update { it.copy(placement = next(it.placement)) } },
                         )
                     }
                     item("reset") {
@@ -215,24 +215,29 @@ private fun Modifier.leftRight(onStep: (forward: Boolean) -> Unit) = onPreviewKe
     }
 }
 
-/** Text size: a stepper like Settings' Guide window. */
+/**
+ * Text size: a stepper like Settings' Guide window. [onChange] receives a function from the
+ * SAVED value to the next one and runs it inside the store's transaction, so two quick presses
+ * step twice even before the screen recomposes.
+ */
 @Composable
 private fun StepRow(
     title: String,
     description: String,
     value: CaptionSize,
     label: String,
-    onChange: (CaptionSize) -> Unit,
+    onChange: ((CaptionSize) -> CaptionSize) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SettingRow(
         title = title,
         description = description,
-        onClick = { onChange(if (value.canStep(true)) value.step(true) else CaptionSize.entries.first()) },
-        modifier = modifier.leftRight { forward -> if (value.canStep(forward)) onChange(value.step(forward)) },
+        // OK steps up and wraps from Extra large back to Small.
+        onClick = { onChange { cur -> if (cur.canStep(true)) cur.step(true) else CaptionSize.entries.first() } },
+        modifier = modifier.leftRight { forward -> onChange { cur -> cur.step(forward) } },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StepArrow(glyph = "‹", enabled = value.canStep(false), onClick = { onChange(value.step(false)) })
+            StepArrow(glyph = "‹", enabled = value.canStep(false), onClick = { onChange { it.step(false) } })
             Text(
                 label,
                 style = LiveWireType.Mono,
@@ -242,30 +247,32 @@ private fun StepRow(
                 modifier = Modifier.widthIn(min = 84.dp),
                 maxLines = 1,
             )
-            StepArrow(glyph = "›", enabled = value.canStep(true), onClick = { onChange(value.step(true)) })
+            StepArrow(glyph = "›", enabled = value.canStep(true), onClick = { onChange { it.step(true) } })
         }
     }
 }
 
-/** A segmented choice; ◀ ▶ move the selection, OK cycles forward and wraps. */
+/**
+ * A segmented choice; ◀ ▶ move the selection, OK cycles forward and wraps. Like [StepRow],
+ * [onChange] gets a function from the saved value to the next, so quick presses don't collapse.
+ */
 @Composable
 private fun <E> ChoiceRow(
     title: String,
     options: List<E>,
     value: E,
     label: (E) -> String,
-    onChange: (E) -> Unit,
+    onChange: ((E) -> E) -> Unit,
     description: String = "",
     swatch: ((E) -> Color)? = null,
 ) {
-    val i = options.indexOf(value).coerceAtLeast(0)
+    fun index(of: E) = options.indexOf(of).coerceAtLeast(0)
     SettingRow(
         title = title,
         description = description,
-        onClick = { onChange(options[(i + 1) % options.size]) },
+        onClick = { onChange { cur -> options[(index(cur) + 1) % options.size] } },
         modifier = Modifier.leftRight { forward ->
-            val next = (i + if (forward) 1 else -1).coerceIn(0, options.lastIndex)
-            if (next != i) onChange(options[next])
+            onChange { cur -> options[(index(cur) + if (forward) 1 else -1).coerceIn(0, options.lastIndex)] }
         },
     ) {
         val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
