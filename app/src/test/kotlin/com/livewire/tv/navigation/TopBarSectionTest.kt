@@ -25,6 +25,8 @@ class TopBarSectionTest {
         assertNull(TopLevel.of(Routes.FAVORITES))
         assertEquals(TopLevel.SETTINGS, TopLevel.barSectionOf(Routes.PROVIDERS))
         assertEquals(TopLevel.SETTINGS, TopLevel.barSectionOf(Routes.FAVORITES))
+        assertNull(TopLevel.of(Routes.SUBTITLES))
+        assertEquals(TopLevel.SETTINGS, TopLevel.barSectionOf(Routes.SUBTITLES))
     }
 
     @Test

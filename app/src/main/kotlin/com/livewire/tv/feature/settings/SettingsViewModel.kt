@@ -40,4 +40,8 @@ class SettingsViewModel @Inject constructor(
     fun setGuideWindowHours(h: Int) = viewModelScope.launch { store.setGuideWindowHours(h) }
     fun setShowNowPlaying(v: Boolean) = viewModelScope.launch { store.setShowNowPlaying(v) }
     fun setGuidePreview(v: Boolean) = viewModelScope.launch { store.setGuidePreview(v) }
+
+    /** Apply [change] to the current caption style and save it. */
+    fun updateSubtitleStyle(change: (com.livewire.tv.feature.settings.data.SubtitleStyle) -> com.livewire.tv.feature.settings.data.SubtitleStyle) =
+        viewModelScope.launch { store.updateSubtitleStyle(change) }
 }

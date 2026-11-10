@@ -32,6 +32,7 @@ object Routes {
     const val PROVIDERS = "providers"
     const val SETTINGS = "settings"
     const val FAVORITES = "favorites"
+    const val SUBTITLES = "settings/subtitles"
     const val PLAYER = "player"
 
     /** Build a player route without embedding credentials or a complete stream URL. */
@@ -113,10 +114,12 @@ private fun LiveWireRoutes(startAtHome: Boolean, navController: NavHostControlle
         }
         composable(Routes.PROVIDERS) { ProvidersScreen() }
         composable(Routes.FAVORITES) { com.livewire.tv.feature.favorites.ui.FavoritesManageScreen() }
+        composable(Routes.SUBTITLES) { com.livewire.tv.feature.settings.SubtitlesScreen() }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onOpenProviders = { navController.navigate(Routes.PROVIDERS) },
                 onOpenFavorites = { navController.navigate(Routes.FAVORITES) },
+                onOpenSubtitles = { navController.navigate(Routes.SUBTITLES) },
             )
         }
         composable(Routes.GUIDE) {

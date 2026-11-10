@@ -92,6 +92,7 @@ import java.util.Locale
 fun SettingsScreen(
     onOpenProviders: () -> Unit,
     onOpenFavorites: () -> Unit = {},
+    onOpenSubtitles: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val s by viewModel.settings.collectAsStateWithLifecycle()
@@ -113,12 +114,14 @@ fun SettingsScreen(
     val firstRowFocus = remember { FocusRequester() }
     val favoritesRowFocus = remember { FocusRequester() }
     val providersRowFocus = remember { FocusRequester() }
+    val subtitlesRowFocus = remember { FocusRequester() }
     var returnTo by rememberSaveable { mutableStateOf<String?>(null) }
     var targetHasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val target = when (returnTo) {
             RETURN_FAVORITES -> favoritesRowFocus
             RETURN_PROVIDERS -> providersRowFocus
+            RETURN_SUBTITLES -> subtitlesRowFocus
             else -> firstRowFocus
         }
         var held = 0
@@ -157,9 +160,11 @@ fun SettingsScreen(
                     updateState = updateState,
                     onOpenProviders = { returnTo = RETURN_PROVIDERS; onOpenProviders() },
                     onOpenFavorites = { returnTo = RETURN_FAVORITES; onOpenFavorites() },
+                    onOpenSubtitles = { returnTo = RETURN_SUBTITLES; onOpenSubtitles() },
                     firstRowFocus = firstRowFocus,
                     favoritesRowFocus = favoritesRowFocus,
                     providersRowFocus = providersRowFocus,
+                    subtitlesRowFocus = subtitlesRowFocus,
                     onRowFocusChanged = { row, focused ->
                         if (row == (returnTo ?: RETURN_FIRST)) targetHasFocus = focused
                     },
@@ -210,9 +215,11 @@ private fun SettingsList(
     updateState: com.livewire.tv.feature.update.UpdateViewModel.UpdateUiState,
     onOpenProviders: () -> Unit,
     onOpenFavorites: () -> Unit,
+    onOpenSubtitles: () -> Unit,
     firstRowFocus: FocusRequester,
     favoritesRowFocus: FocusRequester,
     providersRowFocus: FocusRequester,
+    subtitlesRowFocus: FocusRequester,
     onRowFocusChanged: (row: String, focused: Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -239,6 +246,14 @@ private fun SettingsList(
                     onCycle = { viewModel.setStreamFormat(SettingsFormat.toggleStreamFormat(s.streamFormat)) },
                     focusRequester = firstRowFocus,
                     onFocusChanged = { onRowFocusChanged(RETURN_FIRST, it) },
+                )
+                Spacer(Modifier.height(LiveWireDimens.SpaceXs))
+                OpenRow(
+                    title = "Subtitles",
+                    description = s.subtitleStyle.summary,
+                    action = "Customize",
+                    onOpen = onOpenSubtitles,
+                    modifier = tracked(RETURN_SUBTITLES, subtitlesRowFocus),
                 )
             }
         }
@@ -311,7 +326,7 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SettingRow(
+internal fun SettingRow(
     title: String,
     description: String,
     onClick: () -> Unit,
@@ -339,14 +354,17 @@ private fun SettingRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    description,
-                    style = LiveWireType.Body,
-                    color = LiveWireTheme.onSurfaceMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // A blank description leaves a title-only row (Subtitles rows with a wide control).
+                if (description.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        description,
+                        style = LiveWireType.Body,
+                        color = LiveWireTheme.onSurfaceMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             control()
         }
@@ -395,7 +413,7 @@ private fun SegmentedChoice(current: StreamFormat) {
 }
 
 @Composable
-private fun Segment(text: String, selected: Boolean) {
+internal fun Segment(text: String, selected: Boolean, leading: (@Composable () -> Unit)? = null) {
     Row(
         modifier = Modifier
             .heightIn(min = ControlHeight)
@@ -411,6 +429,11 @@ private fun Segment(text: String, selected: Boolean) {
                 fontWeight = FontWeight.Bold,
                 color = LiveWireColors.Live,
             )
+            Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+        }
+        // An optional mark before the label (the Subtitles color swatches), after the check.
+        if (leading != null) {
+            leading()
             Spacer(Modifier.width(LiveWireDimens.SpaceXs))
         }
         Text(
@@ -490,7 +513,7 @@ private fun GuideWindowRow(hours: Int, onDecrement: () -> Unit, onIncrement: () 
  * Left/Right. At its limit the arrow fades. Every part flips with the row on focus.
  */
 @Composable
-private fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun StepArrow(glyph: String, enabled: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
     Box(
         modifier = Modifier
@@ -585,6 +608,33 @@ private fun NeutralSwitch(on: Boolean) {
                 .clip(RoundedCornerShape(50))
                 .background(if (on) LiveWireColors.OnLive else LiveWireTheme.switchOffKnob),
         )
+    }
+}
+
+/** A row whose OK opens a sub-screen, with an "[action] ›" button on the right. */
+@Composable
+internal fun OpenRow(title: String, description: String, action: String, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    SettingRow(title = title, description = description, onClick = onOpen, modifier = modifier) {
+        ActionButton(action)
+    }
+}
+
+/** The bordered "[label] ›" button used by rows that open something or run an action. */
+@Composable
+internal fun ActionButton(label: String) {
+    val shape = RoundedCornerShape(LiveWireDimens.RadiusCell)
+    Row(
+        modifier = Modifier
+            .heightIn(min = ControlHeight)
+            .clip(shape)
+            .background(LiveWireTheme.controlFill)
+            .border(LiveWireDimens.RestBorder, LiveWireTheme.controlBorder, shape)
+            .padding(horizontal = LiveWireDimens.SpaceM, vertical = LiveWireDimens.SpaceS),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = LiveWireType.Mono, fontWeight = FontWeight.SemiBold, color = LiveWireTheme.onSurface, maxLines = 1)
+        Spacer(Modifier.width(LiveWireDimens.SpaceXs))
+        Text("›", style = LiveWireType.Title, color = LiveWireTheme.onSurfaceMuted)
     }
 }
 
@@ -815,7 +865,7 @@ private fun HintLine() {
 }
 
 @Composable
-private fun Hint(keys: String, label: String) {
+internal fun Hint(keys: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(keys, style = LiveWireType.Mono, color = LiveWireTheme.onSurface)
         Spacer(Modifier.width(LiveWireDimens.SpaceXs))
@@ -825,19 +875,20 @@ private fun Hint(keys: String, label: String) {
 
 // ── Layout constants tuned to the mockup at this target's density 2.0 (1920px ≈ 960dp). ──
 /** ~62% of the content area beside the rail (mockup .list ≈ 1000px → ~500dp). */
-private val ListMaxWidth = 520.dp
+internal val ListMaxWidth = 520.dp
 
 /** Which row Settings focuses when it shows: the first row, or the one a sub-screen was opened from. */
 private const val RETURN_FIRST = "first"
 private const val RETURN_FAVORITES = "favorites"
 private const val RETURN_PROVIDERS = "providers"
+private const val RETURN_SUBTITLES = "subtitles"
 /** Gap between section groups (mockup 34px → ~17dp; trimmed so all 5 groups + hint fit). */
 private val GroupGap = 13.dp
 /** Gap under a group's overline header (mockup 16px → ~8dp). */
 private val HeaderGap = 6.dp
 /** Row min height (mockup .row 92px → ~46dp). */
-private val RowMinHeight = 44.dp
+internal val RowMinHeight = 44.dp
 /** Height of the right-side controls (segments, arrows, provider button). */
-private val ControlHeight = 30.dp
+internal val ControlHeight = 30.dp
 /** Vertical breathing room so the first/last focus ring + wide scale are never clipped. */
 private val RingInset = LiveWireDimens.SpaceS
