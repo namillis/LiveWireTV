@@ -9,6 +9,7 @@ import com.livewire.tv.feature.home.HomeLists
 import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
+import com.livewire.tv.feature.providers.domain.PoolSignals
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.search.data.PendingSearch
 import com.livewire.tv.feature.sports.data.ChannelMatch
@@ -128,7 +129,8 @@ class SportsViewModel @Inject constructor(
      * fetched on their own, which is one small request.
      */
     private suspend fun loadLiveNow(prov: ProviderConfig): List<LiveChannel> {
-        val category = client.liveCategories(prov).firstOrNull { HomeLists.isLiveNow(it.name) } ?: return emptyList()
+        val pool = PoolSignals.EVENT_INFO in client.poolFeatures(prov)
+        val category = client.liveCategories(prov).firstOrNull { HomeLists.isLiveNow(it.name, pool) } ?: return emptyList()
         client.cachedLiveChannels(prov)?.filter { it.categoryId == category.id }?.takeIf { it.isNotEmpty() }?.let { return it }
         return client.liveChannels(prov, categoryId = category.id)
     }

@@ -4,19 +4,30 @@ package com.livewire.tv.feature.home
  * Pure rules for Home's single On now list and its filter dropdown. No Android, so every case
  * runs on the JVM.
  *
- * The dropdown holds, in order: the pool's Live Now category (when the provider sends one),
+ * The dropdown holds, in order: the pool's live sports category (when the provider sends one),
  * Favorites, Recently watched, the pinned (or first) categories, and All channels. Empty lists
  * are left out.
  */
 object HomeLists {
-    /** The category name the IPTV pool gives its live events list. Other providers never send it. */
+    /** The name the IPTV pool gave its live sports events list until 2026-11-06. Other providers never send it. */
     const val LIVE_NOW_NAME = "Live Now"
+
+    /** The pool's name for that list since then (same category id). Other panels use it too. */
+    const val LIVE_SPORTS_NAME = "Live Sports"
 
     const val FAVORITES_ID = "\u0000favorites"
     const val RECENT_ID = "\u0000recent"
     const val ALL_ID = "\u0000all"
 
-    fun isLiveNow(categoryName: String): Boolean = categoryName.trim().equals(LIVE_NOW_NAME, ignoreCase = true)
+    /**
+     * True for the pool's live sports events list. "Live Now" is only ever the pool's. "Live
+     * Sports" is a common category name on plain panels too, so it counts only when [pool] (the
+     * provider lists the pool's `event_info` feature).
+     */
+    fun isLiveNow(categoryName: String, pool: Boolean = false): Boolean {
+        val name = categoryName.trim()
+        return name.equals(LIVE_NOW_NAME, ignoreCase = true) || (pool && name.equals(LIVE_SPORTS_NAME, ignoreCase = true))
+    }
 
     /** The dropdown's lists in order. [categories] may include the Live Now one; it is not repeated. */
     fun lists(
