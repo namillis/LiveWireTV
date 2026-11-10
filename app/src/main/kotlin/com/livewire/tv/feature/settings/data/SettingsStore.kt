@@ -2,6 +2,7 @@ package com.livewire.tv.feature.settings.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -24,6 +25,8 @@ data class AppSettings(
     val showNowPlayingOnCards: Boolean = true,
     /** Play the focused channel, muted, behind the Guide's details band. */
     val guidePreview: Boolean = true,
+    /** How captions look and where they sit (Settings › Subtitles). */
+    val subtitleStyle: SubtitleStyle = SubtitleStyle(),
     // --- Self-update state ---
     /** Epoch ms of the last update check (0 = never). Gates the 24h auto-check. */
     val lastUpdateCheck: Long = 0L,
@@ -52,6 +55,12 @@ class SettingsStore @Inject constructor(
         val SKIPPED_VERSION = stringPreferencesKey("skippedVersion")
         val AUTO_CHECK_UPDATES = booleanPreferencesKey("autoCheckUpdates")
         val PENDING_UPDATED_VERSION = stringPreferencesKey("pendingUpdatedVersion")
+        val CC_SIZE = stringPreferencesKey("captionSize")
+        val CC_COLOR = stringPreferencesKey("captionColor")
+        val CC_BACKGROUND = stringPreferencesKey("captionBackground")
+        val CC_EDGE = stringPreferencesKey("captionEdge")
+        val CC_FONT = stringPreferencesKey("captionFont")
+        val CC_PLACEMENT = stringPreferencesKey("captionPlacement")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -60,6 +69,7 @@ class SettingsStore @Inject constructor(
             guideWindowHours = p[Keys.GUIDE_HOURS] ?: 4,
             showNowPlayingOnCards = p[Keys.NOW_PLAYING] ?: true,
             guidePreview = p[Keys.GUIDE_PREVIEW] ?: true,
+            subtitleStyle = subtitleStyleOf(p),
             lastUpdateCheck = p[Keys.LAST_UPDATE_CHECK] ?: 0L,
             skippedVersion = p[Keys.SKIPPED_VERSION]?.ifBlank { null },
             autoCheckUpdates = p[Keys.AUTO_CHECK_UPDATES] ?: true,
@@ -82,6 +92,31 @@ class SettingsStore @Inject constructor(
     suspend fun setGuidePreview(v: Boolean) {
         context.dataStore.edit { it[Keys.GUIDE_PREVIEW] = v }
     }
+
+    /**
+     * Read-modify-write the caption style in one DataStore transaction, so quick ◀ ▶ presses
+     * each step from the value the previous press saved rather than from a stale copy.
+     */
+    suspend fun updateSubtitleStyle(change: (SubtitleStyle) -> SubtitleStyle) {
+        context.dataStore.edit {
+            val s = change(subtitleStyleOf(it))
+            it[Keys.CC_SIZE] = s.size.name
+            it[Keys.CC_COLOR] = s.color.name
+            it[Keys.CC_BACKGROUND] = s.background.name
+            it[Keys.CC_EDGE] = s.edge.name
+            it[Keys.CC_FONT] = s.font.name
+            it[Keys.CC_PLACEMENT] = s.placement.name
+        }
+    }
+
+    private fun subtitleStyleOf(p: Preferences) = SubtitleStyle(
+        size = enumOr(p[Keys.CC_SIZE], CaptionSize.MEDIUM),
+        color = enumOr(p[Keys.CC_COLOR], CaptionColor.WHITE),
+        background = enumOr(p[Keys.CC_BACKGROUND], CaptionBackground.BOX),
+        edge = enumOr(p[Keys.CC_EDGE], CaptionEdge.NONE),
+        font = enumOr(p[Keys.CC_FONT], CaptionFont.DEFAULT),
+        placement = enumOr(p[Keys.CC_PLACEMENT], CaptionPlacement.AS_BROADCAST),
+    )
 
     // --- Self-update state ---
 

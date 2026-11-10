@@ -75,6 +75,7 @@ enum class TopLevel(val route: String, val label: String, @DrawableRes val icon:
         fun barSectionOf(route: String?): TopLevel? = of(route) ?: when (route) {
             Routes.PROVIDERS -> SETTINGS
             Routes.FAVORITES -> SETTINGS
+            Routes.SUBTITLES -> SETTINGS
             else -> null
         }
 

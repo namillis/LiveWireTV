@@ -21,9 +21,13 @@ import com.livewire.tv.feature.search.data.WatchedChannel
 import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -103,6 +107,13 @@ class PlayerViewModel @Inject constructor(
     private val epg: EpgRepository,
     private val favorites: com.livewire.tv.feature.favorites.data.FavoritesStore,
 ) : ViewModel() {
+
+    /** The user's caption look and placement (Settings › Subtitles), applied live. */
+    val subtitleStyle: StateFlow<com.livewire.tv.feature.settings.data.SubtitleStyle> =
+        settingsStore.settings
+            .map { it.subtitleStyle }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, com.livewire.tv.feature.settings.data.SubtitleStyle())
 
     private val _source = MutableStateFlow(PlayerSourceState())
     val source: StateFlow<PlayerSourceState> = _source.asStateFlow()

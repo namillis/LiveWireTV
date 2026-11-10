@@ -42,6 +42,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -103,6 +104,12 @@ fun PlayerScreen(
     val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
     val poolSources by viewModel.poolSources.collectAsStateWithLifecycle()
     val archive by viewModel.archive.collectAsStateWithLifecycle()
+    val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
+    // Captions are drawn by our own view, laid over the picture ABOVE the info bar so its
+    // gradient doesn't dim them. videoBounds is the picture's frame inside the PlayerView.
+    val viewContext = androidx.compose.ui.platform.LocalContext.current
+    val captionView = remember { androidx.media3.ui.SubtitleView(viewContext) }
+    var videoBounds by remember { mutableStateOf(android.graphics.Rect()) }
     val focusRequester = remember { FocusRequester() }
     val optionsState = rememberOptionsPanelState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -443,6 +450,9 @@ fun PlayerScreen(
                 },
             contentAlignment = Alignment.Center,
         ) {
+            // Captions move up while the info bar shows, the way they do on the iPhone app, so
+            // the bar never covers them. Panels cover the side, not the bottom, so they don't.
+            val captionsRaised = controlsVisible && panel == PlayerPanel.NONE
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { viewContext ->
@@ -451,10 +461,21 @@ fun PlayerScreen(
                         .apply {
                             keepScreenOn = true
                             player = engine.exoPlayer
+                            tag = com.livewire.tv.core.player.PlayerCaptions(this, captionView) { videoBounds = it }
+                                .also { it.bind(engine.exoPlayer) }
                         }
                 },
-                update = { it.resizeMode = pictureMode.toResizeMode() },
-                onRelease = { it.player = null },
+                update = {
+                    it.resizeMode = pictureMode.toResizeMode()
+                    (it.tag as? com.livewire.tv.core.player.PlayerCaptions)?.apply {
+                        setStyle(subtitleStyle)
+                        setRaised(if (captionsRaised) CAPTION_RAISE_FRACTION else 0f)
+                    }
+                },
+                onRelease = {
+                    (it.tag as? com.livewire.tv.core.player.PlayerCaptions)?.bind(null)
+                    it.player = null
+                },
             )
 
             when {
@@ -525,6 +546,18 @@ fun PlayerScreen(
                     )
                 }
             }
+
+            // Captions, over the picture and above the info bar, below the cards and panels.
+            AndroidView(
+                factory = { captionView },
+                modifier = Modifier.layout { measurable, constraints ->
+                    val b = videoBounds
+                    val placeable = measurable.measure(
+                        androidx.compose.ui.unit.Constraints.fixed(b.width().coerceAtLeast(0), b.height().coerceAtLeast(0)),
+                    )
+                    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(b.left, b.top) }
+                },
+            )
 
             // One-time "This channel can't rewind" card, over live video on a no-archive channel.
             AnimatedVisibility(
@@ -724,3 +757,6 @@ private const val TIME_SHIFT_LIVE_SNAP_MS = 60_000L
 
 /** Reopen a time-shifted stream this long before its window ends, ahead of the provider's lag. */
 private const val TIME_SHIFT_REOPEN_LEAD_MS = 30_000L
+
+/** Share of the picture kept clear at the bottom while the info bar shows (its channel and programme block). */
+private const val CAPTION_RAISE_FRACTION = 0.34f
