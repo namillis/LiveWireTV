@@ -186,16 +186,26 @@ class XtreamClient @Inject constructor(
     /**
      * A `pool_info` answer: the [features] found, and whether the panel [timedOut] instead of
      * answering. [retryAfterMs] is set when the panel answered HTTP 429 (too many requests): no
-     * answer yet, ask again after that long.
+     * answer yet, ask again after that long. [refused] is set when the panel refused the login
+     * (HTTP 401 or 403, or `user_info` with `auth` 0), which says nothing about its features.
      */
-    data class PoolCheck(val features: Set<String>, val timedOut: Boolean = false, val retryAfterMs: Long? = null)
+    data class PoolCheck(
+        val features: Set<String>,
+        val timedOut: Boolean = false,
+        val retryAfterMs: Long? = null,
+        val refused: Boolean = false,
+    ) {
+        /** A real answer: the pool's features, or empty because this is a plain panel. */
+        val answered: Boolean get() = !timedOut && retryAfterMs == null && !refused
+    }
 
     /**
      * The pool extensions this provider supports (see [PoolSignals]), empty for a plain panel.
      * Null when the check failed on the network, so the caller can try again later. A panel
      * that doesn't answer within [POOL_CHECK_TIMEOUT_MS] counts as plain for now
      * ([PoolCheck.timedOut]), so a slow panel doesn't hold up every first play. A 429 also
-     * counts as plain for now, for as long as its `Retry-After` asks ([PoolCheck.retryAfterMs]).
+     * counts as plain for now, for as long as its `Retry-After` asks ([PoolCheck.retryAfterMs]),
+     * and so does a refused login ([PoolCheck.refused]).
      */
     suspend fun poolFeatures(cfg: ProviderConfig): PoolCheck? = withContext(Dispatchers.IO) {
         try {
@@ -205,7 +215,14 @@ class XtreamClient @Inject constructor(
                     resp.code == HTTP_TOO_MANY_REQUESTS ->
                         PoolCheck(emptySet(), retryAfterMs = retryAfterMs(resp) ?: DEFAULT_RETRY_AFTER_MS)
                     resp.code >= 500 -> null
-                    else -> PoolCheck(PoolSignals.parseFeatures(if (resp.isSuccessful) resp.body?.string() else null))
+                    resp.code == HTTP_UNAUTHORIZED || resp.code == HTTP_FORBIDDEN -> PoolCheck(emptySet(), refused = true)
+                    !resp.isSuccessful -> PoolCheck(emptySet())
+                    else -> {
+                        val body = resp.body?.string()
+                        // The pool and most panels answer a bad login with 200 and user_info.auth 0.
+                        if (refusesLogin(body)) PoolCheck(emptySet(), refused = true)
+                        else PoolCheck(PoolSignals.parseFeatures(body))
+                    }
                 }
             }
         } catch (_: java.io.InterruptedIOException) {
@@ -276,6 +293,8 @@ class XtreamClient @Inject constructor(
         const val REACH_TIMEOUT_MS = 6_000L
 
         const val HTTP_TOO_MANY_REQUESTS = 429
+        const val HTTP_UNAUTHORIZED = 401
+        const val HTTP_FORBIDDEN = 403
 
         /** How long to wait after a 429 that names no `Retry-After`. */
         const val DEFAULT_RETRY_AFTER_MS = 60_000L
@@ -293,6 +312,19 @@ internal fun retryAfterMs(resp: okhttp3.Response, nowMs: Long = System.currentTi
     val raw = resp.header("Retry-After")?.trim() ?: return null
     raw.toLongOrNull()?.let { return (it * 1000).coerceAtLeast(0) }
     return resp.headers.getDate("Retry-After")?.let { (it.time - nowMs).coerceAtLeast(0) }
+}
+
+/**
+ * True when [body] is a panel's "login refused" answer: an object whose `user_info.auth` isn't 1.
+ * A plain panel that accepts the login answers an unknown action with `user_info.auth` 1, which
+ * is a real answer (no pool features), so it isn't counted here.
+ */
+private fun refusesLogin(body: String?): Boolean {
+    if (body.isNullOrBlank()) return false
+    val root = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? JsonObject ?: return false
+    val info = root["user_info"] as? JsonObject ?: return false
+    val auth = info["auth"].str()
+    return auth != "1" && auth != "1.0"
 }
 
 /** Xtream fields arrive as strings or numbers depending on the provider — read either. */
