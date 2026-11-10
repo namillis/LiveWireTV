@@ -27,8 +27,11 @@ import com.livewire.tv.feature.settings.data.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +40,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -174,12 +178,17 @@ class HomeViewModel @Inject constructor(
                 // Favorites and recents can sit in any category, so resolve them against every
                 // channel, downloaded alongside the rails rather than after them.
                 val fullList = async { runCatching { client.liveChannels(cfg) }.getOrNull().orEmpty() }
-                categories = client.liveCategories(cfg)
-                if (categories.isEmpty()) active.recheck()
                 val pinned = pins.pinned(cfg.id).first()
                 rememberedList = listChoice.selected(cfg.id)
-                liveNowRail = loadLiveNowRail(cfg)
-                categoryRails = loadCategoryRails(cfg, pinned)
+                // A Result, so a failure after saved rails are up doesn't cancel this load.
+                val network = async { runCatching { networkRails(cfg, pinned) } }
+                // Normally the provider answers well within SAVED_RAILS_AFTER_MS. When it doesn't
+                // (a busy pool), show rails built from saved data and swap in its answer later.
+                val loaded = withTimeoutOrNull(SAVED_RAILS_AFTER_MS) { network.await() }?.getOrThrow()
+                    ?: savedRails(cfg, pinned, fullList)
+                    ?: network.await().getOrThrow()
+                showRails(loaded)
+                if (!loaded.saved && categories.isEmpty()) active.recheck()
                 publishRails()
                 // Raised only now: while the spinner shows, the toast would fade before Home appears.
                 val message = failover?.let { "${it.primary.name} isn't responding. Using ${it.backup.name}." } ?: notice
@@ -195,6 +204,7 @@ class HomeViewModel @Inject constructor(
                 if (failover != null) watchForRecovery(cfg, failover.primary)
                 // Before the first loadGuide, so a refresh it starts can't land unseen.
                 observeGuideUpdates(cfg)
+                if (loaded.saved) replaceSavedRails(cfg, network)
                 loadGuide()
             } catch (e: CancellationException) {
                 throw e
@@ -243,23 +253,96 @@ class HomeViewModel @Inject constructor(
         _state.update { it.copy(confirmation = FavoriteConfirmation(confirmToken, message, PROVIDER_NOTICE_MS, showStar = false)) }
     }
 
-    private suspend fun loadCategoryRails(cfg: ProviderConfig, pinned: List<String>): List<ChannelRail> =
-        HomeRails.categoryRails(categories, pinned).mapNotNull { category ->
-            railCache.getOrPut(category.id) {
-                val channels = client.liveChannels(cfg, categoryId = category.id)
-                if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)
-            }
-        }
+    /** The category rails for [pinned], one request per rail not already loaded, all at once. */
+    private suspend fun loadCategoryRails(
+        cfg: ProviderConfig,
+        pinned: List<String>,
+        cats: List<ProviderCategory> = categories,
+    ): List<ChannelRail> = coroutineScope {
+        HomeRails.categoryRails(cats, pinned)
+            .map { category -> async { railCache.getOrPut(category.id) { loadRail(cfg, category) } } }
+            .awaitAll()
+            .filterNotNull()
+    }
 
-    /** The pool's live sports category as a list, or null for providers that don't send one. */
-    private suspend fun loadLiveNowRail(cfg: ProviderConfig): ChannelRail? {
+    private suspend fun loadRail(cfg: ProviderConfig, category: ProviderCategory): ChannelRail? {
+        val channels = client.liveChannels(cfg, categoryId = category.id)
+        return if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)
+    }
+
+    /**
+     * The pool's live sports list (null for providers that don't send one) and the category rails
+     * for [pinned], one request per category not already loaded, all at once. The live list is
+     * often one of the rails too; it's requested once.
+     */
+    private suspend fun loadRails(
+        cfg: ProviderConfig,
+        pinned: List<String>,
+        cats: List<ProviderCategory>,
+        pool: Boolean,
+    ): HomeLists.Rails = coroutineScope {
+        val liveCategory = cats.firstOrNull { HomeLists.isLiveNow(it.name, pool) }
+        val shown = HomeRails.categoryRails(cats, pinned)
+        val loaded = (listOfNotNull(liveCategory) + shown).distinctBy { it.id }
+            .map { category -> async { category.id to railCache.getOrPut(category.id) { loadRail(cfg, category) } } }
+            .awaitAll()
+            .toMap()
+        HomeLists.Rails(
+            liveNow = liveCategory?.let { loaded[it.id] }?.copy(isLiveNow = true),
+            categories = shown.mapNotNull { loaded[it.id] },
+        )
+    }
+
+    /** What Home shows before the full channel list: the categories and the rails built from them. */
+    private class LoadedRails(val categories: List<ProviderCategory>, val liveNow: ChannelRail?, val rails: List<ChannelRail>, val saved: Boolean)
+
+    /**
+     * Home's rails from the provider: the categories (while the pool check runs), then the live
+     * list and every rail at once. Two round trips, however many rails.
+     */
+    private suspend fun networkRails(cfg: ProviderConfig, pinned: List<String>): LoadedRails = coroutineScope {
+        val pool = async { PoolSignals.EVENT_INFO in client.poolFeatures(cfg) }
+        val cats = client.liveCategories(cfg)
+        val rails = loadRails(cfg, pinned, cats, pool.await())
+        LoadedRails(cats, rails.liveNow, rails.categories, saved = false)
+    }
+
+    /**
+     * Home's rails built from saved data, for when the provider is slow to answer: the categories
+     * the last run saved, and the full channel list if it's already loaded (from memory or disk).
+     * Null when either is missing. The live list from a saved channel list has no game details
+     * and may be out of date, so these rails are replaced as soon as [networkRails] answers.
+     */
+    private suspend fun savedRails(cfg: ProviderConfig, pinned: List<String>, fullList: Deferred<List<LiveChannel>>): LoadedRails? {
+        if (!fullList.isCompleted) return null
+        val channels = fullList.await().ifEmpty { return null }
+        val cats = client.savedLiveCategories(cfg) ?: return null
         val pool = PoolSignals.EVENT_INFO in client.poolFeatures(cfg)
-        val category = categories.firstOrNull { HomeLists.isLiveNow(it.name, pool) } ?: return null
-        val rail = railCache.getOrPut(category.id) {
-            val channels = client.liveChannels(cfg, categoryId = category.id)
-            if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)
+        val built = HomeLists.railsFromChannels(cats, pinned, channels, pool)
+        return LoadedRails(cats, built.liveNow, built.categories, saved = true)
+    }
+
+    private fun showRails(loaded: LoadedRails) {
+        categories = loaded.categories
+        liveNowRail = loaded.liveNow
+        categoryRails = loaded.rails
+    }
+
+    /** Replace rails built from saved data with the provider's, once its answer lands. */
+    private fun CoroutineScope.replaceSavedRails(cfg: ProviderConfig, network: Deferred<Result<LoadedRails>>) {
+        launch {
+            val fresh = network.await().getOrNull()
+            if (fresh == null) {
+                // Home stays up on the saved rails; check the provider again on the next load.
+                active.recheck()
+                return@launch
+            }
+            if (provider != cfg) return@launch
+            if (fresh.categories.isEmpty()) active.recheck()
+            showRails(fresh)
+            publishRails()
+            loadGuide()
         }
-        return rail?.copy(isLiveNow = true)
     }
 
     private fun rebuildAllRail() {
@@ -385,8 +468,10 @@ class HomeViewModel @Inject constructor(
             val fullList = async { runCatching { client.freshLiveChannels(cfg) }.getOrNull().orEmpty() }
             val pinned = pins.pinned(cfg.id).first()
             railCache.clear()
-            val live = runCatching { loadLiveNowRail(cfg) }.getOrNull()
-            val rails = runCatching { loadCategoryRails(cfg, pinned) }.getOrNull()
+            val pool = PoolSignals.EVENT_INFO in client.poolFeatures(cfg)
+            val loaded = runCatching { loadRails(cfg, pinned, categories, pool) }.getOrNull()
+            val live = loaded?.liveNow
+            val rails = loaded?.categories
             val channels = fullList.await()
             if (rails.isNullOrEmpty() || channels.isEmpty()) {
                 // Leave the old rails up and try again on the next visit.
@@ -490,6 +575,13 @@ class HomeViewModel @Inject constructor(
 
         /** How long the "isn't responding" and "is back" notices stay on screen. */
         private const val PROVIDER_NOTICE_MS = 6_000L
+
+        /**
+         * How long Home waits for the provider's rails before showing rails built from saved data.
+         * The pool normally answers in well under half a second; a rebuild pause takes 1-2 s, and
+         * the first minute after a pool restart several.
+         */
+        private const val SAVED_RAILS_AFTER_MS = 1_500L
 
         /**
          * How far ahead Home needs the guide: the hero's UP NEXT and the channel info panel's

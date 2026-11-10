@@ -63,4 +63,27 @@ object HomeLists {
 
     /** "1,204" for the dropdown's counts. */
     fun count(n: Int): String = "%,d".format(java.util.Locale.US, n)
+
+    /** Home's live list (null when there is none) and its category rails. */
+    data class Rails(val liveNow: ChannelRail?, val categories: List<ChannelRail>)
+
+    /**
+     * Home's rails built from the provider's full channel list, for when the per-category
+     * requests are slow: each category's channels, in the list's order. The pool sends each
+     * category's channels in the full list in the same order as its own list. [pool] as for
+     * [isLiveNow]. Empty categories are left out, as when they're loaded one by one.
+     */
+    fun railsFromChannels(
+        categories: List<com.livewire.tv.feature.providers.domain.ProviderCategory>,
+        pinned: List<String>,
+        channels: List<com.livewire.tv.feature.providers.domain.LiveChannel>,
+        pool: Boolean,
+    ): Rails {
+        val byCategory = channels.groupBy { it.categoryId }
+        fun rail(c: com.livewire.tv.feature.providers.domain.ProviderCategory) =
+            byCategory[c.id]?.let { ChannelRail(c.id, c.name, it) }
+        val live = categories.firstOrNull { isLiveNow(it.name, pool) }?.let(::rail)?.copy(isLiveNow = true)
+        val rails = com.livewire.tv.feature.home.data.HomeRails.categoryRails(categories, pinned).mapNotNull(::rail)
+        return Rails(live, rails)
+    }
 }

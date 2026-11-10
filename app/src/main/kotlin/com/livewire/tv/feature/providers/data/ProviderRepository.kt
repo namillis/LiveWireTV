@@ -75,12 +75,35 @@ class ProviderRepository @Inject constructor(
         }
     }
 
+    /** The provider's categories. An Xtream provider's are saved ([savedLiveCategories]) each time they change. */
     suspend fun liveCategories(cfg: ProviderConfig): List<ProviderCategory> = when (cfg.type) {
-        ProviderType.XTREAM -> xtream.liveCategories(cfg)
+        ProviderType.XTREAM -> xtream.liveCategories(cfg).also { saveCategories(cfg, it) }
         ProviderType.M3U -> m3u.load(cfg).entriesById.values
             .map { it.groupName() }
             .distinct()
             .map { ProviderCategory(id = it, name = it) }
+    }
+
+    /**
+     * The categories the last [liveCategories] call got for [cfg], saved on disk, without asking
+     * the provider. Null for M3U, or when none were saved.
+     */
+    suspend fun savedLiveCategories(cfg: ProviderConfig): List<ProviderCategory>? {
+        if (cfg.type != ProviderType.XTREAM) return null
+        savedCategories[providerKey(cfg)]?.let { return it }
+        return files.read(cfg, CATEGORIES_FILE, categoryListSerializer)?.takeIf { it.isNotEmpty() }
+    }
+
+    /** The categories last saved per provider this run, so an unchanged list isn't written again. */
+    private val savedCategories = ConcurrentHashMap<String, List<ProviderCategory>>()
+    private val categoryListSerializer = ListSerializer(ProviderCategory.serializer())
+
+    private suspend fun saveCategories(cfg: ProviderConfig, categories: List<ProviderCategory>) {
+        // An empty list is what an HTTP error returns, so it never replaces a saved one.
+        if (categories.isEmpty()) return
+        val key = providerKey(cfg)
+        if (savedCategories.put(key, categories) == categories) return
+        files.write(cfg, CATEGORIES_FILE, categoryListSerializer, categories)
     }
 
     /** The full channel list if it is already in memory and fresh, without loading it. */
@@ -349,6 +372,7 @@ class ProviderRepository @Inject constructor(
         channelCache.clear()
         poolClears.incrementAndGet()
         poolStates.clear()
+        savedCategories.clear()
         poolFilesRead.clear()
         m3u.clear()
     }
@@ -359,6 +383,7 @@ class ProviderRepository @Inject constructor(
         poolClears.incrementAndGet()
         val prefix = "$providerId:"
         poolStates.keys.removeAll { it.startsWith(prefix) }
+        savedCategories.keys.removeAll { it.startsWith(prefix) }
         poolFilesRead.removeAll { it.startsWith(prefix) }
         files.clearProvider(providerId)
     }
@@ -399,5 +424,8 @@ class ProviderRepository @Inject constructor(
 
         /** [ProviderFileStore] kind for the last real `pool_info` feature list. */
         const val POOL_FEATURES_FILE = "pool_features"
+
+        /** [ProviderFileStore] kind for the last non-empty `get_live_categories` answer. */
+        const val CATEGORIES_FILE = "live_categories"
     }
 }
