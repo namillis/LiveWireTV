@@ -18,6 +18,7 @@ import com.livewire.tv.feature.providers.data.ProviderRepository
 import com.livewire.tv.feature.providers.domain.FailoverWatch
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.providers.domain.PlaybackTarget
+import com.livewire.tv.feature.providers.domain.PoolSignals
 import com.livewire.tv.feature.providers.domain.ProviderCategory
 import com.livewire.tv.feature.providers.domain.ProviderConfig
 import com.livewire.tv.feature.search.data.RecentHistoryStore
@@ -250,9 +251,10 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-    /** The pool's Live Now category as a list, or null for providers that don't send one. */
+    /** The pool's live sports category as a list, or null for providers that don't send one. */
     private suspend fun loadLiveNowRail(cfg: ProviderConfig): ChannelRail? {
-        val category = categories.firstOrNull { HomeLists.isLiveNow(it.name) } ?: return null
+        val pool = PoolSignals.EVENT_INFO in client.poolFeatures(cfg)
+        val category = categories.firstOrNull { HomeLists.isLiveNow(it.name, pool) } ?: return null
         val rail = railCache.getOrPut(category.id) {
             val channels = client.liveChannels(cfg, categoryId = category.id)
             if (channels.isEmpty()) null else ChannelRail(category.id, category.name, channels)

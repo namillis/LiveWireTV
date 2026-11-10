@@ -53,7 +53,16 @@ class HomeListsTest {
 
     @Test fun `Live Now is matched by name, ignoring case and spaces`() {
         assert(HomeLists.isLiveNow(" live now "))
+        assert(HomeLists.isLiveNow("Live Now", pool = true))
+    }
+
+    @Test fun `Live Sports is the live list only on the pool`() {
+        // The pool renamed its Live Now list to Live Sports; plain panels use the name for ordinary channels.
+        assert(HomeLists.isLiveNow("Live Sports", pool = true))
+        assert(HomeLists.isLiveNow(" live sports ", pool = true))
         assert(!HomeLists.isLiveNow("Live Sports"))
+        assert(!HomeLists.isLiveNow("Popular on TV", pool = true))
+        assert(!HomeLists.isLiveNow("Sports", pool = true))
     }
 
     @Test fun `row number is the provider's, else the position`() {
