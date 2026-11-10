@@ -60,6 +60,8 @@ BUILD_TOOLS = "36.0.0"
 MIN_SDK = 23
 # How long a release waits for CI still running on its commit before testing it itself.
 CI_WAIT_SECONDS = 15 * 60
+# The commit-status context prefix of the CI workflow's checks (.forgejo/workflows/ci.yml, "name: CI").
+CI_CONTEXT = "CI /"
 
 ROOT = Path(__file__).resolve().parent.parent
 APK_DIR = ROOT / "app" / "build" / "outputs" / "apk" / "release"
@@ -113,10 +115,20 @@ def release_notes(tag: str) -> str:
 
 
 def ci_state(sha: str) -> str | None:
-    """CI's combined status on Forgejo for sha ("success", "pending", "failure", "error"), or None
-    when CI never reported on it (a commit pushed nowhere CI runs, or a local-only release)."""
+    """CI's status on Forgejo for sha ("success", "pending" or "failure"), or None when CI never
+    reported on it (a commit pushed nowhere CI runs, or a local-only release).
+
+    Only the CI workflow's own checks count. This release job reports on the same commit, so the
+    combined state stays "pending" for as long as it runs, and waiting for that waited out the
+    whole CI_WAIT_SECONDS on every release."""
     status = api("GET", f"/commits/{sha}/status") or {}
-    return status.get("state") if status.get("statuses") else None
+    checks = [s for s in status.get("statuses") or [] if str(s.get("context", "")).startswith(CI_CONTEXT)]
+    if not checks:
+        return None
+    states = {s.get("status") for s in checks}
+    if states & {"failure", "error"}:
+        return "failure"
+    return "success" if states == {"success"} else "pending"
 
 
 def ci_passed(sha: str) -> bool:
@@ -250,6 +262,8 @@ def publish(files: list[Path], tag: str, sha: str) -> None:
 
 
 def main() -> None:
+    # CI pipes stdout, which Python then buffers until exit: line buffering shows each step live.
+    sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(description="Build and publish a LiveWire release.")
     ap.add_argument("version", help="release version without the v, for example 0.2.2")
     ap.add_argument("--dry-run", action="store_true", help="build and verify only; publish nothing")
