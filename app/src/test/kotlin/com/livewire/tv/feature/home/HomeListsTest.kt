@@ -65,6 +65,32 @@ class HomeListsTest {
         assert(!HomeLists.isLiveNow("Sports", pool = true))
     }
 
+    private fun inCategory(id: String, category: String) = LiveChannel(streamId = id, name = "Ch $id", categoryId = category)
+    private val pop = com.livewire.tv.feature.providers.domain.ProviderCategory("565", "Popular on TV")
+    private val sportsLive = com.livewire.tv.feature.providers.domain.ProviderCategory("187", "Live Sports")
+    private val localDc = com.livewire.tv.feature.providers.domain.ProviderCategory("692", "Local DC")
+    private val empty = com.livewire.tv.feature.providers.domain.ProviderCategory("9", "Nothing")
+    private val fullList = listOf(
+        inCategory("p1", "565"), inCategory("g1", "187"), inCategory("g2", "187"),
+        inCategory("d1", "692"), inCategory("p2", "565"), inCategory("d2", "692"), inCategory("x", "1"),
+    )
+
+    @Test fun `rails from the full list keep each category's channels in the list's order`() {
+        val rails = HomeLists.railsFromChannels(listOf(pop, sportsLive, localDc, empty), emptyList(), fullList, pool = true)
+        assertEquals(listOf("565", "187", "692"), rails.categories.map { it.categoryId })
+        assertEquals(listOf("p1", "p2"), rails.categories[0].channels.map { it.streamId })
+        assertEquals(listOf("d1", "d2"), rails.categories[2].channels.map { it.streamId })
+        assertEquals("187", rails.liveNow?.categoryId)
+        assertEquals(listOf("g1", "g2"), rails.liveNow?.channels?.map { it.streamId })
+        assert(rails.liveNow!!.isLiveNow)
+    }
+
+    @Test fun `rails from the full list follow the pins, and find no live list on a plain panel`() {
+        val rails = HomeLists.railsFromChannels(listOf(pop, sportsLive, localDc), listOf("692", "565"), fullList, pool = false)
+        assertEquals(listOf("692", "565"), rails.categories.map { it.categoryId })
+        assertNull(rails.liveNow)
+    }
+
     @Test fun `row number is the provider's, else the position`() {
         assertEquals("103", HomeLists.rowNumber(103, 0))
         assertEquals("4", HomeLists.rowNumber(null, 3))
