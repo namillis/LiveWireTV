@@ -9,6 +9,9 @@ import com.livewire.tv.feature.sports.domain.SportsProvider
 import com.livewire.tv.feature.sports.domain.SportsScoreboard
 import com.livewire.tv.feature.sports.domain.TeamSide
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -19,6 +22,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,16 +39,16 @@ class EspnSportsProvider @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    private data class Path(val sport: String, val league: String)
+    private data class Path(val sport: String, val league: String, val calendar: EspnCalendar)
 
     private val leaguePaths = linkedMapOf(
-        "nfl" to Path("football", "nfl"),
-        "ncaaf" to Path("football", "college-football"),
-        "nba" to Path("basketball", "nba"),
-        "ncaab" to Path("basketball", "mens-college-basketball"),
-        "mlb" to Path("baseball", "mlb"),
-        "nhl" to Path("hockey", "nhl"),
-        "epl" to Path("soccer", "eng.1"),
+        "nfl" to Path("football", "nfl", EspnCalendar.BY_WEEK),
+        "ncaaf" to Path("football", "college-football", EspnCalendar.BY_WEEK),
+        "nba" to Path("basketball", "nba", EspnCalendar.BY_DAY),
+        "ncaab" to Path("basketball", "mens-college-basketball", EspnCalendar.BY_DAY),
+        "mlb" to Path("baseball", "mlb", EspnCalendar.BY_DAY),
+        "nhl" to Path("hockey", "nhl", EspnCalendar.BY_DAY),
+        "epl" to Path("soccer", "eng.1", EspnCalendar.BY_WEEK),
     )
 
     override suspend fun leagues(): List<SportsLeague> =
@@ -53,13 +57,23 @@ class EspnSportsProvider @Inject constructor(
     override suspend fun scoreboard(leagueId: String): SportsScoreboard = withContext(Dispatchers.IO) {
         val p = leaguePaths[leagueId] ?: throw IllegalArgumentException("Unknown league: $leagueId")
         val url = "https://site.api.espn.com/apis/site/v2/sports/${p.sport}/${p.league}/scoreboard"
-        val root = json.parseToJsonElement(get(url) ?: "{}").jsonObject
-        val events = root["events"]?.jsonArray ?: JsonArray(emptyList())
+        val roots = when (p.calendar) {
+            EspnCalendar.BY_DAY -> coroutineScope {
+                EspnSchedule.dayQueries(Instant.now()).map { q -> async { fetch("$url?$q") } }.awaitAll()
+            }
+            EspnCalendar.BY_WEEK -> {
+                val current = fetch(url)
+                listOfNotNull(current, EspnSchedule.nextWeekQuery(current)?.let { fetch("$url?$it") })
+            }
+        }
+        val events = roots.flatMap { it["events"]?.jsonArray ?: JsonArray(emptyList()) }
         SportsScoreboard(
             league = SportsLeague(leagueId, leagueId.uppercase(), p.sport),
-            games = events.mapNotNull { mapGame(it.jsonObject, leagueId) },
+            games = events.mapNotNull { mapGame(it.jsonObject, leagueId) }.distinctBy { it.id },
         )
     }
+
+    private fun fetch(url: String): JsonObject = json.parseToJsonElement(get(url) ?: "{}").jsonObject
 
     // --- mapping ---------------------------------------------------------------
 
@@ -125,6 +139,48 @@ class EspnSportsProvider @Inject constructor(
 
 private fun kotlinx.serialization.json.JsonElement?.str(): String? =
     (this as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+
+/**
+ * How a league's default ESPN scoreboard is paged. A [BY_DAY] league's default is one day, and
+ * ESPN keeps serving yesterday's (all finished) until late morning Eastern, so it is asked for
+ * each day by date instead. A [BY_WEEK] league's default is its current week or matchday.
+ */
+internal enum class EspnCalendar { BY_DAY, BY_WEEK }
+
+internal object EspnSchedule {
+    /** ESPN's scoreboard days run on US Eastern time. */
+    private val espnZone = java.time.ZoneId.of("America/New_York")
+
+    /** How many days a [EspnCalendar.BY_DAY] league shows, today first. */
+    const val DAYS_SHOWN = 3
+
+    /** The `dates=` query for each day shown, from today in ESPN's time zone. */
+    fun dayQueries(now: Instant): List<String> {
+        val today = now.atZone(espnZone).toLocalDate()
+        return (0 until DAYS_SHOWN).map { offset ->
+            val day = today.plusDays(offset.toLong())
+            "dates=%04d%02d%02d".format(java.util.Locale.US, day.year, day.monthValue, day.dayOfMonth)
+        }
+    }
+
+    /**
+     * The query for the week after [root]'s when every game in it is over (the NFL's week stays
+     * on the finished one until Wednesday), else null. Null too when [root] has no week number.
+     */
+    fun nextWeekQuery(root: JsonObject): String? {
+        val events = root["events"]?.jsonArray ?: return null
+        val allOver = events.isNotEmpty() && events.all { ev ->
+            val o = ev.jsonObject
+            val comp = o["competitions"]?.jsonArray?.firstOrNull()?.jsonObject
+            val status = comp?.get("status")?.jsonObject ?: o["status"]?.jsonObject
+            status?.get("type")?.jsonObject?.get("state").str() == "post"
+        }
+        if (!allOver) return null
+        val week = root["week"]?.jsonObject?.get("number").str()?.toIntOrNull() ?: return null
+        val seasonType = root["season"]?.jsonObject?.get("type").str() ?: return null
+        return "week=${week + 1}&seasontype=$seasonType"
+    }
+}
 
 /**
  * ESPN's scoreboard dates omit seconds ("2026-09-29T00:15Z"), which `Instant.parse`
