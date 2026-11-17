@@ -113,11 +113,10 @@ class ChannelMatcher(
             // A shared id confirms only the channel named after the network itself,
             // optionally with a feed number ("ESPN HD", "ESPN 1 HD"), never a
             // sibling that borrows its guide ("ESPN ACC Network").
-            val confirmed = listing == GuideListing.THIS_GAME &&
-                (!sharedGuideId || networks.any { plainNetworkName(it, chTokens) })
-            if (confirmed) {
+            if (listing is GuideListing.ThisGame && (!sharedGuideId || networks.any { plainNetworkName(it, chTokens) })) {
                 // Network closeness orders the confirmed channels among themselves.
-                best[ch.streamId] = Scored(ChannelMatch(ch, GUIDE_LISTING), GUIDE_SCORE + (bestNetwork ?: 0), order)
+                val m = ChannelMatch(ch, GUIDE_LISTING, listing.programme, listing.byTitle)
+                best[ch.streamId] = Scored(m, GUIDE_SCORE + (bestNetwork ?: 0), order)
                 continue
             }
             // Providers run per-event channels named after the game itself
@@ -133,7 +132,7 @@ class ChannelMatcher(
                 var score = score(netTokens, chTokens) ?: continue
                 // The network matches, but the guide shows something else then.
                 // Kept (guides can be wrong) but ranked below the likely channels.
-                if (listing == GuideListing.OTHER_PROGRAMME) score -= GUIDE_MISMATCH_PENALTY
+                if (listing == GuideListing.OtherProgramme) score -= GUIDE_MISMATCH_PENALTY
                 val prev = best[ch.streamId]
                 if (prev == null || score > prev.score) {
                     best[ch.streamId] = Scored(ChannelMatch(ch, network), score, order)
@@ -146,13 +145,18 @@ class ChannelMatcher(
             .distinctBy { it.channel.name.trim().lowercase() }
     }
 
-    private enum class GuideListing { THIS_GAME, OTHER_PROGRAMME, UNKNOWN }
+    private sealed interface GuideListing {
+        /** [programme] is the game; [byTitle] when its title (not only its description) names the teams. */
+        data class ThisGame(val programme: EpgProgramme, val byTitle: Boolean) : GuideListing
+        data object OtherProgramme : GuideListing
+        data object Unknown : GuideListing
+    }
 
     /**
-     * Classify [ch]'s guide listings between [from] and [to]. THIS_GAME when a listing's title
+     * Classify [ch]'s guide listings between [from] and [to]. ThisGame when a listing's title
      * names both teams, or its description does and its title looks like a live game
-     * ("NHL Hockey"). OTHER_PROGRAMME when the guide has listings then but none looks like a
-     * game. UNKNOWN when there is no guide data, or a listing looks like a game without naming
+     * ("NHL Hockey"). OtherProgramme when the guide has listings then but none looks like a
+     * game. Unknown when there is no guide data, or a listing looks like a game without naming
      * these teams (it may still be this one).
      */
     private fun guideListing(
@@ -162,20 +166,20 @@ class ChannelMatcher(
         home: List<List<String>>,
         away: List<List<String>>,
     ): GuideListing {
-        val id = ch.epgChannelId ?: return GuideListing.UNKNOWN
-        val programmes = guide[id] ?: return GuideListing.UNKNOWN
+        val id = ch.epgChannelId ?: return GuideListing.Unknown
+        val programmes = guide[id] ?: return GuideListing.Unknown
         val during = programmes.filter { it.startMs < to && it.stopMs > from }
-        if (during.isEmpty()) return GuideListing.UNKNOWN
+        if (during.isEmpty()) return GuideListing.Unknown
         var sawGameLike = false
         for (p in during) {
             val title = tokenize(p.title)
-            if (namesBothTeams(title, home, away)) return GuideListing.THIS_GAME
+            if (namesBothTeams(title, home, away)) return GuideListing.ThisGame(p, byTitle = true)
             if (title.any { it in gameWords }) {
                 sawGameLike = true
-                p.description?.let { if (namesBothTeams(tokenize(it), home, away)) return GuideListing.THIS_GAME }
+                p.description?.let { if (namesBothTeams(tokenize(it), home, away)) return GuideListing.ThisGame(p, byTitle = false) }
             }
         }
-        return if (sawGameLike) GuideListing.UNKNOWN else GuideListing.OTHER_PROGRAMME
+        return if (sawGameLike) GuideListing.Unknown else GuideListing.OtherProgramme
     }
 
     private companion object {

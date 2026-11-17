@@ -119,6 +119,43 @@ class SportsListTest {
         assertEquals("Matches ESPN", SportsList.reason(ChannelMatch(ch("1", "x"), "ESPN")))
     }
 
+    @Test fun `a guide match shows the listing, with its description when only that names the teams`() {
+        val zone = ZoneId.of("America/New_York")
+        val start = java.time.ZonedDateTime.of(2026, 11, 16, 20, 15, 0, 0, zone).toInstant().toEpochMilli()
+        val p = EpgProgramme(channelId = "nesn", startMs = start, stopMs = start + 3 * hour + 15 * 60_000L,
+            title = "NFL Football ", description = "Chicago visits Seattle.")
+        val byTitle = ChannelMatch(ch("1", "x"), SportsRepository.GUIDE_LISTING, listing = p, listingTitleNamesTeams = true)
+        assertEquals("NFL Football · 8:15 PM–11:30 PM", SportsList.reason(byTitle, zone))
+        val byDesc = byTitle.copy(listingTitleNamesTeams = false)
+        assertEquals("NFL Football · 8:15 PM–11:30 PM · Chicago visits Seattle.", SportsList.reason(byDesc, zone))
+        // An old match without its listing keeps the plain words.
+        assertEquals("Guide lists this game", SportsList.reason(byTitle.copy(listing = null), zone))
+    }
+
+    @Test fun `options carry the guide listing so the page can mark it now`() {
+        val p = EpgProgramme(channelId = "e", startMs = t, stopMs = t + 3 * hour, title = "Bears at Seahawks")
+        val options = SportsList.options(null, listOf(espn.copy(listing = p)))
+        assertEquals(p, options[0].listing)
+    }
+
+    @Test fun `watch from start uses the first channel with an archive, from its listing`() {
+        val p = EpgProgramme(channelId = "e", startMs = t - hour, stopMs = t + 2 * hour, title = "Bears at Seahawks")
+        val noArchive = SourceOption(ch("p", "Live Now"), SportsList.POOL_REASON, liveNow = true)
+        val archive = SourceOption(LiveChannel("e", "US - ESPN", categoryId = "live", archiveDays = 2), "x", liveNow = false, listing = p)
+        val fs = SportsList.fromStart(liveGame, listOf(noArchive, archive))!!
+        assertEquals("e", fs.channel.streamId)
+        assertEquals(t - hour, fs.startMs)
+        assertEquals(t + 2 * hour, fs.endMs)
+        assertEquals("Bears at Seahawks", fs.programme)
+        // Without a listing it runs from kickoff for three hours, titled after the game.
+        val bare = SportsList.fromStart(liveGame, listOf(archive.copy(listing = null)))!!
+        assertEquals(t, bare.startMs)
+        assertEquals(t + 3 * hour, bare.endMs)
+        assertEquals("Bears @ Seahawks", bare.programme)
+        assertNull(SportsList.fromStart(liveGame, listOf(noArchive)))
+        assertNull(SportsList.fromStart(game("s", "nfl", GameState.PRE), listOf(archive)))
+    }
+
     // --- Live Now matching ---
 
     @Test fun `a Live Now event naming both teams matches`() {
