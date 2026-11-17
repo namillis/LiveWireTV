@@ -78,13 +78,14 @@ import com.livewire.tv.ui.theme.LocalOnFocus
  * Sports: one list of every league's games (design mockups `bgrid/sports/a-*`). League chips
  * filter it; sections run On now, Coming up, Finished. Each unfinished game ends with where it
  * will play from (the pool's Live Now channel, one of the user's channels, Finding, or No
- * stream found), worked out in the background by [SportsViewModel], so OK plays at once.
- * Right opens the Other channels panel. With no stream found, OK searches the user's channels.
+ * stream found), worked out in the background by [SportsViewModel]. OK opens the game's page
+ * ([GamePage]) with Watch focused, every other channel, and Search when nothing carries it.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SportsScreen(
     onPlayChannel: (target: PlaybackTarget, title: String) -> Unit,
+    onPlayArchive: (target: PlaybackTarget, title: String, startMs: Long, endMs: Long, programme: String) -> Unit,
     onSearch: () -> Unit,
     viewModel: SportsViewModel = hiltViewModel(),
 ) {
@@ -104,19 +105,9 @@ fun SportsScreen(
     val chips = remember(state.games, state.leagues) { SportsList.chips(state.games, state.leagues) }
     val focusedGame = state.games.firstOrNull { it.id == focusedId }
 
-    fun play(game: SportsGame) {
-        val ch = viewModel.bestChannel(game) ?: return
-        viewModel.playbackTarget(ch)?.let { onPlayChannel(it, ch.name) }
-    }
     fun search(game: SportsGame) {
         viewModel.searchFor(game)
         onSearch()
-    }
-    fun ok(game: SportsGame) = when (state.sources[game.id]) {
-        is GameSource.LiveNow, is GameSource.Channel -> play(game)
-        GameSource.Finding -> panelGame = game
-        GameSource.None -> search(game)
-        null -> Unit
     }
 
     Surface(
@@ -148,8 +139,7 @@ fun SportsScreen(
                                 GameRow(
                                     game = game,
                                     source = state.sources[game.id],
-                                    onClick = { ok(game) },
-                                    onMore = { panelGame = game },
+                                    onClick = { panelGame = game },
                                     onFocused = { focusedId = game.id },
                                 )
                             }
@@ -158,14 +148,16 @@ fun SportsScreen(
                 }
             }
             Box(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.BottomEnd) {
-                focusedGame?.takeIf { listFocused }?.let { g -> hintsFor(g, state.sources[g.id])?.let { KeyHints(*it) } }
+                focusedGame?.takeIf { listFocused }?.let { KeyHints("OK" to "Open game") }
             }
         }
     }
 
-    panelGame?.let { game ->
+    panelGame?.let { picked ->
+        // Follow score updates while the page is open.
+        val game = state.games.firstOrNull { it.id == picked.id } ?: picked
         val options = remember(game, state.sources) { viewModel.options(game) }
-        SourcesPanel(
+        GamePage(
             game = game,
             league = state.leagues.firstOrNull { it.id == game.leagueId },
             source = state.sources[game.id],
@@ -174,28 +166,16 @@ fun SportsScreen(
                 panelGame = null
                 viewModel.playbackTarget(option.channel)?.let { onPlayChannel(it, option.channel.name) }
             },
+            onFromStart = { fs ->
+                panelGame = null
+                viewModel.playbackTarget(fs.channel)?.let { onPlayArchive(it, fs.channel.name, fs.startMs, fs.endMs, fs.programme) }
+            },
             onSearch = { panelGame = null; search(game) },
             onDismiss = { panelGame = null },
         )
     }
 }
 
-/** The key hints for the focused row, or null for a finished game (nothing to do). */
-private fun hintsFor(game: SportsGame, source: GameSource?): Array<Pair<String, String>>? {
-    val more = "▶" to "Other channels"
-    return when (source) {
-        is GameSource.LiveNow -> arrayOf("OK" to "Watch on Live Now", more)
-        is GameSource.Channel -> {
-            val now = if (game.status.state == GameState.IN_PROGRESS) "" else " now"
-            // Per-event channel names run long; the hint keeps their start.
-            val name = source.match.channel.name.trim().let { if (it.length > 24) it.take(23).trimEnd() + "…" else it }
-            arrayOf("OK" to "Watch $name$now", more)
-        }
-        GameSource.Finding -> arrayOf("OK" to "Show channels")
-        GameSource.None -> arrayOf("OK" to "Search my channels", more)
-        null -> null
-    }
-}
 
 /** League chips: All first, each with its game count. The selected chip has the raised fill. */
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -251,7 +231,6 @@ private fun GameRow(
     game: SportsGame,
     source: GameSource?,
     onClick: () -> Unit,
-    onMore: () -> Unit,
     onFocused: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -266,10 +245,7 @@ private fun GameRow(
             .fillMaxWidth()
             .height(44.dp)
             .alpha(if (game.status.state == GameState.FINAL && !focused) 0.55f else 1f)
-            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
-            .onPreviewKeyEvent { e ->
-                if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight && source != null) { onMore(); true } else false
-            },
+            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() },
     ) {
         Row(Modifier.fillMaxSize().padding(start = 10.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -389,126 +365,6 @@ private fun SourcePill(source: GameSource) {
             maxLines = 1,
             modifier = Modifier.padding(end = 9.dp),
         )
-    }
-}
-
-/**
- * The Other channels panel: a sheet at the right over the dimmed list, with the game, then its
- * channels best first (the pool's Live Now channel tagged BEST). Back or Left closes it. A
- * [Dialog] keeps D-pad focus inside it.
- */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun SourcesPanel(
-    game: SportsGame,
-    league: SportsLeague?,
-    source: GameSource?,
-    options: List<SourceOption>,
-    onPick: (SourceOption) -> Unit,
-    onSearch: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        val first = remember { FocusRequester() }
-        LaunchedEffect(options.isEmpty(), source) { runCatching { first.requestFocus() } }
-        Row(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxHeight().background(LiveWireColors.Scrim))
-            Column(
-                Modifier
-                    .width(340.dp)
-                    .fillMaxHeight()
-                    .background(LiveWireColors.Surface)
-                    .drawBehind { drawLine(LiveWireColors.BorderStrong, Offset(0f, 0f), Offset(0f, size.height), 1.dp.toPx()) }
-                    .onPreviewKeyEvent { e ->
-                        if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) { onDismiss(); true } else false
-                    }
-                    .padding(horizontal = 24.dp, vertical = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("OTHER CHANNELS", style = LiveWireType.Overline, color = LiveWireColors.OnSurfaceMuted)
-                Text(SportsList.title(game), style = LiveWireType.Heading, color = LiveWireColors.OnSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    listOfNotNull(
-                        league?.name,
-                        statusText(game),
-                        game.broadcastNetworks.takeIf { it.isNotEmpty() }?.let { "On ${it.joinToString(", ")}" },
-                    ).joinToString(" · "),
-                    style = LiveWireType.Mono,
-                    color = LiveWireColors.OnSurfaceMuted,
-                    modifier = Modifier.padding(bottom = 6.dp),
-                )
-                // The channels take all the height between the heading and the key hints.
-                Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    when {
-                        options.isNotEmpty() -> LazyColumn(
-                            Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(vertical = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            itemsIndexed(options, key = { _, o -> o.channel.streamId }) { i, o ->
-                                OptionRow(o, best = i == 0, onClick = { onPick(o) }, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier)
-                            }
-                        }
-                        source == GameSource.Finding -> Text("Finding channels…", style = LiveWireType.Body, color = LiveWireColors.OnSurfaceMuted)
-                        else -> {
-                            Text(SportsFormat.noChannelMessage(game), style = LiveWireType.Body, color = LiveWireColors.OnSurfaceMuted)
-                            OptionRow(
-                                SourceOption(
-                                    com.livewire.tv.feature.providers.domain.LiveChannel("", "Search my channels", categoryId = ""),
-                                    "Look for “${SportsList.searchQuery(game)}” in every channel and the guide",
-                                    false,
-                                ),
-                                best = false,
-                                onClick = onSearch,
-                                modifier = Modifier.focusRequester(first),
-                            )
-                        }
-                    }
-                }
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                    KeyHints("OK" to "Watch", "◀" to "Back to games")
-                }
-            }
-        }
-    }
-}
-
-/** A channel in the panel: its name (with a BEST tag on the first) and why it is listed. */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun OptionRow(option: SourceOption, best: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    LiveWireSurface(
-        onClick = onClick,
-        restingColor = LiveWireColors.SurfaceRaised,
-        restingBorder = false,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (option.liveNow) "Live Now · ${option.channel.name}" else option.channel.name,
-                    style = LiveWireType.Title.copy(fontSize = 11.sp),
-                    color = LiveWireTheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (best) {
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "BEST",
-                        style = LiveWireType.Tag,
-                        color = if (LocalOnFocus.current) LiveWireColors.Focus else LiveWireColors.OnSurfaceSoft,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (LocalOnFocus.current) LiveWireColors.OnFocus else LiveWireColors.Canvas)
-                            .padding(horizontal = 5.dp, vertical = 1.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(3.dp))
-            Text(option.reason, style = LiveWireType.Sub.copy(fontSize = 9.sp), color = LiveWireTheme.onSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
     }
 }
 

@@ -7,6 +7,7 @@ import com.livewire.tv.feature.sports.domain.GameStatus
 import com.livewire.tv.feature.sports.domain.SportsGame
 import com.livewire.tv.feature.sports.domain.TeamSide
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -194,6 +195,8 @@ class SportsMatchTest {
         )
         assertEquals(listOf("2", "1"), m.map { it.channel.streamId })
         assertEquals(SportsRepository.GUIDE_LISTING, m[0].matchedNetwork)
+        assertEquals("New York Rangers at Boston Bruins", m[0].listing?.title)
+        assertTrue(m[0].listingTitleNamesTeams)
     }
 
     @Test fun `a game title with the teams in the description matches`() {
@@ -203,6 +206,8 @@ class SportsMatchTest {
             mapOf("nesn" to listOf(prog("nesn", "NHL Hockey", "Boston Bruins host the New York Rangers."))),
         )
         assertEquals(listOf("1"), m.map { it.channel.streamId })
+        assertEquals("NHL Hockey", m[0].listing?.title)
+        assertFalse(m[0].listingTitleNamesTeams)
     }
 
     @Test fun `a description alone does not match a non-game show`() {

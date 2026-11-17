@@ -1,5 +1,6 @@
 package com.livewire.tv.feature.sports
 
+import com.livewire.tv.feature.epg.domain.EpgProgramme
 import com.livewire.tv.feature.providers.domain.LiveChannel
 import com.livewire.tv.feature.sports.data.ChannelMatch
 import com.livewire.tv.feature.sports.data.SportsRepository
@@ -22,8 +23,14 @@ sealed interface GameSource {
     data object None : GameSource
 }
 
-/** One row in the Other channels panel. */
-data class SourceOption(val channel: LiveChannel, val reason: String, val liveNow: Boolean)
+/**
+ * One way to watch a game on its page. [listing] is the guide programme that confirmed a guide
+ * match, so the row can mark it NOW while it airs.
+ */
+data class SourceOption(val channel: LiveChannel, val reason: String, val liveNow: Boolean, val listing: EpgProgramme? = null)
+
+/** Watch from start: catch-up on [channel] over [startMs, endMs], titled [programme]. */
+data class FromStart(val channel: LiveChannel, val startMs: Long, val endMs: Long, val programme: String)
 
 /** The list's sections, in screen order. */
 enum class SportsSection(val label: String) { ON_NOW("On now"), COMING_UP("Coming up"), FINISHED("Finished") }
@@ -89,16 +96,42 @@ object SportsList {
         liveNow?.let { out += SourceOption(it, POOL_REASON, liveNow = true) }
         for (m in matches) {
             if (out.any { it.channel.streamId == m.channel.streamId }) continue
-            out += SourceOption(m.channel, reason(m), liveNow = false)
+            out += SourceOption(m.channel, reason(m), liveNow = false, listing = m.listing)
         }
         return out
     }
 
-    /** Why a channel is in the panel, in plain words. */
-    fun reason(m: ChannelMatch): String = when (m.matchedNetwork) {
-        SportsRepository.GUIDE_LISTING -> "Guide lists this game"
+    /**
+     * Why a channel is on the game page, in plain words. A guide match shows the listing itself:
+     * "Rangers at Bruins · 7:00 PM–10:00 PM", or "NHL Hockey · 7:00 PM–10:00 PM · Bruins host the
+     * Rangers." when only the description names the teams.
+     */
+    fun reason(m: ChannelMatch, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String = when (m.matchedNetwork) {
+        SportsRepository.GUIDE_LISTING -> m.listing?.let { p ->
+            val out = "${p.title.trim()} · ${clock(p.startMs, zone)}–${clock(p.stopMs, zone)}"
+            val desc = p.description?.trim()?.takeIf { it.isNotEmpty() && !m.listingTitleNamesTeams }
+            if (desc != null) "$out · $desc" else out
+        } ?: "Guide lists this game"
         SportsRepository.GAME_LISTING -> "Named after this game"
         else -> "Matches ${m.matchedNetwork}"
+    }
+
+    /** "7:00 PM". */
+    fun clock(ms: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+        java.time.Instant.ofEpochMilli(ms).atZone(zone)
+            .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US))
+
+    /**
+     * The channel and window Watch from start plays for [game]: the first of [options] that keeps
+     * an archive, from its guide listing's start (else kickoff) to its end (else three hours on).
+     * Only while the game is on; null when no channel keeps an archive.
+     */
+    fun fromStart(game: SportsGame, options: List<SourceOption>): FromStart? {
+        if (game.status.state != GameState.IN_PROGRESS) return null
+        val o = options.firstOrNull { it.channel.hasArchive } ?: return null
+        val start = o.listing?.startMs ?: game.startTimeMs
+        val end = o.listing?.stopMs ?: (start + java.util.concurrent.TimeUnit.HOURS.toMillis(3))
+        return FromStart(o.channel, start, end, o.listing?.title ?: title(game))
     }
 
     const val POOL_REASON = "Pool · picks the best stream and switches if it drops"

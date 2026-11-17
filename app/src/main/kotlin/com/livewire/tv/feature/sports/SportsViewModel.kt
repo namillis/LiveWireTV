@@ -161,16 +161,9 @@ class SportsViewModel @Inject constructor(
         }
     }
 
-    /** The Other channels panel for [game]: its Live Now channel first, then its matches. */
+    /** The game page's ways to watch [game]: its Live Now channel first, then its matches. */
     fun options(game: SportsGame): List<SourceOption> =
         SportsList.options(SportsRepository.liveNowChannel(game, liveNow), matches[game.id].orEmpty())
-
-    /** The channel OK plays for [game], or null when there is none (yet). */
-    fun bestChannel(game: SportsGame): LiveChannel? = when (val s = _state.value.sources[game.id]) {
-        is GameSource.LiveNow -> s.channel
-        is GameSource.Channel -> s.match.channel
-        else -> null
-    }
 
     /** Hand Search the two teams' names; the screen then switches to Search. */
     fun searchFor(game: SportsGame) = pendingSearch.set(SportsList.searchQuery(game))

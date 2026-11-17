@@ -12,10 +12,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 
-/** A candidate channel that appears to carry a game, with the network that matched. */
+/**
+ * A candidate channel that appears to carry a game, with the network that matched. A
+ * [SportsRepository.GUIDE_LISTING] match also carries the guide [listing] that confirmed it, and
+ * whether that listing's title names the teams ([listingTitleNamesTeams]) or only its
+ * description does ("NHL Hockey").
+ */
 data class ChannelMatch(
     val channel: LiveChannel,
     val matchedNetwork: String,
+    val listing: EpgProgramme? = null,
+    val listingTitleNamesTeams: Boolean = true,
 )
 
 /**
